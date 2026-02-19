@@ -1369,15 +1369,15 @@ export default function App() {
         {/* 프로젝트 선택 */}
         <div style={{display:"flex",gap:6,flex:1,overflowX:"auto"}}>
           {projects.map(p=>(
-            <div key={p.id} style={{display:"flex",alignItems:"center",gap:2}}>
-              <button onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
-                {p.name}
-              </button>
-              {selId===p.id && <button onClick={openEditProj} title="프로젝트 수정" style={{border:"none",background:"none",cursor:"pointer",fontSize:13,padding:"2px 4px",color:C.sub,lineHeight:1}}>✏️</button>}
-            </div>
+            <button key={p.id} onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
+              {p.name}
+            </button>
           ))}
           <button onClick={()=>setAddProjModal(true)} style={{padding:"5px 12px",borderRadius:8,border:`2px dashed ${C.border}`,background:"none",cursor:"pointer",fontSize:12,color:C.faint,whiteSpace:"nowrap"}}>
             + 새 프로젝트
+          </button>
+          <button onClick={openEditProj} title="현재 프로젝트 수정" style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:13,color:C.sub,whiteSpace:"nowrap",flexShrink:0}}>
+            ✏️
           </button>
         </div>
         {/* 메인탭 */}
