@@ -1827,7 +1827,7 @@ function StaffList({ project, onChange, accounts }) {
 // ═══════════════════════════════════════════════════════════
 // 종합 캘린더
 // ═══════════════════════════════════════════════════════════
-function MasterCalendar({ projects, user }) {
+function MasterCalendar({ projects, user, onCalName }) {
   const canEdit = user.canManageMembers || user.role === "PD";
   const today   = new Date();
   const [baseYear,  setBaseYear]  = useState(today.getFullYear());
@@ -1962,7 +1962,7 @@ function MasterCalendar({ projects, user }) {
                 <span style={{width:8,height:8,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/>
                 <span style={{fontSize:12,color:C.sub,whiteSpace:"nowrap"}}>{p.name}</span>
                 <span style={{fontSize:12,color:C.faint}}>→</span>
-                <CalNameInput project={p}/>
+                <CalNameInput project={p} onSave={v=>onCalName&&onCalName(p.id,v)}/>
               </div>
             ))}
           </div>
@@ -1990,20 +1990,16 @@ function MasterCalendar({ projects, user }) {
 }
 
 // 캘린더 표시명 인라인 편집 컴포넌트
-function CalNameInput({ project }) {
+function CalNameInput({ project, onSave }) {
   const [val, setVal] = useState(project.calName||"");
-  const { setProjects } = React.useContext(AppContext);
-  const save = (v) => {
-    setProjects(ps=>ps.map(p=>p.id===project.id?{...p,calName:v}:p));
-  };
   return (
     <input
       style={{...inp,width:120,padding:"3px 8px",fontSize:12}}
       value={val}
       placeholder={project.name}
       onChange={e=>setVal(e.target.value)}
-      onBlur={()=>save(val)}
-      onKeyDown={e=>e.key==="Enter"&&save(val)}
+      onBlur={()=>onSave(val)}
+      onKeyDown={e=>e.key==="Enter"&&onSave(val)}
     />
   );
 }
@@ -2255,7 +2251,7 @@ function FinanceDash({ projects }) {
 // ═══════════════════════════════════════════════════════════
 // 메인 앱
 // ═══════════════════════════════════════════════════════════
-const AppContext = React.createContext({});
+const AppContext = { Provider: ({children}) => children };
 
 function App() {
   const [user,         setUser]         = useState(null);
@@ -2411,7 +2407,7 @@ return (
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
         ) : mainTab==="master-calendar" ? (
-          <MasterCalendar projects={projects} user={user}/>
+          <MasterCalendar projects={projects} user={user} onCalName={(id,v)=>setProjects(ps=>ps.map(p=>p.id===id?{...p,calName:v}:p))}/>
         ) : mainTab==="settings" ? (
           <CompanySettings
             company={company}
