@@ -37,14 +37,7 @@ const DEFAULT_COMPANY = {
 // 계정 / 역할
 // ═══════════════════════════════════════════════════════════
 const SEED_ACCOUNTS = [
-  { id:"m0", name:"김대표",  role:"대표",    pw:"ceo1234",  canViewFinance:true,  canManageMembers:true,  order:0 },
-  { id:"m1", name:"박민서",  role:"PD",      pw:"pd1234",   canViewFinance:false, canManageMembers:false, order:1 },
-  { id:"m2", name:"이준혁",  role:"감독",    pw:"dir1234",  canViewFinance:false, canManageMembers:false, order:2 },
-  { id:"m3", name:"김소연",  role:"촬영감독",pw:"cam1234",  canViewFinance:false, canManageMembers:false, order:3 },
-  { id:"m4", name:"최다인",  role:"편집자",  pw:"edit1234", canViewFinance:false, canManageMembers:false, order:4 },
-  { id:"m5", name:"정우진",  role:"CG",      pw:"cg1234",   canViewFinance:false, canManageMembers:false, order:5 },
-  { id:"m6", name:"한지수",  role:"제작부",  pw:"prod1234", canViewFinance:false, canManageMembers:false, order:6 },
-  { id:"m7", name:"오세진",  role:"경영지원",pw:"biz1234",  canViewFinance:true,  canManageMembers:true,  order:7 },
+  { id:"m0", name:"최창일", role:"대표", pw:"namucreative02*100%", canViewFinance:true, canManageMembers:true, order:0 },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -1677,6 +1670,251 @@ const STAFF_GROUPS = [
   { label:"포스트",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
   { label:"기타",        roles:["메이킹","작가","기타"] },
 ];
+
+// ═══════════════════════════════════════════════════════════
+// 스탭리스트
+// ═══════════════════════════════════════════════════════════
+function StaffList({ project, onChange, accounts }) {
+  const staff = project.staff || [];
+  const [modal, setModal] = useState(false);
+  const [editS, setEditS] = useState(null);
+  const [sf, setSf] = useState({});
+  const [conf, setConf] = useState(null);
+  const [filterGroup, setFilterGroup] = useState("전체");
+
+  const openAdd = () => {
+    setEditS(null);
+    setSf({ role: STAFF_ROLES[0], name: "", phone: "", email: "", company: "", note: "", fee: "", feeType: "건", confirmed: false });
+    setModal(true);
+  };
+  const openEdit = s => { setEditS(s); setSf({ ...s }); setModal(true); };
+
+  const save = () => {
+    if (!sf.name?.trim()) return;
+    const entry = { ...sf, id: editS ? editS.id : "s" + Date.now() };
+    const list = editS
+      ? staff.map(s => s.id === editS.id ? entry : s)
+      : [...staff, entry];
+    onChange(p => ({ ...p, staff: list }));
+    setModal(false);
+  };
+
+  const del = id => {
+    onChange(p => ({ ...p, staff: staff.filter(s => s.id !== id) }));
+    setConf(null);
+  };
+
+  const toggleConfirm = id => {
+    onChange(p => ({
+      ...p,
+      staff: staff.map(s => s.id === id ? { ...s, confirmed: !s.confirmed } : s)
+    }));
+  };
+
+  // 그룹 필터링
+  const groupLabels = ["전체", ...STAFF_GROUPS.map(g => g.label)];
+  const visibleStaff = filterGroup === "전체"
+    ? staff
+    : staff.filter(s => {
+        const grp = STAFF_GROUPS.find(g => g.roles.includes(s.role));
+        return grp?.label === filterGroup;
+      });
+
+  // 그룹별 정렬
+  const getRoleOrder = role => {
+    for (let i = 0; i < STAFF_GROUPS.length; i++) {
+      const idx = STAFF_GROUPS[i].roles.indexOf(role);
+      if (idx !== -1) return i * 100 + idx;
+    }
+    return 9999;
+  };
+  const sorted = [...visibleStaff].sort((a, b) => getRoleOrder(a.role) - getRoleOrder(b.role));
+
+  // 그룹별 합계
+  const totalFee = staff.reduce((s, m) => s + (Number(m.fee) || 0), 0);
+  const confirmedCount = staff.filter(s => s.confirmed).length;
+
+  return (
+    <div>
+      {/* 헤더 */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div>
+          <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800 }}>👤 스탭리스트</h3>
+          <div style={{ display: "flex", gap: 12, fontSize: 12, color: C.sub }}>
+            <span>총 <b style={{ color: C.text }}>{staff.length}명</b></span>
+            <span>컨펌 <b style={{ color: C.green }}>{confirmedCount}명</b></span>
+            <span>미컨펌 <b style={{ color: C.amber }}>{staff.length - confirmedCount}명</b></span>
+            {totalFee > 0 && <span>총 스탭비 <b style={{ color: C.blue }}>{totalFee.toLocaleString("ko-KR")}원</b></span>}
+          </div>
+        </div>
+        <Btn primary onClick={openAdd}>+ 스탭 추가</Btn>
+      </div>
+
+      {/* 그룹 필터 탭 */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+        {groupLabels.map(g => (
+          <button key={g} onClick={() => setFilterGroup(g)}
+            style={{
+              padding: "5px 14px", borderRadius: 99, border: `1.5px solid ${filterGroup === g ? C.blue : C.border}`,
+              background: filterGroup === g ? C.blueLight : "#fff",
+              color: filterGroup === g ? C.blue : C.sub,
+              fontSize: 12, fontWeight: filterGroup === g ? 700 : 400, cursor: "pointer"
+            }}>
+            {g}
+            {g !== "전체" && (
+              <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>
+                ({staff.filter(s => STAFF_GROUPS.find(x => x.label === g)?.roles.includes(s.role)).length})
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 스탭 테이블 */}
+      {sorted.length === 0 ? (
+        <div style={{ padding: "48px 0", textAlign: "center", color: C.faint, fontSize: 13, border: `2px dashed ${C.border}`, borderRadius: 12 }}>
+          스탭을 추가해주세요
+        </div>
+      ) : (
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {/* 컬럼 헤더 */}
+          <div style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 120px 120px 90px 70px 60px", background: C.slateLight, padding: "9px 14px", fontSize: 11, fontWeight: 700, color: C.sub, gap: 8 }}>
+            <span>파트/직책</span><span>이름</span><span>소속/업체</span><span>연락처</span><span>이메일</span><span style={{ textAlign: "right" }}>스탭비</span><span style={{ textAlign: "center" }}>컨펌</span><span />
+          </div>
+
+          {/* 그룹별 행 */}
+          {STAFF_GROUPS.map(grp => {
+            const members = sorted.filter(s => grp.roles.includes(s.role));
+            if (!members.length) return null;
+            const showGroup = filterGroup === "전체";
+            return (
+              <div key={grp.label}>
+                {showGroup && (
+                  <div style={{ padding: "7px 14px", background: "#f0f4ff", borderTop: `1px solid ${C.border}`, fontSize: 12, fontWeight: 700, color: C.blue }}>
+                    {grp.label}
+                  </div>
+                )}
+                {members.map((s, i) => (
+                  <div key={s.id}
+                    style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 120px 120px 90px 70px 60px", padding: "10px 14px", borderTop: `1px solid ${C.border}`, gap: 8, alignItems: "center", background: s.confirmed ? "#f8fffe" : i % 2 === 0 ? C.white : "#fafbfc" }}>
+                    {/* 직책 */}
+                    <div>
+                      <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 99, background: C.purpleLight, color: C.purple, fontWeight: 700 }}>{s.role}</span>
+                    </div>
+                    {/* 이름 */}
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name}</div>
+                    {/* 소속 + 메모 */}
+                    <div>
+                      {s.company && <div style={{ fontSize: 12, color: C.sub }}>{s.company}</div>}
+                      {s.note && <div style={{ fontSize: 11, color: C.faint }}>{s.note}</div>}
+                    </div>
+                    {/* 연락처 */}
+                    <div style={{ fontSize: 12, color: C.sub }}>
+                      {s.phone ? <a href={`tel:${s.phone}`} style={{ color: C.blue, textDecoration: "none" }}>📞 {s.phone}</a> : <span style={{ color: C.border }}>—</span>}
+                    </div>
+                    {/* 이메일 */}
+                    <div style={{ fontSize: 11, color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.email ? <a href={`mailto:${s.email}`} style={{ color: C.blue, textDecoration: "none" }}>✉️ {s.email}</a> : <span style={{ color: C.border }}>—</span>}
+                    </div>
+                    {/* 스탭비 */}
+                    <div style={{ textAlign: "right", fontSize: 12, fontWeight: 600 }}>
+                      {s.fee ? `${Number(s.fee).toLocaleString("ko-KR")}원` : <span style={{ color: C.border }}>—</span>}
+                      {s.fee && s.feeType && <div style={{ fontSize: 10, color: C.faint }}>/{s.feeType}</div>}
+                    </div>
+                    {/* 컨펌 */}
+                    <div style={{ textAlign: "center" }}>
+                      <button onClick={() => toggleConfirm(s.id)}
+                        style={{ padding: "3px 8px", borderRadius: 6, border: `1.5px solid ${s.confirmed ? C.green : C.border}`, background: s.confirmed ? C.greenLight : "#fff", color: s.confirmed ? C.green : C.faint, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {s.confirmed ? "✅" : "⬜"}
+                      </button>
+                    </div>
+                    {/* 액션 */}
+                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                      <button onClick={() => openEdit(s)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14 }}>✏️</button>
+                      <button onClick={() => setConf(s)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14 }}>🗑️</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* 합계 행 */}
+          {totalFee > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 120px 120px 90px 70px 60px", padding: "10px 14px", borderTop: `2px solid ${C.border}`, gap: 8, background: "#f0f4ff" }}>
+              <span /><span /><span /><span /><span />
+              <span style={{ textAlign: "right", fontWeight: 800, fontSize: 13, color: C.blue }}>
+                총 {totalFee.toLocaleString("ko-KR")}원
+              </span>
+              <span /><span />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 추가/수정 모달 */}
+      {modal && (
+        <Modal title={editS ? "스탭 수정" : "스탭 추가"} onClose={() => setModal(false)}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <Field label="직책 *" half>
+              <select style={inp} value={sf.role || STAFF_ROLES[0]} onChange={e => setSf(v => ({ ...v, role: e.target.value }))}>
+                {STAFF_GROUPS.map(grp => (
+                  <optgroup key={grp.label} label={grp.label}>
+                    {grp.roles.map(r => <option key={r} value={r}>{r}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </Field>
+            <Field label="이름 *" half>
+              <input style={inp} autoFocus value={sf.name || ""} onChange={e => setSf(v => ({ ...v, name: e.target.value }))} placeholder="홍길동" />
+            </Field>
+            <Field label="소속 / 업체" half>
+              <input style={inp} value={sf.company || ""} onChange={e => setSf(v => ({ ...v, company: e.target.value }))} placeholder="프리랜서 / 회사명" />
+            </Field>
+            <Field label="연락처" half>
+              <input style={inp} value={sf.phone || ""} onChange={e => setSf(v => ({ ...v, phone: e.target.value }))} placeholder="010-0000-0000" />
+            </Field>
+            <Field label="이메일">
+              <input style={inp} value={sf.email || ""} onChange={e => setSf(v => ({ ...v, email: e.target.value }))} placeholder="name@email.com" />
+            </Field>
+            <Field label="스탭비 (원)" half>
+              <input style={inp} type="number" value={sf.fee || ""} onChange={e => setSf(v => ({ ...v, fee: e.target.value }))} placeholder="0" />
+            </Field>
+            <Field label="단위" half>
+              <select style={inp} value={sf.feeType || "건"} onChange={e => setSf(v => ({ ...v, feeType: e.target.value }))}>
+                {["건", "일", "시간", "회"].map(u => <option key={u}>{u}</option>)}
+              </select>
+            </Field>
+            <Field label="메모">
+              <input style={inp} value={sf.note || ""} onChange={e => setSf(v => ({ ...v, note: e.target.value }))} placeholder="특이사항, 계약 내용 등" />
+            </Field>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 16, padding: "10px 12px", borderRadius: 8, border: `1.5px solid ${sf.confirmed ? C.green : C.border}`, background: sf.confirmed ? C.greenLight : "#fff" }}>
+            <input type="checkbox" checked={!!sf.confirmed} onChange={e => setSf(v => ({ ...v, confirmed: e.target.checked }))} style={{ accentColor: C.green, width: 16, height: 16 }} />
+            ✅ 컨펌 완료 (섭외/계약 확정)
+          </label>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            {editS && <Btn danger sm onClick={() => { del(editS.id); setModal(false); }}>삭제</Btn>}
+            <div style={{ flex: 1 }} />
+            <Btn onClick={() => setModal(false)}>취소</Btn>
+            <Btn primary onClick={save} disabled={!sf.name?.trim()}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 삭제 확인 */}
+      {conf && (
+        <Modal title="스탭 삭제" onClose={() => setConf(null)}>
+          <div style={{ fontSize: 14, marginBottom: 20 }}><b>{conf.name}</b> ({conf.role})을 삭제하시겠습니까?</div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Btn onClick={() => setConf(null)}>취소</Btn>
+            <Btn danger onClick={() => del(conf.id)}>삭제</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════
 // 피드백 히스토리
