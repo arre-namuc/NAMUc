@@ -1549,6 +1549,131 @@ function MonthCalendar({ project, onChange, user }) {
     a.download = `${project.name}_schedule.ics`; a.click();
   };
 
+  const exportCalPDF = () => {
+    const DAYS = ["일","월","화","수","목","금","토"];
+    const fmtDate = s => s ? s.replace(/-/g,".") : "";
+    // 현재 보이는 3개월 수집
+    const monthsToRender = [0,1,2].map(offset => {
+      let m = baseMonth + offset, y = baseYear;
+      if(m > 11){ m -= 12; y++; }
+      return {year:y, month:m};
+    });
+
+    const renderMonth = ({year, month}) => {
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month+1, 0).getDate();
+      const cells = [];
+      for(let i=0;i<firstDay;i++) cells.push(null);
+      for(let d=1;d<=daysInMonth;d++) cells.push(d);
+      const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+      let rows = "";
+      let week = [...cells.slice(0, Math.ceil(cells.length/7)*7)];
+      // pad to multiple of 7
+      while(week.length % 7 !== 0) week.push(null);
+      for(let r=0; r<week.length/7; r++){
+        let rowHtml = "<tr>";
+        for(let c=0;c<7;c++){
+          const d = week[r*7+c];
+          if(!d){ rowHtml += `<td style="background:#fafafa;border:1px solid #e4e7ec;height:90px;vertical-align:top;padding:4px;"></td>`; continue; }
+          const dateKey = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const dayEvs = allEvents.filter(e => e.start <= dateKey && dateKey <= (e.end||e.start));
+          const isToday = dateKey === todayKey;
+          const dow = (firstDay+d-1)%7;
+          const numColor = dow===0?"#ef4444":dow===6?"#2563eb":"#1e293b";
+          let evHtml = "";
+          dayEvs.slice(0,4).forEach(ev=>{
+            const bg = ev.isFeedback?"#f5f3ff":ev.color+"22";
+            const col = ev.isFeedback?"#8b5cf6":ev.color;
+            const bl = ev.isFeedback?"2px solid #8b5cf6":"none";
+            evHtml += `<div style="font-size:9px;padding:1px 4px;border-radius:3px;background:${bg};color:${col};font-weight:600;margin-bottom:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border-left:${bl}">${ev.title}</div>`;
+          });
+          if(dayEvs.length>4) evHtml += `<div style="font-size:8px;color:#94a3b8;text-align:center">+${dayEvs.length-4}</div>`;
+          const numStyle = isToday
+            ? `display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2563eb;color:#fff;font-size:11px;font-weight:800;`
+            : `font-size:12px;font-weight:${isToday?800:400};color:${numColor};`;
+          rowHtml += `<td style="border:1px solid #e4e7ec;height:90px;vertical-align:top;padding:4px;background:${isToday?"#eff6ff":"#fff"}"><div style="${numStyle}margin-bottom:2px;">${d}</div>${evHtml}</td>`;
+        }
+        rowHtml += "</tr>";
+        rows += rowHtml;
+      }
+      return `
+        <div style="margin-bottom:24px;break-inside:avoid;">
+          <div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #2563eb;">${year}년 ${month+1}월</div>
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <thead><tr>${DAYS.map((d,i)=>`<th style="text-align:center;padding:6px 2px;font-size:11px;font-weight:700;color:${i===0?"#ef4444":i===6?"#2563eb":"#6b7280"};background:#f8fafc;border:1px solid #e4e7ec;">${d}</th>`).join("")}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    };
+
+    // 이벤트 목록
+    const sortedEvs = [...allEvents].sort((a,b)=>a.start.localeCompare(b.start));
+    let evListHtml = "";
+    if(sortedEvs.length > 0){
+      evListHtml = `
+        <div style="break-before:auto;margin-top:20px;">
+          <div style="font-weight:800;font-size:14px;color:#1e293b;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #2563eb;">📋 일정 목록 (${sortedEvs.length}건)</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:left;border-radius:4px 0 0 0;">일정명</th>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:center;">시작일</th>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:center;">종료일</th>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:left;border-radius:0 4px 0 0;">메모</th>
+            </tr></thead>
+            <tbody>${sortedEvs.map((ev,i)=>`
+              <tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ev.isFeedback?"#8b5cf6":ev.color};margin-right:5px;vertical-align:middle;"></span>
+                  <span style="font-weight:600;color:${ev.isFeedback?"#8b5cf6":"#1e293b"}">${ev.title}</span>
+                  ${ev.isFeedback?`<span style="font-size:9px;margin-left:4px;padding:1px 5px;background:#f5f3ff;color:#8b5cf6;border-radius:99px;">피드백</span>`:""}
+                </td>
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;text-align:center;color:#475569;">${fmtDate(ev.start)}</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;text-align:center;color:#475569;">${fmtDate(ev.end||ev.start)}</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;color:#6b7280;">${ev.note||""}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    const printDate = `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일`;
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
+<title>${project.name} — 일정표</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:13px}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 12mm 14mm}
+.no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+@media print{body{background:#fff}.page{margin:0;padding:10mm}.no-print{display:none}@page{size:A4;margin:10mm}}
+</style></head><body>
+<div class="no-print">
+  <span style="color:#fff;font-weight:700;font-size:14px;">📅 ${project.name} — 일정표 미리보기</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
+</div>
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #2563eb;">
+    <div>
+      <div style="font-size:22px;font-weight:800;color:#1e293b;">${project.name}</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px;">${project.client||""} ${project.format?`· ${project.format}`:""} ${project.due?`· 납품일 ${fmtDate(project.due)}`:""}</div>
+    </div>
+    <div style="text-align:right;font-size:11px;color:#94a3b8;">
+      <div>📅 일정표</div>
+      <div>${printDate} 출력</div>
+    </div>
+  </div>
+  ${monthsToRender.map(renderMonth).join("")}
+  ${evListHtml}
+</div></body></html>`;
+
+    const blob = new Blob([html],{type:"text/html;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.target="_blank"; a.rel="noopener";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),3000);
+  };
+
   const COLORS = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2","#dc2626","#64748b"];
   const DAYS   = ["일","월","화","수","목","금","토"];
 
@@ -1613,6 +1738,7 @@ function MonthCalendar({ project, onChange, user }) {
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {!canEdit&&<span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
+          {allEvents.length>0&&<button onClick={exportCalPDF} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #dc2626`,background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>📄 PDF로 내보내기</button>}
           {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
           {canEdit&&<Btn primary sm onClick={()=>{setEf({title:"",start:todayStr,end:todayStr,color:"#2563eb",note:""});setModal({mode:"add"});}}>+ 일정 추가</Btn>}
         </div>
