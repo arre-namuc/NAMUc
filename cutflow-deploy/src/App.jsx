@@ -58,7 +58,7 @@ const STAGES = {
   "납품완료":     { color:C.green,  bg:C.greenLight,  icon:"✅" },
 };
 const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","촬영","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
-// FORMATS는 App 내부 state로 관리 (아래 참고)
+const FORMATS_DEFAULT = ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"];
 const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
 const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
 
@@ -1280,14 +1280,14 @@ export default function App() {
   const [selId,        setSelId]        = useState("p1");
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
   const [formats,      setFormats]      = useState(()=>{
-    try { return JSON.parse(localStorage.getItem("cf_formats")||"null") || ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"]; }
-    catch(e) { return ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"]; }
+    try { return JSON.parse(localStorage.getItem("cf_formats")||"null") || FORMATS_DEFAULT; }
+    catch(e) { return FORMATS_DEFAULT; }
   });
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
   const [mainTab,      setMainTab]      = useState("tasks");
   const [addProjModal,  setAddProjModal]  = useState(false);
   const [editProjModal, setEditProjModal] = useState(false);
-  const [pf,            setPf]            = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+  const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"15초",due:"",director:"",pd:"",color:P_COLORS[0]});
 
   useEffect(() => {
     if (!isConfigured) return;
@@ -1337,13 +1337,13 @@ export default function App() {
     setSelId(id);
     setAddProjModal(false);
     if(isConfigured) saveProject(np).catch(console.error);
-    setPf({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"15초",due:"",director:"",pd:"",color:P_COLORS[0]});
   };
 
   const openEditProj = () => {
     const p = projects.find(x=>x.id===selId);
     if(!p) return;
-    setPf({name:p.name,client:p.client,format:p.format||FORMATS[0],due:p.due||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[]});
+    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"15초",due:p.due||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[]});
     setEditProjModal(true);
   };
 
@@ -1351,7 +1351,7 @@ export default function App() {
     if(!pf.name.trim()||!pf.client.trim()) return;
     patchProj(p=>({...p,...pf}));
     setEditProjModal(false);
-    setPf({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"15초",due:"",director:"",pd:"",color:P_COLORS[0]});
   };
 
   const deleteProjectById = (id) => {
