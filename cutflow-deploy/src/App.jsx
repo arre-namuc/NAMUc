@@ -1886,6 +1886,8 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
   const [eh, setEh] = useState(19);
   const [modal, setModal] = useState(null);
   const [tf, setTf] = useState({});
+  const dragRef = useRef({active:false,mid:null,start:null,end:null,moved:false});
+  const [dragSel, setDragSel] = useState(null); // {mid,start,end} 렌더용
 
   const slots = makeSlots(sh, eh);
 
@@ -1907,6 +1909,51 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
   };
 
   const canEdit = mid => user.id===mid||user.role==="PD"||user.canManageMembers;
+
+  // 드래그 핸들러
+  const onMD = (mid, hour) => {
+    if(!canEdit(mid)) return;
+    dragRef.current = {active:true, mid, start:hour, end:hour, moved:false};
+  };
+  const onME = (mid, hour) => {
+    const r = dragRef.current;
+    if(!r.active || r.mid !== mid || r.start === hour) return;
+    dragRef.current = {...r, end:hour, moved:true};
+    setDragSel({mid, start:r.start, end:hour});
+  };
+  const onMU = (mid, hour) => {
+    const r = dragRef.current;
+    if(!r.active) return;
+    const moved = r.moved;
+    const {start, end} = r;
+    dragRef.current = {active:false, mid:null, start:null, end:null, moved:false};
+    setDragSel(null);
+    if(!moved) return; // 단순 클릭은 onClick에서 처리
+    const keys = slots.map(s=>s.key);
+    const si = Math.min(keys.indexOf(start), keys.indexOf(end));
+    const ei = Math.max(keys.indexOf(start), keys.indexOf(end));
+    const from = keys[si], to = keys[ei];
+    setTf({cat:"",note:"",projId:"",dnd:false,done:false});
+    setModal({mode:"add", mid:r.mid, hour:from, endHour:to});
+  };
+  const cancelDrag = () => {
+    dragRef.current = {active:false, mid:null, start:null, end:null, moved:false};
+    setDragSel(null);
+  };
+
+  // 드래그 선택 위치 (first/middle/last/single/null)
+  const getDragPos = (mid, hour) => {
+    if(!dragSel || dragSel.mid !== mid) return null;
+    const keys = slots.map(s=>s.key);
+    const si = Math.min(keys.indexOf(dragSel.start), keys.indexOf(dragSel.end));
+    const ei = Math.max(keys.indexOf(dragSel.start), keys.indexOf(dragSel.end));
+    const ci = keys.indexOf(hour);
+    if(ci<si||ci>ei) return null;
+    if(si===ei) return "single";
+    if(ci===si) return "first";
+    if(ci===ei) return "last";
+    return "mid";
+  };
 
   const openAdd = (mid, hour) => {
     if(!canEdit(mid)) return;
@@ -2007,13 +2054,17 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
         <button onClick={()=>{setSh(10);setEh(19);}} style={{...btnSm,color:C.faint}}>초기화</button>
       </div>
 
-      {/* 타임테이블 */}
-      <div style={{overflowX:"auto",border:`1px solid ${C.border}`,borderRadius:12}}>
-        <div style={{minWidth:80+accounts.length*COL}}>
+      {/* 타임테이블 - 8명씩 분리 */}
+      {Array.from({length:Math.ceil(accounts.length/8)},(_,gi)=>accounts.slice(gi*8,gi*8+8)).map((grp,gi)=>(
+      <div key={gi} style={{marginBottom:gi<Math.ceil(accounts.length/8)-1?20:0}}>
+        {gi>0&&<div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:6,paddingLeft:2}}>{gi+1}그룹 ({grp.map(a=>a.name).join(", ")})</div>}
+      <div style={{overflowX:"auto",border:`1px solid ${C.border}`,borderRadius:12}}
+        onMouseUp={cancelDrag} onMouseLeave={cancelDrag}>
+        <div style={{minWidth:80+grp.length*COL}}>
           {/* 헤더 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
             <div style={{width:80,flexShrink:0,background:"#1e40af",borderBottom:`2px solid ${C.border}`}}/>
-            {accounts.map(acc=>(
+            {grp.map(acc=>(
               <div key={acc.id} style={{width:COL,flexShrink:0,padding:"10px 8px",textAlign:"center",background:"#1e40af",borderBottom:`2px solid ${C.border}`,borderLeft:`1px solid #3b82f622`}}>
                 <Avatar name={acc.name} size={28}/>
                 <div style={{fontSize:12,fontWeight:700,color:"#fff",marginTop:4}}>{acc.name}</div>
@@ -2032,7 +2083,7 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
                 {label}
               </div>
               {/* 구성원 셀 */}
-              {accounts.map(acc=>{
+              {grp.map(acc=>{
                 const todos=todosOf(acc.id,key);
                 const covering=getCovering(acc.id,key);
                 const editable=canEdit(acc.id);
@@ -2043,12 +2094,18 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
 
                 return (
                   <div key={acc.id}
+                    onMouseDown={()=>onMD(acc.id,key)}
+                    onMouseEnter={()=>onME(acc.id,key)}
+                    onMouseUp={()=>onMU(acc.id,key)}
+                    onClick={()=>{ if(!dragRef.current.moved&&!dragRef.current.active){ if(covering) openEdit(acc.id,covering.startKey,covering.todo); else openAdd(acc.id,key); } }}
                     style={{width:COL,flexShrink:0,minHeight:ROW,
                       padding:"4px 5px",boxSizing:"border-box",
-                      borderLeft:`1px solid ${C.border}22`,
-                      borderLeft:cellBl,
-                      background:cellBg,
-                      cursor:editable?"pointer":"default"}}>
+                      borderLeft:(()=>{const p=getDragPos(acc.id,key);return p?"3px solid #2563eb":cellBl;})(),
+                      background:(()=>{const p=getDragPos(acc.id,key);if(p==="first"||p==="single")return "#1d4ed8";if(p)return "#dbeafe";return cellBg;})(),
+                      borderTop:(()=>{const p=getDragPos(acc.id,key);return p==="first"||p==="single"?"2px solid #2563eb":"none";})(),
+                      borderBottom:(()=>{const p=getDragPos(acc.id,key);return p==="last"||p==="single"?"2px solid #2563eb":"none";})(),
+                      borderRadius:(()=>{const p=getDragPos(acc.id,key);return p==="first"||p==="single"?"6px 6px 0 0":p==="last"?"0 0 6px 6px":"0";})(),
+                      cursor:editable?"cell":"default",userSelect:"none"}}>
                     {covering ? (
                       <TodoItem todo={covering.todo} mid={acc.id} hour={covering.startKey} isCovering/>
                     ) : (
@@ -2056,6 +2113,7 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
                         {todos.map(todo=>(
                           <TodoItem key={todo.id} todo={todo} mid={acc.id} hour={key}/>
                         ))}
+                        {(()=>{const p=getDragPos(acc.id,key);return(p==="first"||p==="single")?<div style={{pointerEvents:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"4px 0"}}><span style={{fontSize:11,fontWeight:800,color:"#fff"}}>📌 {dragSel?.start}~{dragSel?.end}</span></div>:null;})()}
                         {editable&&(
                           <div onClick={()=>openAdd(acc.id,key)}
                             style={{width:"100%",minHeight:todos.length?24:ROW-8,display:"flex",alignItems:"center",
@@ -2074,6 +2132,8 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
           ))}
         </div>
       </div>
+      </div>
+      ))}
 
       {/* 모달 */}
       {modal&&(
