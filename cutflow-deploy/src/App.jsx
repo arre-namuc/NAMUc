@@ -809,6 +809,7 @@ function LoginScreen({ onLogin, accounts }) {
   };
 
   return (
+    <AppContext.Provider value={{setProjects}}>
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:20,padding:"40px 36px",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,.08)"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
@@ -1825,6 +1826,191 @@ function StaffList({ project, onChange, accounts }) {
 
 
 // ═══════════════════════════════════════════════════════════
+// 종합 캘린더
+// ═══════════════════════════════════════════════════════════
+function MasterCalendar({ projects, user }) {
+  const canEdit = user.canManageMembers || user.role === "PD";
+  const today   = new Date();
+  const [baseYear,  setBaseYear]  = useState(today.getFullYear());
+  const [baseMonth, setBaseMonth] = useState(today.getMonth());
+  const [filterProj, setFilterProj] = useState("all"); // "all" | projId
+
+  const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // 3개월 배열
+  const months = [0,1,2].map(offset => {
+    let m = baseMonth + offset, y = baseYear;
+    if(m > 11){ m -= 12; y++; }
+    return {year:y, month:m};
+  });
+
+  const prevMonth = () => { let m=baseMonth-1,y=baseYear; if(m<0){m=11;y--;} setBaseYear(y);setBaseMonth(m); };
+  const nextMonth = () => { let m=baseMonth+1,y=baseYear; if(m>11){m=0;y++;} setBaseYear(y);setBaseMonth(m); };
+
+  // 프로젝트 캘린더 표시명 (calName 우선, 없으면 프로젝트명)
+  const projLabel = (p) => p.calName || p.name;
+
+  // 전체 이벤트 수집 (프로젝트 정보 포함)
+  const allEvents = projects.flatMap(p =>
+    (p.calEvents||[]).map(ev => ({
+      ...ev,
+      projId:    p.id,
+      projLabel: projLabel(p),
+      projColor: p.color || "#2563eb",
+    }))
+  );
+
+  const filtered = filterProj==="all" ? allEvents : allEvents.filter(e=>e.projId===filterProj);
+  const eventsOn = (date) => filtered.filter(e => e.start <= date && date <= (e.end||e.start));
+
+  // iCal 전체 내보내기
+  const exportICal = () => {
+    const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CutFlow//KR","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:CutFlow 종합 일정"];
+    for(const ev of filtered){
+      const dtStart = ev.start.replace(/-/g,"");
+      const endD = new Date(ev.end||ev.start); endD.setDate(endD.getDate()+1);
+      const dtEndEx = `${endD.getFullYear()}${String(endD.getMonth()+1).padStart(2,"0")}${String(endD.getDate()).padStart(2,"0")}`;
+      lines.push("BEGIN:VEVENT",`DTSTART;VALUE=DATE:${dtStart}`,`DTEND;VALUE=DATE:${dtEndEx}`,
+        `SUMMARY:[${ev.projLabel}] ${ev.title}`,ev.note?`DESCRIPTION:${ev.note}`:"",`UID:${ev.id}@cutflow`,"END:VEVENT");
+    }
+    lines.push("END:VCALENDAR");
+    const blob = new Blob([lines.filter(Boolean).join("\r\n")],{type:"text/calendar"});
+    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="CutFlow_종합일정.ics"; a.click();
+  };
+
+  const DAYS = ["일","월","화","수","목","금","토"];
+
+  const MiniCal = ({year, month}) => {
+    const firstDay    = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    const cells = [];
+    for(let i=0;i<firstDay;i++) cells.push(null);
+    for(let d=1;d<=daysInMonth;d++) cells.push(d);
+
+    return (
+      <div style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 12px",minWidth:0}}>
+        <div style={{fontWeight:800,fontSize:14,marginBottom:10,color:C.dark}}>{year}년 {month+1}월</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,marginBottom:3}}>
+          {DAYS.map((d,i)=>(
+            <div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,padding:"2px 0",color:i===0?"#ef4444":i===6?"#2563eb":C.faint}}>{d}</div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+          {cells.map((d,i)=>{
+            if(!d) return <div key={i}/>;
+            const dateStr = ymd(year,month,d);
+            const dayEvs  = eventsOn(dateStr);
+            const isToday = dateStr===todayStr;
+            const dow     = (firstDay+d-1)%7;
+            return (
+              <div key={i} style={{minHeight:68,background:isToday?"#eff6ff":"transparent",borderRadius:6,padding:"3px 2px",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
+                <div style={{fontSize:11,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:2,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{})}}>
+                  {d}
+                </div>
+                {dayEvs.slice(0,3).map(ev=>(
+                  <div key={ev.id} title={`[${ev.projLabel}] ${ev.title}`}
+                    style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:ev.projColor+"22",color:ev.projColor,fontWeight:700,marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>
+                    <span style={{opacity:0.7}}>[{ev.projLabel}]</span> {ev.title}
+                  </div>
+                ))}
+                {dayEvs.length>3&&<div style={{fontSize:9,color:C.faint,textAlign:"center"}}>+{dayEvs.length-3}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={prevMonth} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>‹</button>
+          <span style={{fontWeight:800,fontSize:16}}>{months[0].year}년 {months[0].month+1}월 — {months[2].month+1}월</span>
+          <button onClick={nextMonth} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>›</button>
+          <button onClick={()=>{setBaseYear(today.getFullYear());setBaseMonth(today.getMonth());}} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:C.sub}}>오늘</button>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {filtered.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
+        </div>
+      </div>
+
+      {/* 프로젝트 필터 + 캘린더 표시명 설정 */}
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:12,fontWeight:700,color:C.sub,marginRight:4}}>프로젝트 필터</span>
+          <button onClick={()=>setFilterProj("all")} style={{padding:"3px 10px",borderRadius:99,border:`1px solid ${filterProj==="all"?C.blue:C.border}`,background:filterProj==="all"?C.blueLight:C.white,color:filterProj==="all"?C.blue:C.sub,fontSize:12,fontWeight:filterProj==="all"?700:400,cursor:"pointer"}}>전체</button>
+          {projects.map(p=>(
+            <button key={p.id} onClick={()=>setFilterProj(p.id===filterProj?"all":p.id)}
+              style={{padding:"3px 10px",borderRadius:99,border:`1px solid ${filterProj===p.id?p.color:C.border}`,background:filterProj===p.id?p.color+"18":C.white,color:filterProj===p.id?p.color:C.sub,fontSize:12,fontWeight:filterProj===p.id?700:400,cursor:"pointer"}}>
+              {projLabel(p)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 프로젝트별 캘린더 표시명 설정 (편집 권한자만) */}
+      {canEdit && (
+        <div style={{background:C.slateLight,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:10}}>🏷️ 캘린더 표시명 설정 <span style={{fontWeight:400,color:C.faint}}>(미입력 시 프로젝트명 사용)</span></div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+            {projects.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/>
+                <span style={{fontSize:12,color:C.sub,whiteSpace:"nowrap"}}>{p.name}</span>
+                <span style={{fontSize:12,color:C.faint}}>→</span>
+                <CalNameInput project={p}/>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3개월 달력 */}
+      <div style={{display:"flex",gap:12}}>
+        {months.map(({year,month})=><MiniCal key={`${year}-${month}`} year={year} month={month}/>)}
+      </div>
+
+      {/* 범례 */}
+      {projects.filter(p=>(p.calEvents||[]).length>0).length>0 && (
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:12}}>
+          {projects.filter(p=>(p.calEvents||[]).length>0).map(p=>(
+            <span key={p.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 10px",borderRadius:99,background:p.color+"15",color:p.color,fontWeight:600}}>
+              <span style={{width:7,height:7,borderRadius:"50%",background:p.color,display:"inline-block"}}/>
+              {projLabel(p)} ({(p.calEvents||[]).length}건)
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 캘린더 표시명 인라인 편집 컴포넌트
+function CalNameInput({ project }) {
+  const [val, setVal] = useState(project.calName||"");
+  const { setProjects } = React.useContext(AppContext);
+  const save = (v) => {
+    setProjects(ps=>ps.map(p=>p.id===project.id?{...p,calName:v}:p));
+  };
+  return (
+    <input
+      style={{...inp,width:120,padding:"3px 8px",fontSize:12}}
+      value={val}
+      placeholder={project.name}
+      onChange={e=>setVal(e.target.value)}
+      onBlur={()=>save(val)}
+      onKeyDown={e=>e.key==="Enter"&&save(val)}
+    />
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // CRM 페이지
 // ═══════════════════════════════════════════════════════════
 function CRMPage({ projects }) {
@@ -2070,7 +2256,9 @@ function FinanceDash({ projects }) {
 // ═══════════════════════════════════════════════════════════
 // 메인 앱
 // ═══════════════════════════════════════════════════════════
-export default function App() {
+export default const AppContext = React.createContext({});
+
+function App() {
   const [user,         setUser]         = useState(null);
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
   const [selId,        setSelId]        = useState("p1");
@@ -2201,7 +2389,7 @@ export default function App() {
         </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -2222,6 +2410,8 @@ export default function App() {
           <FinanceDash projects={projects}/>
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
+        ) : mainTab==="master-calendar" ? (
+          <MasterCalendar projects={projects} user={user}/>
         ) : mainTab==="settings" ? (
           <CompanySettings
             company={company}
