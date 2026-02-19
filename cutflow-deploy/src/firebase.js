@@ -94,6 +94,24 @@ export async function uploadVoucherFile(projectId, voucherId, file) {
   return { name: file.name, url, type: file.type, size: file.size, path };
 }
 
+
+/** 피드백 이미지 업로드 */
+export async function uploadFeedbackImage(projectId, feedbackId, file) {
+  if (!isConfigured) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: file.name, url: reader.result, type: file.type, size: file.size });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  const path = `feedbacks/${projectId}/${feedbackId}/${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+  return { name: file.name, url, type: file.type, size: file.size, path };
+}
+
 /** 파일 삭제 */
 export async function deleteVoucherFile(filePath) {
   if (!isConfigured || !filePath) return;
