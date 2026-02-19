@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   subscribeProjects,
   saveProject,
@@ -999,6 +999,9 @@ export default function App() {
   const [taskModal,    setTaskModal]    = useState(null);
   const [tf,           setTf]           = useState({});
 
+  const [addProjModal, setAddProjModal] = useState(false);
+  const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+
   // Firebase 실시간 구독 (모든 useState 이후에 위치)
   useEffect(() => {
     if (!isConfigured) return;
@@ -1011,8 +1014,6 @@ export default function App() {
     });
     return () => unsub();
   }, []);
-  const [addProjModal, setAddProjModal] = useState(false);
-  const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
 
   if (!user) return <LoginScreen onLogin={setUser}/>;
 
@@ -1062,15 +1063,13 @@ export default function App() {
   };
   const deleteTask = (id) => { updateTasks(proj.tasks.filter(t=>t.id!==id)); setTaskModal(null); };
 
-  const filteredTasks = useMemo(()=>{
-    return proj.tasks.filter(t=>{
-      if (tf.q&&!t.title.toLowerCase().includes(tf.q.toLowerCase())) return false;
-      if (tf.type&&t.type!==tf.type) return false;
-      if (tf.assignee&&t.assignee!==tf.assignee) return false;
-      if (tf.stage&&t.stage!==tf.stage) return false;
-      return true;
-    });
-  },[proj.tasks,tf]);
+  const filteredTasks = proj.tasks.filter(t=>{
+    if (tf.q&&!t.title.toLowerCase().includes(tf.q.toLowerCase())) return false;
+    if (tf.type&&t.type!==tf.type) return false;
+    if (tf.assignee&&t.assignee!==tf.assignee) return false;
+    if (tf.stage&&t.stage!==tf.stage) return false;
+    return true;
+  });
 
   const stageKeys = Object.keys(STAGES);
 
