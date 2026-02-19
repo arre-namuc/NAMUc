@@ -379,7 +379,7 @@ function openQuotePDF(project, quote, company={}) {
   <div class="header">
     <div class="logo-area">
       ${company.logoUrl
-        ? `<img src="${company.logoUrl}" style="height:52px;max-width:160px;object-fit:contain;" onerror="this.style.display='none'"/>`
+        ? `<img src="${company.logoUrl}" style="height:104px;max-width:320px;object-fit:contain;" onerror="this.style.display='none'"/>`
         : `<div class="logo-box">🎬 로고 미설정</div>`
       }
       <div class="company-name" style="margin-top:6px">${company.name||"회사명"}</div>
