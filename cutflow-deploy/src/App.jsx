@@ -2618,41 +2618,24 @@ function FinanceDash({ projects }) {
         </div>
       ) : (
         <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"20px 24px",marginBottom:28,overflowX:"auto"}}>
-          <div style={{minWidth: Math.max(monthlyData.length * 80, 400), position:"relative"}}>
-            {/* Y축 가이드라인 */}
-            {[0,25,50,75,100].map(pct=>(
-              <div key={pct} style={{position:"absolute",left:0,right:0,
-                top:`${100-pct}%`,borderTop:`1px dashed ${C.border}`,zIndex:0}}>
-                {pct===100&&<span style={{position:"absolute",right:"100%",paddingRight:6,fontSize:10,color:C.faint,whiteSpace:"nowrap"}}>{fmtM(maxOrder)}</span>}
-              </div>
-            ))}
-            {/* 바 차트 */}
-            <div style={{display:"flex",alignItems:"flex-end",height:160,gap:6,position:"relative",zIndex:1,paddingBottom:24}}>
-              {monthlyData.map((d,i)=>(
-                <div key={d.ym} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:60}}>
-                  <div style={{fontSize:10,fontWeight:700,color:C.blue,whiteSpace:"nowrap"}}>{fmtM(d.order)}</div>
-                  <div style={{width:"70%",background:`linear-gradient(180deg,#3b82f6,#1d4ed8)`,borderRadius:"4px 4px 0 0",
-                    height:Math.max((d.order/maxOrder)*120,4),transition:"height .3s",position:"relative",cursor:"default"}}
-                    title={`${d.label}
-수주: ${fmtM(d.order)}
-공급가: ${fmtM(d.supply)}
-${d.count}건`}>
+          <div style={{width:"100%"}}>
+            {monthlyData.map((d,i)=>{
+              const color = ["#3b82f6","#8b5cf6","#f97316","#16a34a","#ef4444","#0891b2","#d97706","#db2777","#65a30d","#7c3aed"][i%10];
+              const pct = Math.max((d.order/maxOrder)*100, 1);
+              return (
+                <div key={d.ym} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <div style={{width:80,textAlign:"right",fontSize:11,fontWeight:600,color:C.sub,flexShrink:0}}>{d.label}</div>
+                  <div style={{flex:1,background:"#f1f5f9",borderRadius:99,height:14,position:"relative"}}>
+                    <div style={{width:`${pct}%`,height:"100%",borderRadius:99,
+                      background:`linear-gradient(90deg,${color},${color}cc)`,transition:"width .4s"}}/>
                   </div>
-                  <div style={{fontSize:9,color:C.sub,whiteSpace:"nowrap",marginTop:2,position:"absolute",bottom:2}}>{d.label}</div>
+                  <div style={{width:60,fontSize:11,fontWeight:700,color:color,flexShrink:0}}>{fmtM(d.order)}</div>
+                  <div style={{width:24,fontSize:10,color:C.faint,flexShrink:0}}>{d.count}건</div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-          {/* 범례 */}
-          <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
-            {monthlyData.map(d=>(
-              <div key={d.ym} style={{fontSize:11,color:C.sub}}>
-                <span style={{fontWeight:700,color:C.dark}}>{d.label}</span>
-                {" · 수주 "}<span style={{color:C.blue,fontWeight:700}}>{fmtM(d.order)}</span>
-                {" · "}<span style={{color:C.faint}}>{d.count}건</span>
-              </div>
-            ))}
-          </div>
+
         </div>
       )}
 
