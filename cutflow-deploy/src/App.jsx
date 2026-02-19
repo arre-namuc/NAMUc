@@ -1260,8 +1260,9 @@ export default function App() {
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
   const [mainTab,      setMainTab]      = useState("tasks");
-  const [addProjModal, setAddProjModal] = useState(false);
-  const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+  const [addProjModal,  setAddProjModal]  = useState(false);
+  const [editProjModal, setEditProjModal] = useState(false);
+  const [pf,            setPf]            = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
 
   useEffect(() => {
     if (!isConfigured) return;
@@ -1308,6 +1309,27 @@ export default function App() {
     setPf({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
   };
 
+  const openEditProj = () => {
+    const p = projects.find(x=>x.id===selId);
+    if(!p) return;
+    setPf({name:p.name,client:p.client,format:p.format||FORMATS[0],due:p.due||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0]});
+    setEditProjModal(true);
+  };
+
+  const updateProject = () => {
+    if(!pf.name.trim()||!pf.client.trim()) return;
+    patchProj(p=>({...p,...pf}));
+    setEditProjModal(false);
+    setPf({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+  };
+
+  const deleteProjectById = (id) => {
+    const remaining = projects.filter(p=>p.id!==id);
+    setProjects(remaining);
+    if(selId===id) setSelId(remaining[0]?.id||"");
+    if(isConfigured) deleteProject(id).catch(console.error);
+  };
+
   const saveTask = (tf) => {
     if (!tf.title?.trim()) return;
     const tasks = tf.id
@@ -1339,9 +1361,12 @@ export default function App() {
         {/* 프로젝트 선택 */}
         <div style={{display:"flex",gap:6,flex:1,overflowX:"auto"}}>
           {projects.map(p=>(
-            <button key={p.id} onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
-              {p.name}
-            </button>
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:2}}>
+              <button onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
+                {p.name}
+              </button>
+              {selId===p.id && <button onClick={openEditProj} title="프로젝트 수정" style={{border:"none",background:"none",cursor:"pointer",fontSize:13,padding:"2px 4px",color:C.sub,lineHeight:1}}>✏️</button>}
+            </div>
           ))}
           <button onClick={()=>setAddProjModal(true)} style={{padding:"5px 12px",borderRadius:8,border:`2px dashed ${C.border}`,background:"none",cursor:"pointer",fontSize:12,color:C.faint,whiteSpace:"nowrap"}}>
             + 새 프로젝트
