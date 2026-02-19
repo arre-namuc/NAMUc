@@ -661,7 +661,7 @@ function KanbanCol({ stage, tasks, onEdit }) {
 // ═══════════════════════════════════════════════════════════
 // 견적서 에디터 (대분류 > 중분류 > 소분류 3단계)
 // ═══════════════════════════════════════════════════════════
-function QuoteEditor({ quote, onChange, exportProject }) {
+function QuoteEditor({ quote, onChange, exportProject, company }) {
   const q = quote;
   const [addModal,    setAddModal]    = useState(null); // {ci, gi}
   const [newItem,     setNewItem]     = useState({name:"",unit:"식",qty:1,unitPrice:0});
@@ -1590,7 +1590,7 @@ export default function App() {
             )}
 
             {/* ── 견적서 ── */}
-            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj}/>}
+            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
 
             {/* ── 실행예산서 ── */}
             {docTab==="budget"&&<BudgetEditor project={proj} onSave={updateBudget}/>}
