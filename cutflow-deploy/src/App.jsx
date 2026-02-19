@@ -1481,6 +1481,171 @@ function MemberManagement({ accounts, onSave, onDelete }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 스탭리스트
+// ═══════════════════════════════════════════════════════════
+const STAFF_ROLES = [
+  "EPD","총괄감독","감독","조감독 1st","조감독 2nd",
+  "PD","AD","AE",
+  "촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT",
+  "조명감독","조명 1st","조명 Grip",
+  "미술감독","소품",
+  "편집","DI","2D","3D","FLAME","녹음실",
+  "음악감독","성우",
+  "메이킹","작가","기타"
+];
+
+const STAFF_GROUPS = [
+  { label:"제작/연출",   roles:["EPD","총괄감독","감독","조감독 1st","조감독 2nd","PD","AD","AE"] },
+  { label:"촬영",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
+  { label:"조명",        roles:["조명감독","조명 1st","조명 Grip"] },
+  { label:"미술",        roles:["미술감독","소품"] },
+  { label:"포스트",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
+  { label:"기타",        roles:["메이킹","작가","기타"] },
+];
+
+function StaffList({ project, onChange, accounts }) {
+  const staff = project.staff || [];
+  const [modal, setModal] = useState(null); // null | {mode:"add"|"edit", data:{}}
+  const [sf, setSf]       = useState({});
+  const [filterGroup, setFilterGroup] = useState("전체");
+
+  const openAdd = (role="") => {
+    setSf({ role, name:"", phone:"", email:"", company:"", note:"", fromTeam:false, memberId:"" });
+    setModal({mode:"add"});
+  };
+  const openEdit = (s) => { setSf({...s}); setModal({mode:"edit",id:s.id}); };
+
+  const save = () => {
+    if (!sf.name?.trim() && !sf.memberId) return;
+    // 팀원에서 선택한 경우 이름 자동 채움
+    let entry = {...sf, id: modal.id || "s"+Date.now()};
+    if (sf.memberId) {
+      const m = accounts.find(a=>String(a.id)===String(sf.memberId));
+      if (m) { entry.name = m.name; entry.phone = entry.phone||m.phone||""; entry.email = entry.email||m.email||""; entry.fromTeam = true; }
+    }
+    onChange(p => {
+      const prev = p.staff||[];
+      const next = modal.mode==="edit"
+        ? prev.map(s=>s.id===modal.id?entry:s)
+        : [...prev, entry];
+      return {...p, staff:next};
+    });
+    setModal(null);
+  };
+
+  const del = (id) => onChange(p=>({...p, staff:(p.staff||[]).filter(s=>s.id!==id)}));
+
+  const filtered = filterGroup==="전체" ? staff
+    : staff.filter(s=>{
+        const g = STAFF_GROUPS.find(g=>g.label===filterGroup);
+        return g?.roles.includes(s.role);
+      });
+
+  // 역할 순서대로 정렬
+  const sorted = [...filtered].sort((a,b)=>STAFF_ROLES.indexOf(a.role)-STAFF_ROLES.indexOf(b.role));
+
+  return (
+    <div>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {["전체",...STAFF_GROUPS.map(g=>g.label)].map(g=>(
+            <button key={g} onClick={()=>setFilterGroup(g)}
+              style={{padding:"4px 12px",borderRadius:99,border:`1px solid ${filterGroup===g?C.blue:C.border}`,background:filterGroup===g?C.blueLight:C.white,color:filterGroup===g?C.blue:C.sub,fontSize:12,fontWeight:filterGroup===g?700:500,cursor:"pointer"}}>
+              {g}
+            </button>
+          ))}
+        </div>
+        <Btn primary sm onClick={()=>openAdd()}>+ 스탭 추가</Btn>
+      </div>
+
+      {/* 스탭 없음 */}
+      {sorted.length===0 && (
+        <div style={{textAlign:"center",padding:"60px 0",color:C.faint}}>
+          <div style={{fontSize:32,marginBottom:10}}>👤</div>
+          <div style={{fontSize:14}}>등록된 스탭이 없습니다</div>
+          <div style={{fontSize:12,marginTop:4}}>+ 스탭 추가 버튼으로 등록하세요</div>
+        </div>
+      )}
+
+      {/* 그룹별 렌더링 */}
+      {STAFF_GROUPS.map(grp=>{
+        const grpStaff = sorted.filter(s=>grp.roles.includes(s.role));
+        if ((filterGroup!=="전체"&&filterGroup!==grp.label)||grpStaff.length===0) return null;
+        return (
+          <div key={grp.label} style={{marginBottom:20}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:3,height:14,background:C.blue,borderRadius:2,display:"inline-block"}}/>
+              {grp.label}
+              <span style={{fontSize:11,color:C.faint}}>({grpStaff.length}명)</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+              {grpStaff.map(s=>(
+                <div key={s.id} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",position:"relative"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <Avatar name={s.name} size={32}/>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{s.name}</div>
+                        <span style={{fontSize:11,padding:"1px 7px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{s.role}</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>openEdit(s)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13,color:C.faint,padding:"2px 4px"}}>✏️</button>
+                  </div>
+                  <div style={{marginTop:8,fontSize:12,color:C.sub,display:"flex",flexDirection:"column",gap:3}}>
+                    {s.company&&<span>🏢 {s.company}</span>}
+                    {s.phone&&<a href={`tel:${s.phone}`} style={{color:C.blue,textDecoration:"none"}}>📞 {s.phone}</a>}
+                    {s.email&&<a href={`mailto:${s.email}`} style={{color:C.blue,textDecoration:"none"}}>✉️ {s.email}</a>}
+                    {s.note&&<span style={{color:C.faint,fontSize:11}}>📝 {s.note}</span>}
+                  </div>
+                  {s.fromTeam&&<span style={{position:"absolute",top:10,right:36,fontSize:10,background:C.greenLight,color:C.green,padding:"1px 6px",borderRadius:99,fontWeight:700}}>내부</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* 추가/수정 모달 */}
+      {modal && (
+        <Modal title={modal.mode==="add"?"스탭 추가":"스탭 수정"} onClose={()=>setModal(null)}>
+          <div style={{marginBottom:12,padding:"10px 14px",background:C.slateLight,borderRadius:10}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8}}>👥 팀 구성원에서 선택</div>
+            <select style={inp} value={sf.memberId||""} onChange={e=>{
+              const m = accounts.find(a=>String(a.id)===e.target.value);
+              setSf(v=>({...v, memberId:e.target.value, name:m?m.name:v.name, phone:m?.phone||v.phone, email:m?.email||v.email}));
+            }}>
+              <option value="">직접 입력</option>
+              {accounts.map(a=><option key={a.id} value={String(a.id)}>{a.name} ({a.role})</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="역할 *" half>
+              <select style={inp} value={sf.role||""} onChange={e=>setSf(v=>({...v,role:e.target.value}))}>
+                <option value="">선택</option>
+                {STAFF_ROLES.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </Field>
+            <Field label="이름 *" half><input style={inp} value={sf.name||""} onChange={e=>setSf(v=>({...v,name:e.target.value}))} placeholder="홍길동" autoFocus/></Field>
+            <Field label="소속/회사" half><input style={inp} value={sf.company||""} onChange={e=>setSf(v=>({...v,company:e.target.value}))} placeholder="프리랜서 / 회사명"/></Field>
+            <Field label="연락처" half><input style={inp} value={sf.phone||""} onChange={e=>setSf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
+            <Field label="이메일"><input style={inp} value={sf.email||""} onChange={e=>setSf(v=>({...v,email:e.target.value}))} placeholder="name@email.com"/></Field>
+            <Field label="메모"><input style={inp} value={sf.note||""} onChange={e=>setSf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 계약조건 등"/></Field>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}>
+            {modal.mode==="edit"&&<Btn danger sm onClick={()=>{del(modal.id);setModal(null);}}>삭제</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setModal(null)}>취소</Btn>
+            <Btn primary onClick={save} disabled={!sf.name?.trim()&&!sf.memberId}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // CRM 페이지
 // ═══════════════════════════════════════════════════════════
 function CRMPage({ projects }) {
@@ -1912,6 +2077,7 @@ export default function App() {
             <TabBar
               tabs={[
                 {id:"tasks",icon:"📋",label:"태스크"},
+                {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessFinance},
                 {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessFinance},
                 {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessFinance},
@@ -1968,6 +2134,9 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {/* ── 스탭리스트 ── */}
+            {docTab==="stafflist"&&<StaffList project={proj} onChange={patchProj} accounts={accounts}/>}
 
             {/* ── 견적서 ── */}
             {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
