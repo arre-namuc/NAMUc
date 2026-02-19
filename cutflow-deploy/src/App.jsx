@@ -1376,10 +1376,10 @@ export default function App() {
           <button onClick={()=>setAddProjModal(true)} style={{padding:"5px 12px",borderRadius:8,border:`2px dashed ${C.border}`,background:"none",cursor:"pointer",fontSize:12,color:C.faint,whiteSpace:"nowrap"}}>
             + 새 프로젝트
           </button>
-          <button onClick={openEditProj} title="현재 프로젝트 수정" style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:13,color:C.sub,whiteSpace:"nowrap",flexShrink:0}}>
-            ✏️
-          </button>
         </div>
+        <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정" style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:13,color:C.sub,whiteSpace:"nowrap",flexShrink:0,marginLeft:4}}>
+          ✏️
+        </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
           {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
