@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   subscribeProjects, saveProject, deleteProject,
   uploadVoucherFile, subscribeCompany, saveCompany,
@@ -1885,8 +1885,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const [modal, setModal]     = useState(null);
   const [tf, setTf]           = useState({title:"",note:"",done:false});
   const [drag, setDrag]       = useState(null);
-  const [dragging, setDragging] = useState(false);
-  const [mouseDownCell, setMouseDownCell] = useState(null); // 드래그 시작 후보
+  const dragRef               = useRef({dragging:false, drag:null});
   const [startH, setStartH]   = useState(10); // 표시 시작 시각
   const [endH,   setEndH]     = useState(19); // 표시 종료 시각 (exclusive)
   const TODO_HOURS = makeHourSlots(startH, endH);
@@ -1914,64 +1913,44 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const canEdit = (memberId) =>
     user.id === memberId || user.role === "PD" || user.canManageMembers;
 
-  // 드래그 핸들러
+  // 드래그 핸들러 (useRef로 stale closure 방지)
   const onDragStart = (memberId, hour, e) => {
     if(!canEdit(memberId)) return;
     e.preventDefault();
-    setMouseDownCell({memberId, hour});
+    const d = {memberId, startHour:hour, endHour:hour};
+    dragRef.current = {dragging:false, drag:d};
+    setDrag({...d});
   };
   const onDragEnter = (memberId, hour) => {
-    if(!drag || drag.memberId!==memberId) return;
-    if(!dragging && mouseDownCell) {
-      // 처음으로 다른 셀에 진입 = 드래그 시작 확정
-      setDragging(true);
-      setDrag(d=>({...d, endHour:hour}));
-      return;
-    }
-    if(!dragging) return;
-    const hours = TODO_HOURS.map(h=>h.key);
-    const si = hours.indexOf(drag.startHour);
-    const ei = hours.indexOf(hour);
-    setDrag(d=>({...d, endHour: hour, startHour: si<=ei ? d.startHour : hour}));
+    const {dragging:isDragging, drag:curDrag} = dragRef.current;
+    if(!curDrag || curDrag.memberId!==memberId) return;
+    const newDrag = {...curDrag, endHour:hour};
+    dragRef.current = {dragging:true, drag:newDrag};
+    setDrag({...newDrag});
   };
-  // mouseDownCell이 바뀌면 drag 초기화
-  useEffect(()=>{
-    if(mouseDownCell) setDrag({memberId:mouseDownCell.memberId, startHour:mouseDownCell.hour, endHour:mouseDownCell.hour});
-    else setDrag(null);
-  }, [mouseDownCell]);
-
-  // document mouseup - 어디서 마우스를 떼도 드래그 종료
-  useEffect(()=>{
-    const up = () => {
-      if(mouseDownCell && !dragging) {
-        // 드래그 없이 mouseup = 단순 클릭, openModal은 onClick이 처리
-        setMouseDownCell(null);
-        setDrag(null);
-      } else if(dragging) {
-        // 드래그 중 마우스 뗌
-        onDragEnd();
-      }
-    };
-    document.addEventListener('mouseup', up);
-    return () => document.removeEventListener('mouseup', up);
-  }, [dragging, mouseDownCell, drag]);
-
-  const onDragEnd = () => {
-    if(!dragging || !drag) { setDragging(false); setDrag(null); return; }
+  const onDragEndFn = () => {
+    const {dragging:isDragging, drag:curDrag} = dragRef.current;
+    dragRef.current = {dragging:false, drag:null};
+    setDrag(null);
+    if(!isDragging || !curDrag) return;
     const hours = TODO_HOURS.map(h=>h.key);
-    const si = hours.indexOf(drag.startHour);
-    const ei = hours.indexOf(drag.endHour);
+    const si = hours.indexOf(curDrag.startHour);
+    const ei = hours.indexOf(curDrag.endHour);
     const from = hours[Math.min(si,ei)];
     const to   = hours[Math.max(si,ei)];
-    setDragging(false);
+    if(from===to) return; // 단일 셀은 onClick이 처리
     setTf({title:"",note:"",projId:"",done:false,dnd:false,cat:"", startHour:from, endHour:to});
-    setModal({mode:"add", memberId:drag.memberId, hour:from, endHour:to});
-    setDrag(null);
+    setModal({mode:"add", memberId:curDrag.memberId, hour:from, endHour:to});
   };
+  useEffect(()=>{
+    const up = ()=>{ if(dragRef.current.drag) onDragEndFn(); };
+    document.addEventListener('mouseup', up);
+    return ()=>document.removeEventListener('mouseup', up);
+  }, []);
 
   // 드래그 선택 범위 확인 + 위치(first/last/middle)
   const getDragPos = (memberId, hour) => {
-    if(!drag || drag.memberId!==memberId) return null;
+    if(!drag || drag.memberId!==memberId) return null; // drag state는 렌더용
     const hours = TODO_HOURS.map(h=>h.key);
     const si = Math.min(hours.indexOf(drag.startHour), hours.indexOf(drag.endHour));
     const ei = Math.max(hours.indexOf(drag.startHour), hours.indexOf(drag.endHour));
@@ -2087,7 +2066,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
       </div>
 
       {/* 타임테이블 */}
-      <div style={{overflowX:"auto"}} onMouseUp={()=>{ setMouseDownCell(null); }} onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
+      <div style={{overflowX:"auto"}}  onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
         <div style={{minWidth: 80 + accounts.length * COL_W}}>
           {/* 헤더 - 구성원 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
@@ -2115,7 +2094,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                 const editable = canEdit(acc.id);
                 return (
                   <div key={acc.id}
-                    onClick={()=>{ if(!dragging&&!mouseDownCell){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } setMouseDownCell(null); }}
+                    onClick={()=>{ if(!dragRef.current.dragging){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
                     onMouseDown={e=>onDragStart(acc.id, key, e)}
                     onMouseEnter={()=>onDragEnter(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
