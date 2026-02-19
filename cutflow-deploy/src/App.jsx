@@ -1391,7 +1391,7 @@ function SettlementView({ project, onConfirm }) {
 // ═══════════════════════════════════════════════════════════
 // 구성원 관리 컴포넌트
 // ═══════════════════════════════════════════════════════════
-const ROLES = ["대표","PD","감독","촬영감독","편집자","CG","제작부","경영지원","기타"];
+const ROLES = ["대표","EPD","PD","감독","조감독","AE","AI","경영지원"];
 
 function MemberManagement({ accounts, onSave, onDelete }) {
   const [modal, setModal] = useState(false);
