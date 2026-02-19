@@ -1854,16 +1854,21 @@ const HOURS = Array.from({length:16}, (_,i)=>{
   return { key:`${String(h).padStart(2,"0")}:${m}`, label };
 }); // 09:00 ~ 16:30 (오전9시~오후5시)
 
-// 오전9시~자정 = 09:00~24:00 → 30슬롯 (09:00,09:30,...,23:30)
-const TODO_HOURS = Array.from({length:30}, (_,i)=>{
-  const totalMin = 9*60 + i*30;
-  const h = Math.floor(totalMin/60);
-  const m = totalMin%60===0?"00":"30";
-  const hDisp = h%12===0?12:h%12;
-  const ampm = h<12?"오전":h===12?"오후":"오후";
-  const label = h<12?`오전 ${h}:${m}`:`오후 ${hDisp}:${m}`;
-  return { key:`${String(h).padStart(2,"0")}:${m}`, label };
-});
+// 시간 슬롯 생성 함수
+const makeHourSlots = (startH, endH) => {
+  const slots = [];
+  for(let h=startH; h<endH; h++){
+    for(let m of [0,30]){
+      const hStr = String(h).padStart(2,"0");
+      const mStr = m===0?"00":"30";
+      const hDisp = h===0?12:h>12?h-12:h;
+      const ampm = h<12?"오전":h===12?"오후":"오후";
+      const label = h<12?`오전 ${h}:${mStr}`:(h===12?`오후 12:${mStr}`:`오후 ${hDisp}:${mStr}`);
+      slots.push({key:`${hStr}:${mStr}`, label});
+    }
+  }
+  return slots;
+};
 
 function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const today = new Date();
@@ -1871,9 +1876,11 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const [selDate, setSelDate] = useState(todayKey);
   const [modal, setModal]     = useState(null);
   const [tf, setTf]           = useState({title:"",note:"",done:false});
-  // 드래그 상태
-  const [drag, setDrag]       = useState(null); // {memberId, startHour, endHour}
+  const [drag, setDrag]       = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [startH, setStartH]   = useState(10); // 표시 시작 시각
+  const [endH,   setEndH]     = useState(19); // 표시 종료 시각 (exclusive)
+  const TODO_HOURS = makeHourSlots(startH, endH);
 
   // dailyTodos 구조: { "2026-02-20": { "m1": { "09:00": [{id,title,note,done}] } } }
   const todosOf = (memberId, hour) =>
@@ -1904,7 +1911,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
     const from = hours[Math.min(si,ei)];
     const to   = hours[Math.max(si,ei)];
     setDragging(false);
-    setTf({title:"",note:"",projId:"",done:false, startHour:from, endHour:to});
+    setTf({title:"",note:"",projId:"",done:false,dnd:false, startHour:from, endHour:to});
     setModal({mode:"add", memberId:drag.memberId, hour:from, endHour:to});
     setDrag(null);
   };
@@ -1921,7 +1928,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
 
   const openModal = (memberId, hour) => {
     if(!canEdit(memberId)) return;
-    setTf({title:"",note:"",projId:"",done:false});
+    setTf({title:"",note:"",projId:"",done:false,dnd:false});
     setModal({mode:"add", memberId, hour});
   };
   const openEdit = (memberId, hour, todo, e) => {
@@ -2008,6 +2015,19 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
           style={{...inp,width:160,fontSize:13}}/>
       </div>
 
+      {/* 시간 범위 조절 */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:C.sub,fontWeight:600}}>표시 시간</span>
+        <button onClick={()=>setStartH(h=>Math.max(0,h-1))} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12}}>← 앞 추가</button>
+        <span style={{fontSize:12,fontWeight:700,color:C.dark,minWidth:80,textAlign:"center"}}>
+          {startH<12?`오전 ${startH}시`:`오후 ${startH===12?12:startH-12}시`} ~ {endH<=12?`오전 ${endH}시`:`오후 ${endH===12?12:endH-12}시`}
+        </span>
+        <button onClick={()=>setEndH(h=>Math.min(24,h+1))} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12}}>뒤 추가 →</button>
+        <button onClick={()=>setStartH(h=>Math.min(h+1,endH-1))} disabled={endH-startH<=1} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12,color:C.faint}}>← 앞 줄이기</button>
+        <button onClick={()=>setEndH(h=>Math.max(startH+1,h-1))} disabled={endH-startH<=1} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12,color:C.faint}}>뒤 줄이기 →</button>
+        <button onClick={()=>{setStartH(10);setEndH(19);}} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:11,color:C.faint}}>초기화</button>
+      </div>
+
       {/* 타임테이블 */}
       <div style={{overflowX:"auto"}} onMouseUp={()=>{ if(dragging) onDragEnd(); }} onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
         <div style={{minWidth: 80 + accounts.length * COL_W}}>
@@ -2040,13 +2060,14 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                     onMouseDown={e=>onDragStart(acc.id, key, e)}
                     onMouseEnter={()=>onDragEnter(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
-                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",borderRight:`1px solid ${C.border}22`,background:isInDragRange(acc.id,key)?"#dbeafe":editable?"transparent":"#fafafa",cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",transition:"background .05s"}}>
+                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",borderRight:`1px solid ${C.border}22`,background:isInDragRange(acc.id,key)?"#dbeafe":todosOf(acc.id,key).some(t=>t.dnd)?"#fff5f5":editable?"transparent":"#fafafa",borderLeft:todosOf(acc.id,key).some(t=>t.dnd)?"3px solid #ef4444":"none",cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",transition:"background .05s"}}>
                     {todos.map(todo=>(
                       <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
                         style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:todo.done?"#f0fdf4":"#eff6ff",border:`1px solid ${todo.done?"#86efac":"#bfdbfe"}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
                         <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly
                           style={{accentColor:C.green,cursor:editable?"pointer":"default",flexShrink:0}}/>
                         <div style={{overflow:"hidden",minWidth:0}}>
+                          {todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
                           {todo.endHour&&todo.endHour!==key&&<span style={{fontSize:9,color:C.faint,marginRight:3}}>↕ {todo.endHour}까지</span>}
                           {todo.projId && (()=>{const p=(projects||[]).find(p=>p.id===todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
                           <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
@@ -2082,10 +2103,16 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
           </Field>
           <Field label="할 일 *"><input style={inp} autoFocus value={tf.title||""} onChange={e=>setTf(v=>({...v,title:e.target.value}))} placeholder="할 일을 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
           <Field label="메모"><input style={inp} value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세 내용 (선택)"/></Field>
-          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:8}}>
-            <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:C.green}}/>
-            완료 처리
-          </label>
+          <div style={{display:"flex",gap:10,marginBottom:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",flex:1,padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:tf.done?"#f0fdf4":C.white}}>
+              <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:C.green}}/>
+              ✅ 완료 처리
+            </label>
+            <label onClick={()=>setTf(v=>({...v,dnd:!v.dnd}))}
+              style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",flex:1,padding:"8px 12px",borderRadius:8,border:`2px solid ${tf.dnd?"#ef4444":C.border}`,background:tf.dnd?"#fef2f2":C.white,color:tf.dnd?"#ef4444":C.sub,fontWeight:tf.dnd?700:400}}>
+              🚫 방해금지
+            </label>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
             {modal.mode==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
             <div style={{flex:1}}/>
