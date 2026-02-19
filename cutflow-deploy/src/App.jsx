@@ -809,7 +809,6 @@ function LoginScreen({ onLogin, accounts }) {
   };
 
   return (
-    <AppContext.Provider value={{setProjects}}>
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:20,padding:"40px 36px",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,.08)"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
@@ -2256,7 +2255,7 @@ function FinanceDash({ projects }) {
 // ═══════════════════════════════════════════════════════════
 // 메인 앱
 // ═══════════════════════════════════════════════════════════
-export default const AppContext = React.createContext({});
+const AppContext = React.createContext({});
 
 function App() {
   const [user,         setUser]         = useState(null);
@@ -2365,7 +2364,8 @@ function App() {
 
   const stageKeys = Object.keys(STAGES);
 
-  return (
+return (
+    <AppContext.Provider value={{setProjects}}>
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       {/* 헤더 */}
       <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
@@ -2681,5 +2681,8 @@ function App() {
         </Modal>
       )}
     </div>
+    </AppContext.Provider>
   );
 }
+
+export default App;
