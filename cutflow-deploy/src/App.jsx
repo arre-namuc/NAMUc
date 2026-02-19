@@ -1534,7 +1534,48 @@ export default function App() {
       )}
 
       {/* 새 프로젝트 모달 */}
-      {addProjModal && (
+      {editProjModal && (
+        <Modal title="프로젝트 수정" onClose={()=>setEditProjModal(false)}>
+          <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))}/></Field>
+          <Field label="클라이언트 *"><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))}/></Field>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{FORMATS.map(f=><option key={f}>{f}</option>)}</select></Field>
+            <Field label="납품일" half><input style={inp} type="date" value={pf.due} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
+            <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))}/></Field>
+            <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))}/></Field>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,color:C.sub,marginBottom:6}}>컬러 태그</div>
+            <div style={{display:"flex",gap:6}}>{P_COLORS.map(c=><button key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:24,height:24,borderRadius:"50%",background:c,border:pf.color===c?"3px solid #1e293b":"2px solid transparent",cursor:"pointer"}}/>)}</div>
+          </div>
+          <div style={{background:C.slateLight,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 재무 문서 접근 허용 멤버</div>
+            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>미선택 시 '재무 열람' 권한자 전체 접근 가능</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {accounts.map(a=>{
+                const allowed = pf.allowedFinanceMembers||[];
+                const checked = allowed.includes(String(a.id));
+                return (
+                  <label key={a.id} style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:12,padding:"4px 10px",borderRadius:99,background:checked?C.blueLight:C.white,border:`1px solid ${checked?C.blue:C.border}`}}>
+                    <input type="checkbox" checked={checked} onChange={e=>setPf(v=>({...v,allowedFinanceMembers:e.target.checked?[...(v.allowedFinanceMembers||[]),String(a.id)]:(v.allowedFinanceMembers||[]).filter(id=>id!==String(a.id))}))} style={{accentColor:C.blue}}/>
+                    {a.name} <span style={{color:C.faint}}>({a.role})</span>
+                  </label>
+                );
+              })}
+            </div>
+            {(pf.allowedFinanceMembers||[]).length>0 && <button onClick={()=>setPf(v=>({...v,allowedFinanceMembers:[]}))} style={{marginTop:6,fontSize:11,color:C.faint,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>전체 허용으로 초기화</button>}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
+            <div style={{display:"flex",gap:8}}>
+              <Btn onClick={()=>setEditProjModal(false)}>취소</Btn>
+              <Btn primary onClick={updateProject} disabled={!pf.name.trim()||!pf.client.trim()}>저장</Btn>
+            </div>
+          </div>
+        </Modal>
+        )}
+
+        {addProjModal && (
         <Modal title="새 프로젝트" onClose={()=>setAddProjModal(false)}>
           <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))} placeholder="ex. 나이키 여름 캠페인"/></Field>
           <Field label="클라이언트 *"><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))} placeholder="브랜드명"/></Field>
