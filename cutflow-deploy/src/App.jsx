@@ -1968,10 +1968,10 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   };
 
   const save = () => {
-    if(!tf.title?.trim()) return;
+    if(!tf.note?.trim()&&!tf.cat) return;
     const {memberId, hour, endHour} = modal;
     const baseId = modal.id||"td"+Date.now();
-    const entry = {...tf, id: baseId, endHour: endHour||hour};
+    const entry = {...tf, title:tf.note||tf.cat||"업무", id: baseId, endHour: endHour||hour};
     setDailyTodos(prev => {
       const day = {...(prev[selDate]||{})};
       const mem = {...(day[memberId]||{})};
@@ -2076,7 +2076,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
           {TODO_HOURS.map(({key, label})=>(
             <div key={key} style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
               {/* 시간 라벨 */}
-              <div style={{width:80,flexShrink:0,padding:"6px 10px",fontSize:12,fontWeight:600,color:C.sub,background:C.slateLight,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",height:ROW_H,boxSizing:"border-box"}}>
+              <div style={{width:80,flexShrink:0,padding:"6px 10px",fontSize:12,fontWeight:600,color:C.sub,background:C.slateLight,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",minHeight:ROW_H,boxSizing:"border-box"}}>
                 {label}
               </div>
               {/* 구성원별 셀 */}
@@ -2090,13 +2090,19 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                     onMouseDown={e=>onDragStart(acc.id, key, e)}
                     onMouseEnter={()=>onDragEnter(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
-                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",
+                    style={{width:COL_W,flexShrink:0,minHeight:ROW_H,padding:"4px 6px",
                       borderRight:`1px solid ${C.border}22`,
                       borderLeft:(()=>{
                         const p=getDragPos(acc.id,key);
                         if(p)return "3px solid #2563eb";
-                        if(covering)return covering.todo.dnd?"3px solid #ef4444":"3px solid #3b82f6";
+                        if(covering){
+                          if(covering.todo.dnd)return "3px solid #ef4444";
+                          const cat=TODO_CATS.find(c=>c.id===covering.todo.cat);
+                          return cat?`3px solid ${cat.color}`:"3px solid #3b82f6";
+                        }
                         if(todos.some(t=>t.dnd))return "3px solid #ef4444";
+                        const catTodo=todos.find(t=>t.cat);
+                        if(catTodo){const cat=TODO_CATS.find(c=>c.id===catTodo.cat);if(cat)return `3px solid ${cat.color}`;}
                         return "none";
                       })(),
                       borderTop:(()=>{
@@ -2114,18 +2120,24 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                       background:(()=>{
                         const p=getDragPos(acc.id,key);
                         if(p)return p==="first"||p==="single"?"#1d4ed8":"#dbeafe";
-                        if(covering)return covering.todo.dnd?"#fecaca":"#bfdbfe";
+                        if(covering){
+                          const cat=TODO_CATS.find(c=>c.id===covering.todo.cat);
+                          if(covering.todo.dnd)return "#fecaca";
+                          return cat?cat.color+"25":"#dbeafe";
+                        }
                         if(todos.some(t=>t.dnd))return "#fff5f5";
+                        const catTodo=todos.find(t=>t.cat);
+                        if(catTodo){const cat=TODO_CATS.find(c=>c.id===catTodo.cat);if(cat)return cat.color+"25";}
                         return editable?"transparent":"#fafafa";
                       })(),
-                      cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",
+                      cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"visible",userSelect:"none",
                       borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
                       transition:"background .05s"}}>
                     {covering ? (
-                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",padding:"0 8px",pointerEvents:"none"}}>
-                        <span style={{fontSize:10,color:covering.todo.dnd?"#ef4444":"#3b82f6",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.8}}>
-                          {covering.todo.dnd?"🚫 ":""}{covering.todo.title}
-                        </span>
+                      <div style={{padding:"2px 4px",pointerEvents:"none"}}>
+                        {(()=>{const cat=TODO_CATS.find(c=>c.id===covering.todo.cat);return cat?<span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:cat.color+"30",color:cat.color,fontWeight:700,display:"inline-block",marginBottom:2}}>{cat.label}</span>:null;})()}
+                        {covering.todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginLeft:2}}>🚫</span>}
+                        {covering.todo.note&&<div style={{fontSize:10,fontWeight:600,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.85}}>{covering.todo.note}</div>}
                       </div>
                     ) : <>
                         {todos.map(todo=>(
@@ -2138,7 +2150,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                               {todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
                               {todo.endHour&&todo.endHour!==key&&<span style={{fontSize:9,color:C.faint,marginRight:3}}>↕ {todo.endHour}까지</span>}
                               {todo.projId&&(()=>{const p=(projects||[]).find(p=>p.id===todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
-                              <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
+                              <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.note||todo.cat&&(TODO_CATS.find(c=>c.id===todo.cat)?.label)||"(내용 없음)"}</span>
                             </div>
                           </div>
                         ))}
@@ -2178,7 +2190,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
               {(projects||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
-          <Field label="할 일 *"><input style={inp} autoFocus value={tf.title||""} onChange={e=>setTf(v=>({...v,title:e.target.value}))} placeholder="할 일을 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
+
           <Field label="카테고리">
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {TODO_CATS.map(c=>(
@@ -2189,7 +2201,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
               ))}
             </div>
           </Field>
-          <Field label="상세업무"><input style={inp} value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세 내용 (선택)"/></Field>
+          <Field label="상세업무"><input style={inp} autoFocus value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세업무를 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
           <div style={{display:"flex",gap:10,marginBottom:8}}>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",flex:1,padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:tf.done?"#f0fdf4":C.white}}>
               <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:C.green}}/>
@@ -2204,7 +2216,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
             {modal.mode==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
-            <Btn primary onClick={save} disabled={!tf.title?.trim()}>저장</Btn>
+            <Btn primary onClick={save} disabled={!tf.note?.trim()&&!tf.cat}>저장</Btn>
           </div>
         </Modal>
       )}
