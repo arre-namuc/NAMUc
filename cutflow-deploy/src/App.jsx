@@ -26,14 +26,7 @@ const DEFAULT_COMPANY = {
 };
 
 const SEED_ACCOUNTS = [
-  { id:"m0", name:"김대표",  role:"대표",    pw:"ceo1234",  canViewFinance:true,  canManageMembers:true,  order:0 },
-  { id:"m1", name:"박민서",  role:"PD",      pw:"pd1234",   canViewFinance:false, canManageMembers:false, order:1 },
-  { id:"m2", name:"이준혁",  role:"감독",    pw:"dir1234",  canViewFinance:false, canManageMembers:false, order:2 },
-  { id:"m3", name:"김소연",  role:"촬영감독",pw:"cam1234",  canViewFinance:false, canManageMembers:false, order:3 },
-  { id:"m4", name:"최다인",  role:"편집자",  pw:"edit1234", canViewFinance:false, canManageMembers:false, order:4 },
-  { id:"m5", name:"정우진",  role:"CG",      pw:"cg1234",   canViewFinance:false, canManageMembers:false, order:5 },
-  { id:"m6", name:"한지수",  role:"제작부",  pw:"prod1234", canViewFinance:false, canManageMembers:false, order:6 },
-  { id:"m7", name:"오세진",  role:"경영지원",pw:"biz1234",  canViewFinance:true,  canManageMembers:true,  order:7 },
+  { id:"m0", name:"최창일", role:"대표", pw:"namucreative02*100%", canViewFinance:true, canManageMembers:true, order:0 },
 ];
 
 const STAGES = {
