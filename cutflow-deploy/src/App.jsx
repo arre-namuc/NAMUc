@@ -425,13 +425,13 @@ const isOverdue = t => t.stage!=="납품완료" && t.due && t.due < todayStr();
 // 로그인 화면
 // ═══════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, accounts }) {
-  const [selId, setSelId] = useState(SEED_ACCOUNTS[0].id);
+  const [selId, setSelId] = useState(accounts[0]?.id ?? "");
   const [pw, setPw]       = useState("");
   const [err, setErr]     = useState("");
   const [show, setShow]   = useState(false);
 
   const login = () => {
-    const acc = accounts.find(a=>a.id===selId && a.pw===pw);
+    const acc = accounts.find(a=>String(a.id)===String(selId) && a.pw===pw);
     if (acc) onLogin(acc);
     else setErr("비밀번호가 올바르지 않습니다.");
   };
