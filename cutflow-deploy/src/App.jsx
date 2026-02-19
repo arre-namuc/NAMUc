@@ -925,9 +925,9 @@ function BudgetEditor({ project, onSave }) {
       const isPdf = file.type==="application/pdf";
 
       const msgContent = isImg
-        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이것은 영상 제작 관련 견적서 또는 영수증이야. 아래 항목을 찾아서 반드시 JSON 형식으로만 응답해줘 (다른 텍스트 없이): {\\"name\\": \\"항목명 또는 문서 제목\\", \\"vendor\\": \\"발행처 또는 공급자 회사명\\", \\"amount\\": 최종합계금액(숫자만, VAT포함이면 VAT포함금액), \\"date\\": \\"발행일자(YYYY-MM-DD 형식)\\"}}]
+        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"영상 제작 견적서나 영수증이야. 발행처(vendor), 항목명(name), 최종합계금액 숫자(amount), 발행일자 YYYY-MM-DD(date) 를 추출해서 JSON으로만 답해줘."}]
         : isPdf
-        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이것은 영상 제작 관련 견적서 또는 영수증이야. 아래 항목을 찾아서 반드시 JSON 형식으로만 응답해줘 (다른 텍스트 없이): {\\"name\\": \\"항목명 또는 문서 제목\\", \\"vendor\\": \\"발행처 또는 공급자 회사명\\", \\"amount\\": 최종합계금액(숫자만, VAT포함이면 VAT포함금액), \\"date\\": \\"발행일자(YYYY-MM-DD 형식)\\"}}]
+        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"영상 제작 견적서나 영수증이야. 발행처(vendor), 항목명(name), 최종합계금액 숫자(amount), 발행일자 YYYY-MM-DD(date) 를 추출해서 JSON으로만 답해줘."}]
         : null;
 
       if (!msgContent) { setAnalyzing(false); return; }
