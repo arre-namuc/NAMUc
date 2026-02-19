@@ -2054,17 +2054,14 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
         <button onClick={()=>{setSh(10);setEh(19);}} style={{...btnSm,color:C.faint}}>초기화</button>
       </div>
 
-      {/* 타임테이블 - 8명씩 분리 */}
-      {Array.from({length:Math.ceil(accounts.length/8)},(_,gi)=>accounts.slice(gi*8,gi*8+8)).map((grp,gi)=>(
-      <div key={gi} style={{marginBottom:gi<Math.ceil(accounts.length/8)-1?20:0}}>
-        {gi>0&&<div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:6,paddingLeft:2}}>{gi+1}그룹 ({grp.map(a=>a.name).join(", ")})</div>}
+      {/* 타임테이블 - 가로 스크롤 */}
       <div style={{overflowX:"auto",border:`1px solid ${C.border}`,borderRadius:12}}
         onMouseUp={cancelDrag} onMouseLeave={cancelDrag}>
-        <div style={{minWidth:80+grp.length*COL}}>
+        <div style={{minWidth:80+accounts.length*COL}}>
           {/* 헤더 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
             <div style={{width:80,flexShrink:0,background:"#1e40af",borderBottom:`2px solid ${C.border}`}}/>
-            {grp.map(acc=>(
+            {accounts.map(acc=>(
               <div key={acc.id} style={{width:COL,flexShrink:0,padding:"10px 8px",textAlign:"center",background:"#1e40af",borderBottom:`2px solid ${C.border}`,borderLeft:`1px solid #3b82f622`}}>
                 <Avatar name={acc.name} size={28}/>
                 <div style={{fontSize:12,fontWeight:700,color:"#fff",marginTop:4}}>{acc.name}</div>
@@ -2083,7 +2080,7 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
                 {label}
               </div>
               {/* 구성원 셀 */}
-              {grp.map(acc=>{
+              {accounts.map(acc=>{
                 const todos=todosOf(acc.id,key);
                 const covering=getCovering(acc.id,key);
                 const editable=canEdit(acc.id);
@@ -2132,8 +2129,6 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
           ))}
         </div>
       </div>
-      </div>
-      ))}
 
       {/* 모달 */}
       {modal&&(
