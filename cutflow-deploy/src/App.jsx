@@ -1914,39 +1914,34 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
     user.id === memberId || user.role === "PD" || user.canManageMembers;
 
   // 드래그 핸들러 (useRef로 stale closure 방지)
-  const onDragStart = (memberId, hour, e) => {
+  const onCellMouseDown = (memberId, hour, e) => {
     if(!canEdit(memberId)) return;
     e.preventDefault();
-    const d = {memberId, startHour:hour, endHour:hour};
-    dragRef.current = {dragging:false, drag:d};
-    setDrag({...d});
+    dragRef.current = {active:true, memberId, startHour:hour, endHour:hour};
+    setDrag({memberId, startHour:hour, endHour:hour});
   };
-  const onDragEnter = (memberId, hour) => {
-    const {dragging:isDragging, drag:curDrag} = dragRef.current;
-    if(!curDrag || curDrag.memberId!==memberId) return;
-    const newDrag = {...curDrag, endHour:hour};
-    dragRef.current = {dragging:true, drag:newDrag};
-    setDrag({...newDrag});
+  const onCellMouseEnter = (memberId, hour) => {
+    const r = dragRef.current;
+    if(!r.active || r.memberId!==memberId) return;
+    dragRef.current = {...r, endHour:hour, moved:true};
+    setDrag({memberId, startHour:r.startHour, endHour:hour});
   };
-  const onDragEndFn = () => {
-    const {dragging:isDragging, drag:curDrag} = dragRef.current;
-    dragRef.current = {dragging:false, drag:null};
+  const onCellMouseUp = (memberId, hour) => {
+    const r = dragRef.current;
+    if(!r.active) return;
+    const wasDrag = r.moved && r.startHour !== r.endHour;
+    dragRef.current = {active:false};
     setDrag(null);
-    if(!isDragging || !curDrag) return;
+    if(!wasDrag) return; // 단일 클릭은 onClick이 처리
     const hours = TODO_HOURS.map(h=>h.key);
-    const si = hours.indexOf(curDrag.startHour);
-    const ei = hours.indexOf(curDrag.endHour);
+    const si = hours.indexOf(r.startHour);
+    const ei = hours.indexOf(r.endHour);
     const from = hours[Math.min(si,ei)];
     const to   = hours[Math.max(si,ei)];
-    if(from===to) return; // 단일 셀은 onClick이 처리
     setTf({title:"",note:"",projId:"",done:false,dnd:false,cat:"", startHour:from, endHour:to});
-    setModal({mode:"add", memberId:curDrag.memberId, hour:from, endHour:to});
+    setModal({mode:"add", memberId:r.memberId, hour:from, endHour:to});
   };
-  useEffect(()=>{
-    const up = ()=>{ if(dragRef.current.drag) onDragEndFn(); };
-    document.addEventListener('mouseup', up);
-    return ()=>document.removeEventListener('mouseup', up);
-  }, []);
+
 
   // 드래그 선택 범위 확인 + 위치(first/last/middle)
   const getDragPos = (memberId, hour) => {
@@ -2094,9 +2089,10 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                 const editable = canEdit(acc.id);
                 return (
                   <div key={acc.id}
-                    onClick={()=>{ if(!dragRef.current.dragging){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
-                    onMouseDown={e=>onDragStart(acc.id, key, e)}
-                    onMouseEnter={()=>onDragEnter(acc.id, key)}
+                    onClick={()=>{ if(!dragRef.current.moved){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
+                    onMouseDown={e=>onCellMouseDown(acc.id, key, e)}
+                    onMouseEnter={()=>onCellMouseEnter(acc.id, key)}
+                    onMouseUp={()=>onCellMouseUp(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
                     style={{width:COL_W,flexShrink:0,minHeight:ROW_H,padding:"4px 6px",
                       borderRight:`1px solid ${C.border}22`,
