@@ -122,3 +122,30 @@ export async function saveCompany(data) {
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
+
+// ── 구성원 관리 ──────────────────────────────────────────
+
+/** 구성원 전체 실시간 구독 */
+export function subscribeMembers(callback) {
+  if (!isConfigured) return () => {};
+  return onSnapshot(collection(db, "members"), (snap) => {
+    const members = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    callback(members.sort((a,b) => (a.order||0) - (b.order||0)));
+  });
+}
+
+/** 구성원 저장 (생성/수정 통합) */
+export async function saveMember(member) {
+  if (!isConfigured) return;
+  const { id, ...data } = member;
+  await setDoc(doc(db, "members", String(id)), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+/** 구성원 삭제 */
+export async function deleteMember(memberId) {
+  if (!isConfigured) return;
+  await deleteDoc(doc(db, "members", String(memberId)));
+}
