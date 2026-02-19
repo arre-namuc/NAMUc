@@ -1870,6 +1870,14 @@ const makeHourSlots = (startH, endH) => {
   return slots;
 };
 
+const TODO_CATS = [
+  { id:"meal",     label:"🍱 식사",     color:"#f97316" },
+  { id:"outside",  label:"🚗 외근",     color:"#8b5cf6" },
+  { id:"meeting",  label:"💬 회의",     color:"#2563eb" },
+  { id:"rest",     label:"☕ 휴식",     color:"#16a34a" },
+  { id:"personal", label:"📝 개인업무", color:"#64748b" },
+];
+
 function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
@@ -1927,7 +1935,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
     const from = hours[Math.min(si,ei)];
     const to   = hours[Math.max(si,ei)];
     setDragging(false);
-    setTf({title:"",note:"",projId:"",done:false,dnd:false, startHour:from, endHour:to});
+    setTf({title:"",note:"",projId:"",done:false,dnd:false,cat:"", startHour:from, endHour:to});
     setModal({mode:"add", memberId:drag.memberId, hour:from, endHour:to});
     setDrag(null);
   };
@@ -1949,7 +1957,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
 
   const openModal = (memberId, hour) => {
     if(!canEdit(memberId)) return;
-    setTf({title:"",note:"",projId:"",done:false,dnd:false});
+    setTf({title:"",note:"",projId:"",done:false,dnd:false,cat:""});
     setModal({mode:"add", memberId, hour});
   };
   const openEdit = (memberId, hour, todo, e) => {
@@ -2113,31 +2121,36 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                       cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",
                       borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
                       transition:"background .05s"}}>
-                    {covering && (
+                    {covering ? (
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",padding:"0 8px",pointerEvents:"none"}}>
-                        <span style={{fontSize:10,color:covering.todo.dnd?"#ef4444":"#3b82f6",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.7}}>
+                        <span style={{fontSize:10,color:covering.todo.dnd?"#ef4444":"#3b82f6",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.8}}>
                           {covering.todo.dnd?"🚫 ":""}{covering.todo.title}
                         </span>
                       </div>
-                    )}
-                    {!covering && todos.map(todo=>(
-                      <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
-                        style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:todo.done?"#f0fdf4":"#eff6ff",border:`1px solid ${todo.done?"#86efac":"#bfdbfe"}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
-                        <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly
-                          style={{accentColor:C.green,cursor:editable?"pointer":"default",flexShrink:0}}/>
-                        <div style={{overflow:"hidden",minWidth:0}}>
-                          {todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
-                          {todo.endHour&&todo.endHour!==key&&<span style={{fontSize:9,color:C.faint,marginRight:3}}>↕ {todo.endHour}까지</span>}
-                          {todo.projId && (()=>{const p=(projects||[]).find(p=>p.id===todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
-                          <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {(()=>{const p=getDragPos(acc.id,key);return p==="first"||p==="single"?<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-                        <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span>
-                        <span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span>
-                      </div>:null;})()}
-                    )}
+                    ) : <>
+                        {todos.map(todo=>(
+                          <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
+                            style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:(()=>{if(todo.done)return "#f0fdf4";const c=TODO_CATS.find(c=>c.id===todo.cat);return c?c.color+"15":"#eff6ff";})(),
+                            border:`1px solid ${(()=>{if(todo.done)return "#86efac";const c=TODO_CATS.find(c=>c.id===todo.cat);return c?c.color+"60":"#bfdbfe";})()}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
+                            <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly style={{accentColor:C.green,cursor:editable?"pointer":"default",flexShrink:0}}/>
+                            <div style={{overflow:"hidden",minWidth:0}}>
+                              {todo.cat&&(()=>{const c=TODO_CATS.find(c=>c.id===todo.cat);return c?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:c.color+"20",color:c.color,fontWeight:700,marginRight:3}}>{c.label}</span>:null;})()}
+                              {todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
+                              {todo.endHour&&todo.endHour!==key&&<span style={{fontSize:9,color:C.faint,marginRight:3}}>↕ {todo.endHour}까지</span>}
+                              {todo.projId&&(()=>{const p=(projects||[]).find(p=>p.id===todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
+                              <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {editable&&todos.length===0&&!isInDragRange(acc.id,key)&&(
+                          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
+                            onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                            onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+                            <span style={{fontSize:18,color:C.border}}>＋</span>
+                          </div>
+                        )}
+                      </>}
+                    {(()=>{const p=getDragPos(acc.id,key);return(p==="first"||p==="single")?<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span><span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span></div>:null;})()}
                     {!covering && editable && todos.length===0 && !isInDragRange(acc.id,key) && (
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
                         onMouseEnter={e=>e.currentTarget.style.opacity=1}
@@ -2166,7 +2179,17 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
             </select>
           </Field>
           <Field label="할 일 *"><input style={inp} autoFocus value={tf.title||""} onChange={e=>setTf(v=>({...v,title:e.target.value}))} placeholder="할 일을 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
-          <Field label="메모"><input style={inp} value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세 내용 (선택)"/></Field>
+          <Field label="카테고리">
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {TODO_CATS.map(c=>(
+                <button key={c.id} onClick={()=>setTf(v=>({...v,cat:v.cat===c.id?"":c.id}))}
+                  style={{padding:"5px 12px",borderRadius:99,border:`2px solid ${tf.cat===c.id?c.color:C.border}`,background:tf.cat===c.id?c.color+"18":C.white,color:tf.cat===c.id?c.color:C.sub,fontSize:12,fontWeight:tf.cat===c.id?700:400,cursor:"pointer"}}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="상세업무"><input style={inp} value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세 내용 (선택)"/></Field>
           <div style={{display:"flex",gap:10,marginBottom:8}}>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",flex:1,padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:tf.done?"#f0fdf4":C.white}}>
               <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:C.green}}/>
