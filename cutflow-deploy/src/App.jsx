@@ -1664,27 +1664,26 @@ const STAFF_GROUPS = [
 // ═══════════════════════════════════════════════════════════
 // 피드백 히스토리
 // ═══════════════════════════════════════════════════════════
-const FB_STATUSES = [
-  {id:"review",   label:"검토중",  color:"#f59e0b"},
-  {id:"reflected",label:"반영",    color:"#16a34a"},
-  {id:"hold",     label:"보류",    color:"#94a3b8"},
-];
-
 function FeedbackTab({project, patchProj, user, accounts}) {
   const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
   const [ff, setFf] = useState({});
   const [detail, setDetail] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [lightbox, setLightbox] = useState(null); // 이미지 미리보기
+  const [lightbox, setLightbox] = useState(null);
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
   const openAdd = () => {
-    setFf({receivedDate:today(), dueDate:"", content:"", assignee:user.name, status:"review", fileUrl:"", detail:"", images:[]});
+    setFf({receivedDate:today(), dueDate:"", title:"", content:"", assignees:[], status:"urgent", fileUrl:"", detail:"", images:[]});
     setModal("add");
   };
-  const openEdit = fb => { setFf({...fb, images:fb.images||[]}); setModal("edit"); };
+  const openEdit = fb => { setFf({...fb, assignees:fb.assignees||[], images:fb.images||[]}); setModal("edit"); };
+
+  const toggleAssignee = (name) => setFf(v => {
+    const cur = v.assignees||[];
+    return {...v, assignees: cur.includes(name) ? cur.filter(n=>n!==name) : [...cur, name]};
+  });
 
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -1692,38 +1691,45 @@ function FeedbackTab({project, patchProj, user, accounts}) {
     setUploading(true);
     try {
       const fbId = ff.id || "fb"+Date.now();
-      const uploaded = await Promise.all(
-        files.map(f => uploadFeedbackImage(project.id, fbId, f))
-      );
+      const uploaded = await Promise.all(files.map(f => uploadFeedbackImage(project.id, fbId, f)));
       setFf(v=>({...v, images:[...(v.images||[]), ...uploaded]}));
     } catch(err) { alert("업로드 실패: "+err.message); }
     finally { setUploading(false); }
   };
-
-  const removeImage = (idx) => setFf(v=>({...v, images:(v.images||[]).filter((_,i)=>i!==idx)}));
+  const removeImage = (i) => setFf(v=>({...v, images:(v.images||[]).filter((_,j)=>j!==i)}));
 
   const save = () => {
-    if(!ff.content?.trim()) return;
-    const entry = {...ff, id:ff.id||"fb"+Date.now(), images:ff.images||[]};
-    const list = modal==="edit"
-      ? feedbacks.map(f=>f.id===entry.id?entry:f)
-      : [...feedbacks, entry];
+    if(!ff.title?.trim()) return;
+    const entry = {...ff, id:ff.id||"fb"+Date.now(), images:ff.images||[], assignees:ff.assignees||[]};
+    const list = modal==="edit" ? feedbacks.map(f=>f.id===entry.id?entry:f) : [...feedbacks, entry];
     patchProj(p=>({...p, feedbacks:list}));
     setModal(null);
   };
-  const del = () => {
-    patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)}));
-    setModal(null);
-  };
+  const del = () => { patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)})); setModal(null); };
 
   const sorted = [...feedbacks].sort((a,b)=>(b.receivedDate||b.date||"").localeCompare(a.receivedDate||a.date||""));
+
+  // 상태 정의 - 긴급/여유/취합중
+  const FB_ST = [
+    {id:"urgent",  label:"긴급",  color:"#ef4444", bg:"#fef2f2", icon:"🔴"},
+    {id:"relaxed", label:"여유",  color:"#16a34a", bg:"#f0fdf4", icon:"🟢"},
+    {id:"gathering",label:"취합중",color:"#f59e0b", bg:"#fffbeb", icon:"🟡"},
+  ];
 
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <div>
           <h3 style={{margin:0,fontSize:16,fontWeight:800}}>💬 클라이언트 피드백 히스토리</h3>
-          <p style={{margin:"4px 0 0",fontSize:12,color:C.sub}}>총 {feedbacks.length}건</p>
+          <div style={{display:"flex",gap:8,marginTop:6}}>
+            {FB_ST.map(s=>{
+              const cnt = feedbacks.filter(f=>(f.status||"urgent")===s.id).length;
+              return <span key={s.id} style={{fontSize:11,padding:"2px 10px",borderRadius:99,
+                background:s.bg,color:s.color,border:`1px solid ${s.color}44`,fontWeight:700}}>
+                {s.icon} {s.label} {cnt}건
+              </span>;
+            })}
+          </div>
         </div>
         <Btn primary onClick={openAdd}>+ 피드백 추가</Btn>
       </div>
@@ -1735,114 +1741,104 @@ function FeedbackTab({project, patchProj, user, accounts}) {
         </div>
       ) : (
         <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 80px 80px 60px 36px",
+          <div style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 100px 90px 50px 80px",
             background:C.slateLight,padding:"9px 16px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-            <span>수신일</span><span>마감일</span><span>내용</span><span>담당자</span><span>상태</span><span style={{textAlign:"center"}}>첨부</span><span/>
+            <span>수신일</span><span>마감일</span><span>제목</span><span>담당자</span><span>상태</span><span style={{textAlign:"center"}}>첨부</span><span/>
           </div>
           {sorted.map((fb,i)=>{
-            const st = FB_STATUSES.find(s=>s.id===fb.status)||FB_STATUSES[0];
-            const isOver = fb.dueDate && fb.dueDate < today() && fb.status!=="reflected";
+            const st = FB_ST.find(s=>s.id===fb.status)||FB_ST[0];
+            const isOver = fb.dueDate && fb.dueDate < today() && fb.status!=="relaxed";
             const imgCount = (fb.images||[]).length;
+            const assignees = fb.assignees||[];
             return (
               <div key={fb.id}
-                style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 80px 80px 60px 36px",
+                style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 100px 90px 50px 80px",
                   padding:"11px 16px",gap:8,borderTop:i>0?`1px solid ${C.border}`:"none",
-                  background:"#fff",alignItems:"center",transition:"background .1s",cursor:"pointer"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                  borderLeft:`3px solid ${st.color}`,
+                  background:i%2===0?"#fff":"#fafafa",alignItems:"center",transition:"background .1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background=st.bg}
+                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
                 <span style={{fontSize:12,color:C.sub}}>{fb.receivedDate||fb.date||"-"}</span>
                 <span style={{fontSize:12,color:isOver?"#ef4444":C.sub,fontWeight:isOver?700:400}}>
                   {fb.dueDate||"-"}{isOver&&" ⚠️"}
                 </span>
-                <div onClick={()=>openEdit(fb)} style={{minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:500,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fb.content}</div>
-                  {fb.detail&&<div style={{fontSize:11,color:C.faint,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{fb.detail}</div>}
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {fb.title||"(제목없음)"}
+                  </div>
                 </div>
-                <span style={{fontSize:12,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} onClick={()=>openEdit(fb)}>{fb.assignee}</span>
-                <span onClick={()=>openEdit(fb)}>
-                  <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
-                    background:st.color+"18",color:st.color,border:`1px solid ${st.color}44`,whiteSpace:"nowrap"}}>
-                    {st.label}
+                <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                  {assignees.length>0
+                    ? assignees.map(a=><span key={a} style={{fontSize:10,padding:"1px 6px",borderRadius:99,background:"#eff6ff",color:"#2563eb",fontWeight:600,whiteSpace:"nowrap"}}>{a}</span>)
+                    : <span style={{fontSize:12,color:C.faint}}>—</span>}
+                </div>
+                <span>
+                  <span style={{fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:99,
+                    background:st.bg,color:st.color,border:`1.5px solid ${st.color}66`,whiteSpace:"nowrap"}}>
+                    {st.icon} {st.label}
                   </span>
                 </span>
                 <div style={{textAlign:"center",display:"flex",gap:3,justifyContent:"center",alignItems:"center"}}>
-                  {fb.fileUrl&&<a href={fb.fileUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:15,textDecoration:"none"}} title="링크">📎</a>}
-                  {imgCount>0&&<span onClick={e=>{e.stopPropagation();setLightbox({images:fb.images,idx:0});}}
-                    style={{fontSize:12,cursor:"pointer",background:"#eff6ff",color:"#2563eb",borderRadius:99,
-                      padding:"1px 6px",fontWeight:700}} title="이미지 보기">🖼 {imgCount}</span>}
-                  {!fb.fileUrl&&imgCount===0&&<span style={{fontSize:13,color:C.border}}>—</span>}
+                  {fb.fileUrl&&<a href={fb.fileUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:15,textDecoration:"none"}}>📎</a>}
+                  {imgCount>0&&<span onClick={()=>setLightbox({images:fb.images,idx:0})}
+                    style={{fontSize:11,cursor:"pointer",background:"#eff6ff",color:"#2563eb",
+                      borderRadius:99,padding:"1px 6px",fontWeight:700}}>🖼{imgCount}</span>}
+                  {!fb.fileUrl&&imgCount===0&&<span style={{color:C.border}}>—</span>}
                 </div>
-                <span onClick={()=>setDetail(fb)} style={{fontSize:16,color:C.blue,textAlign:"center",cursor:"pointer"}}>›</span>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>setDetail(fb)}
+                    style={{fontSize:11,padding:"4px 8px",borderRadius:6,border:`1px solid ${C.border}`,
+                      background:"#fff",cursor:"pointer",color:C.blue,fontWeight:600,whiteSpace:"nowrap"}}>
+                    상세보기
+                  </button>
+                  <button onClick={()=>openEdit(fb)}
+                    style={{fontSize:11,padding:"4px 6px",borderRadius:6,border:`1px solid ${C.border}`,
+                      background:"#fff",cursor:"pointer",color:C.sub}}>✏️</button>
+                </div>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* 이미지 라이트박스 */}
+      {/* 라이트박스 */}
       {lightbox&&(
-        <div onClick={()=>setLightbox(null)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,
-            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-          <img src={lightbox.images[lightbox.idx].url} alt=""
-            style={{maxWidth:"90vw",maxHeight:"80vh",borderRadius:8,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.5)"}}
-            onClick={e=>e.stopPropagation()}/>
+        <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+          <img src={lightbox.images[lightbox.idx].url} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"80vh",borderRadius:8,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.5)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:16,marginTop:16}}>
-            {lightbox.images.length>1&&(
-              <button onClick={e=>{e.stopPropagation();setLightbox(l=>({...l,idx:(l.idx-1+l.images.length)%l.images.length}));}}
-                style={{padding:"8px 18px",borderRadius:8,border:"none",background:"rgba(255,255,255,.2)",color:"#fff",cursor:"pointer",fontSize:18}}>‹</button>
-            )}
+            {lightbox.images.length>1&&<button onClick={e=>{e.stopPropagation();setLightbox(l=>({...l,idx:(l.idx-1+l.images.length)%l.images.length}));}} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"rgba(255,255,255,.2)",color:"#fff",cursor:"pointer",fontSize:18}}>‹</button>}
             <span style={{color:"rgba(255,255,255,.7)",fontSize:13}}>{lightbox.images[lightbox.idx].name} ({lightbox.idx+1}/{lightbox.images.length})</span>
-            {lightbox.images.length>1&&(
-              <button onClick={e=>{e.stopPropagation();setLightbox(l=>({...l,idx:(l.idx+1)%l.images.length}));}}
-                style={{padding:"8px 18px",borderRadius:8,border:"none",background:"rgba(255,255,255,.2)",color:"#fff",cursor:"pointer",fontSize:18}}>›</button>
-            )}
-            <button onClick={()=>setLightbox(null)}
-              style={{padding:"8px 18px",borderRadius:8,border:"none",background:"rgba(255,255,255,.15)",color:"#fff",cursor:"pointer",fontSize:13}}>✕ 닫기</button>
+            {lightbox.images.length>1&&<button onClick={e=>{e.stopPropagation();setLightbox(l=>({...l,idx:(l.idx+1)%l.images.length}));}} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"rgba(255,255,255,.2)",color:"#fff",cursor:"pointer",fontSize:18}}>›</button>}
+            <button onClick={()=>setLightbox(null)} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"rgba(255,255,255,.15)",color:"#fff",cursor:"pointer",fontSize:13}}>✕ 닫기</button>
           </div>
-          {lightbox.images.length>1&&(
-            <div style={{display:"flex",gap:8,marginTop:12}}>
-              {lightbox.images.map((img,i)=>(
-                <img key={i} src={img.url} alt="" onClick={e=>{e.stopPropagation();setLightbox(l=>({...l,idx:i}));}}
-                  style={{width:56,height:56,objectFit:"cover",borderRadius:6,cursor:"pointer",
-                    border:`2px solid ${i===lightbox.idx?"#60a5fa":"transparent"}`,opacity:i===lightbox.idx?1:0.6}}/>
-              ))}
-            </div>
-          )}
+          {lightbox.images.length>1&&<div style={{display:"flex",gap:8,marginTop:12}}>{lightbox.images.map((img,i)=><img key={i} src={img.url} alt="" onClick={e=>{e.stopPropagation();setLightbox(l=>({...l,idx:i}));}} style={{width:56,height:56,objectFit:"cover",borderRadius:6,cursor:"pointer",border:`2px solid ${i===lightbox.idx?"#60a5fa":"transparent"}`,opacity:i===lightbox.idx?1:0.6}}/>)}</div>}
         </div>
       )}
 
-      {/* 세부내용 패널 */}
+      {/* 세부내용 모달 */}
       {detail&&(
-        <Modal title="피드백 세부내용" onClose={()=>setDetail(null)}>
+        <Modal title={detail.title||"피드백 상세"} onClose={()=>setDetail(null)}>
           <div style={{background:"#f8fafc",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
-            <div style={{display:"flex",gap:24,marginBottom:10,flexWrap:"wrap"}}>
-              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>수신일</span><div style={{fontSize:13,fontWeight:600,marginTop:2}}>{detail.receivedDate||detail.date||"-"}</div></div>
-              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>마감일</span><div style={{fontSize:13,fontWeight:600,marginTop:2,color:detail.dueDate&&detail.dueDate<today()&&detail.status!=="reflected"?"#ef4444":C.dark}}>{detail.dueDate||"-"}</div></div>
-              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>담당자</span><div style={{fontSize:13,fontWeight:600,marginTop:2}}>{detail.assignee}</div></div>
-              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>상태</span>
-                <div style={{marginTop:4}}>{(()=>{const st=FB_STATUSES.find(s=>s.id===detail.status)||FB_STATUSES[0];return <span style={{fontSize:12,fontWeight:700,padding:"2px 10px",borderRadius:99,background:st.color+"18",color:st.color,border:`1px solid ${st.color}44`}}>{st.label}</span>;})()}</div>
+            <div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:12}}>
+              <div><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:3}}>수신일</div><div style={{fontSize:13,fontWeight:600}}>{detail.receivedDate||detail.date||"-"}</div></div>
+              <div><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:3}}>마감일</div><div style={{fontSize:13,fontWeight:600,color:detail.dueDate&&detail.dueDate<today()?"#ef4444":C.dark}}>{detail.dueDate||"-"}</div></div>
+              <div><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:3}}>담당자</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {(detail.assignees||[]).length>0
+                    ? (detail.assignees||[]).map(a=><span key={a} style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:"#eff6ff",color:"#2563eb",fontWeight:600}}>{a}</span>)
+                    : <span style={{fontSize:12,color:C.faint}}>—</span>}
+                </div>
+              </div>
+              <div><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:3}}>상태</div>
+                {(()=>{const st=FB_ST.find(s=>s.id===detail.status)||FB_ST[0];return <span style={{fontSize:12,fontWeight:800,padding:"3px 10px",borderRadius:99,background:st.bg,color:st.color,border:`1.5px solid ${st.color}66`}}>{st.icon} {st.label}</span>;})()}
               </div>
             </div>
             <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>피드백 내용</div>
-            <div style={{fontSize:13,color:C.dark,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{detail.content}</div>
+            <div style={{fontSize:13,color:C.dark,lineHeight:1.8,whiteSpace:"pre-wrap",background:"#fff",borderRadius:8,padding:"10px 12px",border:`1px solid ${C.border}`}}>{detail.content||"(내용 없음)"}</div>
           </div>
           {detail.detail&&<div style={{marginBottom:12}}><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>세부내용</div><div style={{fontSize:13,color:C.dark,lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px"}}>{detail.detail}</div></div>}
           {detail.fileUrl&&<div style={{marginBottom:12}}><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>첨부링크</div><a href={detail.fileUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:"#fff",color:C.blue,fontSize:13,textDecoration:"none",fontWeight:600}}>📎 링크 열기</a></div>}
-          {(detail.images||[]).length>0&&(
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:8}}>첨부 이미지 ({detail.images.length})</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {detail.images.map((img,i)=>(
-                  <img key={i} src={img.url} alt={img.name} onClick={()=>setLightbox({images:detail.images,idx:i})}
-                    style={{width:80,height:80,objectFit:"cover",borderRadius:8,cursor:"pointer",
-                      border:`1px solid ${C.border}`,transition:"transform .15s"}}
-                    onMouseEnter={e=>e.currentTarget.style.transform="scale(1.05)"}
-                    onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}/>
-                ))}
-              </div>
-            </div>
-          )}
+          {(detail.images||[]).length>0&&<div style={{marginBottom:12}}><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:8}}>첨부 이미지 ({detail.images.length})</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{detail.images.map((img,i)=><img key={i} src={img.url} alt={img.name} onClick={()=>setLightbox({images:detail.images,idx:i})} style={{width:80,height:80,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`1px solid ${C.border}`}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.05)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}/>)}</div></div>}
           <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
             <Btn onClick={()=>{setDetail(null);openEdit(detail);}}>✏️ 수정</Btn>
             <Btn primary onClick={()=>setDetail(null)}>닫기</Btn>
@@ -1853,61 +1849,52 @@ function FeedbackTab({project, patchProj, user, accounts}) {
       {/* 추가/수정 모달 */}
       {modal&&(
         <Modal title={modal==="add"?"피드백 추가":"피드백 수정"} onClose={()=>setModal(null)}>
+          <Field label="제목 *">
+            <input style={inp} autoFocus value={ff.title||""} onChange={e=>setFf(v=>({...v,title:e.target.value}))} placeholder="피드백 제목 (예: 1차 컷 수정 요청)"/>
+          </Field>
           <div style={{display:"flex",gap:12}}>
             <Field label="수신일 *" half><input style={inp} type="date" value={ff.receivedDate||""} onChange={e=>setFf(v=>({...v,receivedDate:e.target.value}))}/></Field>
             <Field label="마감일" half><input style={inp} type="date" value={ff.dueDate||""} onChange={e=>setFf(v=>({...v,dueDate:e.target.value}))}/></Field>
           </div>
-          <Field label="피드백 내용 *">
-            <textarea style={{...inp,resize:"vertical",minHeight:80}} autoFocus
-              value={ff.content||""} onChange={e=>setFf(v=>({...v,content:e.target.value}))}
-              placeholder="클라이언트 피드백 내용을 입력하세요..."/>
+          <Field label="피드백 내용">
+            <textarea style={{...inp,resize:"vertical",minHeight:80}} value={ff.content||""} onChange={e=>setFf(v=>({...v,content:e.target.value}))} placeholder="클라이언트 피드백 내용..."/>
           </Field>
           <Field label="세부내용">
-            <textarea style={{...inp,resize:"vertical",minHeight:60}}
-              value={ff.detail||""} onChange={e=>setFf(v=>({...v,detail:e.target.value}))}
-              placeholder="추가 메모, 참고사항 등..."/>
+            <textarea style={{...inp,resize:"vertical",minHeight:50}} value={ff.detail||""} onChange={e=>setFf(v=>({...v,detail:e.target.value}))} placeholder="추가 메모, 참고사항..."/>
           </Field>
-          <div style={{display:"flex",gap:12}}>
-            <Field label="담당자" half>
-              <select style={inp} value={ff.assignee||""} onChange={e=>setFf(v=>({...v,assignee:e.target.value}))}>
-                {accounts.map(a=><option key={a.id}>{a.name}</option>)}
-              </select>
-            </Field>
-            <Field label="첨부파일 링크" half>
-              <input style={inp} value={ff.fileUrl||""} onChange={e=>setFf(v=>({...v,fileUrl:e.target.value}))} placeholder="https://drive.google.com/..."/>
-            </Field>
-          </div>
+          <Field label="담당자 (복수 선택 가능)">
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {accounts.map(a=>{
+                const sel = (ff.assignees||[]).includes(a.name);
+                return <button key={a.id} onClick={()=>toggleAssignee(a.name)}
+                  style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:99,cursor:"pointer",fontSize:12,
+                    border:`1.5px solid ${sel?"#2563eb":C.border}`,
+                    background:sel?"#eff6ff":"#fff",color:sel?"#2563eb":C.sub,fontWeight:sel?700:400}}>
+                  <Avatar name={a.name} size={16}/>{a.name}
+                  {sel&&<span style={{fontSize:10}}>✓</span>}
+                </button>;
+              })}
+            </div>
+          </Field>
+          <Field label="첨부파일 링크">
+            <input style={inp} value={ff.fileUrl||""} onChange={e=>setFf(v=>({...v,fileUrl:e.target.value}))} placeholder="https://drive.google.com/..."/>
+          </Field>
           <Field label="이미지 첨부">
-            <label style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderRadius:8,
-              border:`2px dashed ${C.border}`,cursor:"pointer",color:C.sub,fontSize:13,
-              background:uploading?"#f1f5f9":"#fafafa",transition:"background .15s"}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderRadius:8,border:`2px dashed ${C.border}`,cursor:"pointer",color:C.sub,fontSize:13,background:"#fafafa"}}>
               <span style={{fontSize:20}}>🖼</span>
               <span>{uploading?"업로드 중...":"이미지 선택 (여러 장 가능)"}</span>
               <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleImageUpload} disabled={uploading}/>
             </label>
-            {(ff.images||[]).length>0&&(
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
-                {ff.images.map((img,i)=>(
-                  <div key={i} style={{position:"relative"}}>
-                    <img src={img.url} alt={img.name} onClick={()=>setLightbox({images:ff.images,idx:i})}
-                      style={{width:72,height:72,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`1px solid ${C.border}`}}/>
-                    <button onClick={()=>removeImage(i)}
-                      style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:99,
-                        border:"none",background:"#ef4444",color:"#fff",fontSize:10,cursor:"pointer",
-                        display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            {(ff.images||[]).length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>{ff.images.map((img,i)=><div key={i} style={{position:"relative"}}><img src={img.url} alt={img.name} onClick={()=>setLightbox({images:ff.images,idx:i})} style={{width:72,height:72,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`1px solid ${C.border}`}}/><button onClick={()=>removeImage(i)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:99,border:"none",background:"#ef4444",color:"#fff",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button></div>)}</div>}
           </Field>
           <Field label="상태">
             <div style={{display:"flex",gap:8}}>
-              {FB_STATUSES.map(s=>(
+              {FB_ST.map(s=>(
                 <button key={s.id} onClick={()=>setFf(v=>({...v,status:s.id}))}
-                  style={{flex:1,padding:"8px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:ff.status===s.id?700:400,
+                  style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:ff.status===s.id?800:400,
                     border:`2px solid ${ff.status===s.id?s.color:C.border}`,
-                    background:ff.status===s.id?s.color+"15":"#fff",color:ff.status===s.id?s.color:C.sub}}>
-                  {s.label}
+                    background:ff.status===s.id?s.bg:"#fff",color:ff.status===s.id?s.color:C.sub}}>
+                  {s.icon} {s.label}
                 </button>
               ))}
             </div>
@@ -1916,7 +1903,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
             {modal==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
-            <Btn primary onClick={save} disabled={!ff.content?.trim()||uploading}>저장</Btn>
+            <Btn primary onClick={save} disabled={!ff.title?.trim()||uploading}>저장</Btn>
           </div>
         </Modal>
       )}
