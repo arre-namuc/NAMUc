@@ -1494,7 +1494,19 @@ function MonthCalendar({ project, onChange, user }) {
 
   const events = project.calEvents || [];
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  const eventsOn = (date) => events.filter(e => e.start <= date && date <= (e.end||e.start));
+  // 피드백 마감일을 가상 이벤트로 생성
+  const feedbackEvents = (project.feedbacks||[])
+    .filter(fb => fb.dueDate && fb.taskStatus !== "done")
+    .map(fb => ({
+      id: "fb-"+fb.id,
+      title: "[피드백] "+(fb.title||"(제목없음)"),
+      start: fb.dueDate,
+      end: fb.dueDate,
+      color: "#8b5cf6",
+      isFeedback: true,
+    }));
+  const allEvents = [...events, ...feedbackEvents];
+  const eventsOn = (date) => allEvents.filter(e => e.start <= date && date <= (e.end||e.start));
   const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
 
   const prevGroup = () => { let m=baseMonth-1, y=baseYear; if(m<0){m=11;y--;} setBaseYear(y); setBaseMonth(m); };
@@ -1577,8 +1589,13 @@ function MonthCalendar({ project, onChange, user }) {
                   {d}
                 </div>
                 {dayEvs.slice(0,3).map(ev=>(
-                  <div key={ev.id} onClick={e=>openEdit(ev,e)}
-                    style={{fontSize:11,padding:"2px 5px",borderRadius:4,background:ev.color+"22",color:ev.color,fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:canEdit?"pointer":"default",lineHeight:1.5}}>
+                  <div key={ev.id} onClick={e=>{if(!ev.isFeedback) openEdit(ev,e); else e.stopPropagation();}}
+                    style={{fontSize:11,padding:"2px 5px",borderRadius:4,
+                      background:ev.isFeedback?"#f5f3ff":ev.color+"22",
+                      color:ev.isFeedback?"#8b5cf6":ev.color,
+                      fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                      cursor:ev.isFeedback?"default":canEdit?"pointer":"default",
+                      lineHeight:1.5,borderLeft:ev.isFeedback?"2px solid #8b5cf6":"none"}}>
                     {ev.title}
                   </div>
                 ))}
