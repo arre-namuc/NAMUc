@@ -6,6 +6,9 @@ import {
   uploadVoucherFile,
   subscribeCompany,
   saveCompany,
+  subscribeMembers,
+  saveMember,
+  deleteMember,
   isConfigured,
 } from "./firebase.js";
 
@@ -46,15 +49,15 @@ const DEFAULT_COMPANY = {
 // ═══════════════════════════════════════════════════════════
 // 계정 / 역할
 // ═══════════════════════════════════════════════════════════
-const ACCOUNTS = [
-  { id:0, name:"김대표",  role:"대표",    pw:"ceo1234",  canViewFinance:true  },
-  { id:1, name:"박민서",  role:"PD",      pw:"pd1234",   canViewFinance:false },
-  { id:2, name:"이준혁",  role:"감독",    pw:"dir1234",  canViewFinance:false },
-  { id:3, name:"김소연",  role:"촬영감독",pw:"cam1234",  canViewFinance:false },
-  { id:4, name:"최다인",  role:"편집자",  pw:"edit1234", canViewFinance:false },
-  { id:5, name:"정우진",  role:"CG",      pw:"cg1234",   canViewFinance:false },
-  { id:6, name:"한지수",  role:"제작부",  pw:"prod1234", canViewFinance:false },
-  { id:7, name:"오세진",  role:"경영지원",pw:"biz1234",  canViewFinance:true  },
+const SEED_ACCOUNTS = [
+  { id:"m0", name:"김대표",  role:"대표",    pw:"ceo1234",  canViewFinance:true,  canManageMembers:true,  order:0 },
+  { id:"m1", name:"박민서",  role:"PD",      pw:"pd1234",   canViewFinance:false, canManageMembers:false, order:1 },
+  { id:"m2", name:"이준혁",  role:"감독",    pw:"dir1234",  canViewFinance:false, canManageMembers:false, order:2 },
+  { id:"m3", name:"김소연",  role:"촬영감독",pw:"cam1234",  canViewFinance:false, canManageMembers:false, order:3 },
+  { id:"m4", name:"최다인",  role:"편집자",  pw:"edit1234", canViewFinance:false, canManageMembers:false, order:4 },
+  { id:"m5", name:"정우진",  role:"CG",      pw:"cg1234",   canViewFinance:false, canManageMembers:false, order:5 },
+  { id:"m6", name:"한지수",  role:"제작부",  pw:"prod1234", canViewFinance:false, canManageMembers:false, order:6 },
+  { id:"m7", name:"오세진",  role:"경영지원",pw:"biz1234",  canViewFinance:true,  canManageMembers:true,  order:7 },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -557,8 +560,7 @@ function Modal({ title, onClose, children, wide }) {
 }
 
 function Avatar({ name, size=28 }) {
-  const acc = ACCOUNTS.find(a=>a.name===name);
-  return <div title={`${name}${acc?` · ${acc.role}`:""}`} style={{width:size,height:size,borderRadius:"50%",background:C.blueLight,color:C.blue,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.43,fontWeight:700,flexShrink:0}}>{name[0]}</div>;
+  return <div title={name} style={{width:size,height:size,borderRadius:"50%",background:C.blueLight,color:C.blue,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.43,fontWeight:700,flexShrink:0}}>{(name||"?")[0]}</div>;
 }
 
 function TabBar({ tabs, active, onChange }) {
@@ -579,14 +581,14 @@ const isOverdue = t => t.stage!=="납품완료" && t.due && t.due < todayStr();
 // ═══════════════════════════════════════════════════════════
 // 로그인 화면
 // ═══════════════════════════════════════════════════════════
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, accounts }) {
   const [selId, setSelId] = useState(ACCOUNTS[0].id);
   const [pw, setPw]       = useState("");
   const [err, setErr]     = useState("");
   const [show, setShow]   = useState(false);
 
   const login = () => {
-    const acc = ACCOUNTS.find(a=>a.id===selId && a.pw===pw);
+    const acc = accounts.find(a=>a.id===selId && a.pw===pw);
     if (acc) onLogin(acc);
     else setErr("비밀번호가 올바르지 않습니다.");
   };
@@ -601,7 +603,7 @@ function LoginScreen({ onLogin }) {
         </div>
         <Field label="이름">
           <select style={inp} value={selId} onChange={e=>{setSelId(Number(e.target.value));setErr("");setPw("");}}>
-            {ACCOUNTS.map(a=><option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
+            {accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
           </select>
         </Field>
         <Field label="비밀번호">
@@ -621,7 +623,7 @@ function LoginScreen({ onLogin }) {
         </button>
         <div style={{marginTop:20,padding:"12px 14px",background:C.slateLight,borderRadius:10,fontSize:12,color:C.sub}}>
           <div style={{fontWeight:700,marginBottom:6}}>💡 테스트 계정</div>
-          {ACCOUNTS.map(a=>(
+          {accounts.map(a=>(
             <div key={a.id} style={{display:"flex",justifyContent:"space-between",marginTop:3}}>
               <span style={{color:a.canViewFinance?C.emerald:C.sub}}>{a.name} ({a.role}){a.canViewFinance?" 🔑":""}</span>
               <span style={{fontFamily:"monospace",color:C.slate}}>{a.pw}</span>
@@ -923,9 +925,9 @@ function BudgetEditor({ project, onSave }) {
       const isPdf = file.type==="application/pdf";
 
       const msgContent = isImg
-        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
+        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이것은 영상 제작 관련 견적서 또는 영수증이야. 아래 항목을 찾아서 반드시 JSON 형식으로만 응답해줘 (다른 텍스트 없이): {\\"name\\": \\"항목명 또는 문서 제목\\", \\"vendor\\": \\"발행처 또는 공급자 회사명\\", \\"amount\\": 최종합계금액(숫자만, VAT포함이면 VAT포함금액), \\"date\\": \\"발행일자(YYYY-MM-DD 형식)\\"}}]
         : isPdf
-        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
+        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이것은 영상 제작 관련 견적서 또는 영수증이야. 아래 항목을 찾아서 반드시 JSON 형식으로만 응답해줘 (다른 텍스트 없이): {\\"name\\": \\"항목명 또는 문서 제목\\", \\"vendor\\": \\"발행처 또는 공급자 회사명\\", \\"amount\\": 최종합계금액(숫자만, VAT포함이면 VAT포함금액), \\"date\\": \\"발행일자(YYYY-MM-DD 형식)\\"}}]
         : null;
 
       if (!msgContent) { setAnalyzing(false); return; }
@@ -1182,9 +1184,162 @@ function SettlementView({ project, onConfirm }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 구성원 관리 컴포넌트
+// ═══════════════════════════════════════════════════════════
+const ROLES = ["대표","PD","감독","촬영감독","편집자","CG","제작부","경영지원","기타"];
+
+function MemberManagement({ accounts, onSave, onDelete }) {
+  const [modal,   setModal]   = useState(false);
+  const [editM,   setEditM]   = useState(null);
+  const [mf,      setMf]      = useState({});
+  const [confirm, setConfirm] = useState(null);
+
+  const openAdd = () => {
+    setEditM(null);
+    setMf({ name:"", role:ROLES[1], pw:"", canViewFinance:false, canManageMembers:false });
+    setModal(true);
+  };
+  const openEdit = (m) => { setEditM(m); setMf({...m}); setModal(true); };
+
+  const save = () => {
+    if (!mf.name?.trim() || !mf.pw?.trim()) return;
+    const member = {
+      ...mf,
+      id: editM ? editM.id : "m" + Date.now(),
+      order: editM ? (editM.order||0) : accounts.length,
+    };
+    onSave(member);
+    setModal(false);
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{fontWeight:700,fontSize:14}}>구성원 목록 ({accounts.length}명)</div>
+        <Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>
+      </div>
+
+      <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+          <span/>
+          <span>이름</span>
+          <span>직책</span>
+          <span style={{textAlign:"center"}}>재무열람</span>
+          <span style={{textAlign:"center"}}>멤버관리</span>
+          <span>비밀번호</span>
+          <span/>
+        </div>
+        {accounts.length===0 && (
+          <div style={{padding:"30px",textAlign:"center",color:C.faint,fontSize:14}}>구성원이 없습니다</div>
+        )}
+        {accounts.map((m,i)=>(
+          <div key={m.id} style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+            <Avatar name={m.name} size={28}/>
+            <div>
+              <div style={{fontWeight:700,fontSize:13}}>{m.name}</div>
+            </div>
+            <span style={{fontSize:12,padding:"2px 8px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{m.role}</span>
+            <div style={{textAlign:"center"}}>
+              {m.canViewFinance
+                ? <span style={{fontSize:13,color:C.green,fontWeight:700}}>✅</span>
+                : <span style={{fontSize:13,color:C.faint}}>—</span>}
+            </div>
+            <div style={{textAlign:"center"}}>
+              {m.canManageMembers
+                ? <span style={{fontSize:13,color:C.blue,fontWeight:700}}>✅</span>
+                : <span style={{fontSize:13,color:C.faint}}>—</span>}
+            </div>
+            <span style={{fontSize:12,color:C.faint,fontFamily:"monospace"}}>{m.pw}</span>
+            <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+              <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub,padding:"2px 4px"}}>✏️</button>
+              <button onClick={()=>setConfirm(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.faint,padding:"2px 4px"}}>🗑️</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:12,padding:"10px 14px",background:C.amberLight,borderRadius:8,fontSize:12,color:C.amber}}>
+        ⚠️ 비밀번호는 구성원이 앱에 로그인할 때 사용합니다. 간단하지만 유추하기 어렵게 설정하세요.
+      </div>
+
+      {/* 추가/수정 모달 */}
+      {modal && (
+        <Modal title={editM ? "구성원 수정" : "구성원 추가"} onClose={()=>setModal(false)}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="이름 *">
+              <input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="ex. 홍길동"/>
+            </Field>
+            <Field label="직책 *" half>
+              <select style={inp} value={mf.role||ROLES[1]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>
+                {ROLES.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </Field>
+            <Field label="비밀번호 *" half>
+              <input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/>
+            </Field>
+            <Field label="연락처" half>
+              <input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
+            </Field>
+            <Field label="이메일" half>
+              <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
+            </Field>
+          </div>
+
+          <div style={{marginTop:8,padding:"12px 14px",background:C.slateLight,borderRadius:10}}>
+            <div style={{fontWeight:700,fontSize:12,color:C.sub,marginBottom:10}}>권한 설정</div>
+            <div style={{display:"flex",gap:20}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
+                <input type="checkbox" checked={!!mf.canViewFinance}
+                  onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))}
+                  style={{accentColor:C.green,width:16,height:16}}/>
+                <div>
+                  <div style={{fontWeight:600}}>💰 재무 열람</div>
+                  <div style={{fontSize:11,color:C.faint}}>재무 대시보드, 결산서 접근</div>
+                </div>
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
+                <input type="checkbox" checked={!!mf.canManageMembers}
+                  onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))}
+                  style={{accentColor:C.blue,width:16,height:16}}/>
+                <div>
+                  <div style={{fontWeight:600}}>👥 구성원 관리</div>
+                  <div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
+            {editM && <Btn danger sm onClick={()=>{setConfirm(editM);setModal(false);}}>삭제</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setModal(false)}>취소</Btn>
+            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 삭제 확인 */}
+      {confirm && (
+        <Modal title="구성원 삭제" onClose={()=>setConfirm(null)}>
+          <div style={{fontSize:14,color:C.text,marginBottom:20}}>
+            <b>{confirm.name}</b> ({confirm.role}) 구성원을 삭제하시겠습니까?<br/>
+            <span style={{fontSize:12,color:C.faint}}>삭제 후에는 해당 계정으로 로그인할 수 없습니다.</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+            <Btn onClick={()=>setConfirm(null)}>취소</Btn>
+            <Btn danger onClick={()=>{onDelete(confirm.id);setConfirm(null);}}>삭제</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // 회사 설정 페이지
 // ═══════════════════════════════════════════════════════════
-function CompanySettings({ company, onChange }) {
+function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMember }) {
   const c = company;
   const set = (k, v) => onChange({ ...c, [k]: v });
 
@@ -1288,6 +1443,19 @@ function CompanySettings({ company, onChange }) {
       {/* 미리보기 안내 */}
       <div style={{marginTop:16,padding:"13px 18px",background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,fontSize:13,color:C.green}}>
         ✅ 설정 내용은 자동 저장됩니다. 견적서 탭에서 <b>📄 견적서 PDF 출력</b> 버튼을 누르면 변경된 정보가 바로 반영됩니다.
+      </div>
+
+      {/* 구성원 관리 */}
+      <div style={{marginTop:28}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{fontWeight:800,fontSize:16}}>👥 구성원 관리</div>
+          <span style={{fontSize:12,padding:"2px 8px",background:C.amberLight,color:C.amber,borderRadius:99,fontWeight:600}}>대표 · 경영지원 전용</span>
+        </div>
+        <MemberManagement
+          accounts={accounts}
+          onSave={onSaveMember}
+          onDelete={onDeleteMember}
+        />
       </div>
     </div>
   );
@@ -1393,6 +1561,7 @@ export default function App() {
   const [addProjModal, setAddProjModal] = useState(false);
   const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
+  const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
 
   // Firebase 실시간 구독 (모든 useState 이후에 위치)
   useEffect(() => {
@@ -1409,10 +1578,14 @@ export default function App() {
     const unsubCompany = subscribeCompany((data) => {
       setCompany(prev => ({ ...DEFAULT_COMPANY, ...data }));
     });
-    return () => { unsubProjects(); unsubCompany(); };
+    // 구성원 구독
+    const unsubMembers = subscribeMembers((members) => {
+      if (members.length > 0) setAccounts(members);
+    });
+    return () => { unsubProjects(); unsubCompany(); unsubMembers(); };
   }, []);
 
-  if (!user) return <LoginScreen onLogin={setUser}/>;
+  if (!user) return <LoginScreen onLogin={setUser} accounts={accounts}/>;
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
   const patchProj = fn => {
@@ -1498,7 +1671,7 @@ export default function App() {
         </div>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canViewFinance}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -1518,10 +1691,22 @@ export default function App() {
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
         ) : mainTab==="settings" ? (
-          <CompanySettings company={company} onChange={(updated) => {
-            setCompany(updated);
-            if (isConfigured) saveCompany(updated).catch(console.error);
-          }}/>
+          <CompanySettings
+            company={company}
+            onChange={(updated) => {
+              setCompany(updated);
+              if (isConfigured) saveCompany(updated).catch(console.error);
+            }}
+            accounts={accounts}
+            onSaveMember={(m) => {
+              setAccounts(prev => prev.find(a=>a.id===m.id) ? prev.map(a=>a.id===m.id?m:a) : [...prev,m]);
+              if (isConfigured) saveMember(m).catch(console.error);
+            }}
+            onDeleteMember={(id) => {
+              setAccounts(prev => prev.filter(a=>a.id!==id));
+              if (isConfigured) deleteMember(id).catch(console.error);
+            }}
+          />
         ) : (
           <>
             {/* 프로젝트 정보 바 */}
@@ -1621,7 +1806,7 @@ export default function App() {
             </Field>
             <Field label="담당자" half>
               <select style={inp} value={taskModal.assignee||ACCOUNTS[1].name} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
-                {ACCOUNTS.map(a=><option key={a.id}>{a.name}</option>)}
+                {accounts.map(a=><option key={a.id}>{a.name}</option>)}
               </select>
             </Field>
             <Field label="스테이지" half>
