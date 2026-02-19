@@ -2029,7 +2029,7 @@ export default function App(){
 
   // Firebase 연동
   useEffect(()=>{
-    if(!isConfigured()) return;
+    if(!isConfigured) return;
     const unsub1 = subscribeProjects(data=>{
       setProjects(data.length>0 ? data : SEED_PROJECTS);
       setFirebaseReady(true);
@@ -2041,7 +2041,7 @@ export default function App(){
 
   // 로컬 초기화
   useEffect(()=>{
-    if(!isConfigured() && projects.length===0) setProjects(SEED_PROJECTS);
+    if(!isConfigured && projects.length===0) setProjects(SEED_PROJECTS);
   },[]);
 
   // 피드백 D-day 알림
@@ -2071,25 +2071,25 @@ export default function App(){
   const saveProject = async (p) => {
     const list = projects.find(x=>x.id===p.id) ? projects.map(x=>x.id===p.id?p:x) : [...projects, p];
     setProjects(list);
-    if(isConfigured()){ try{ await fbSaveProject(p); }catch(e){ console.error(e); } }
+    if(isConfigured){ try{ await fbSaveProject(p); }catch(e){ console.error(e); } }
     setProjectModal(null);
   };
 
   const handleDeleteProject = async (id) => {
     if(!window.confirm("프로젝트를 삭제하시겠습니까?")) return;
     setProjects(prev=>prev.filter(p=>p.id!==id));
-    if(isConfigured()){ try{ await fbDeleteProject(id); }catch(e){ console.error(e); } }
+    if(isConfigured){ try{ await fbDeleteProject(id); }catch(e){ console.error(e); } }
   };
 
   const saveMembersFn = async (list) => {
     setAccounts(list);
-    if(isConfigured()){ try{ for(const m of list) await saveMember(m); }catch(e){ console.error(e); } }
+    if(isConfigured){ try{ for(const m of list) await saveMember(m); }catch(e){ console.error(e); } }
     setShowMemberManage(false);
   };
 
   const saveCompanyFn = async (c) => {
     setCompany(c);
-    if(isConfigured()){ try{ await saveCompany(c); }catch(e){ console.error(e); } }
+    if(isConfigured){ try{ await saveCompany(c); }catch(e){ console.error(e); } }
     setShowCompanySettings(false);
   };
 
