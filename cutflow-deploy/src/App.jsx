@@ -1672,6 +1672,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [lightbox, setLightbox] = useState(null);
+  const [commentText, setCommentText] = useState("");
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
@@ -1734,6 +1735,28 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   };
   const del = () => { patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)})); setModal(null); };
 
+  const addComment = (fb) => {
+    if(!commentText.trim()) return;
+    const comment = {
+      id: "c"+Date.now(),
+      author: user.name,
+      text: commentText.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    const updated = {...fb, comments:[...(fb.comments||[]), comment]};
+    const list = feedbacks.map(f=>f.id===fb.id?updated:f);
+    patchProj(p=>({...p, feedbacks:list}));
+    setDetail(updated);
+    setCommentText("");
+  };
+
+  const deleteComment = (fb, commentId) => {
+    const updated = {...fb, comments:(fb.comments||[]).filter(c=>c.id!==commentId)};
+    const list = feedbacks.map(f=>f.id===fb.id?updated:f);
+    patchProj(p=>({...p, feedbacks:list}));
+    setDetail(updated);
+  };
+
   // 담당자가 자신의 taskStatus만 빠르게 변경
   const quickUpdateTaskStatus = (fb, statusId) => {
     const entry = {...fb, taskStatus: statusId};
@@ -1774,9 +1797,9 @@ function FeedbackTab({project, patchProj, user, accounts}) {
         <div style={{padding:"48px 0",textAlign:"center",color:C.faint,fontSize:13,border:`1px dashed ${C.border}`,borderRadius:12}}>아직 등록된 피드백이 없습니다</div>
       ) : (
         <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"86px 86px 1fr 100px 90px 90px 50px 80px",
+          <div style={{display:"grid",gridTemplateColumns:"86px 86px 80px 1fr 100px 90px 90px 50px 80px",
             background:C.slateLight,padding:"9px 16px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-            <span>수신일</span><span>마감일</span><span>제목</span><span>담당자</span>
+            <span>수신일</span><span>마감일</span><span style={{color:"#7c3aed"}}>단계</span><span>제목</span><span>담당자</span>
             <span style={{color:"#ef4444"}}>PD 상태</span>
             <span style={{color:"#6366f1"}}>진행상태</span>
             <span style={{textAlign:"center"}}>첨부</span><span/>
@@ -1789,7 +1812,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
             const assignees = fb.assignees||[];
             return (
               <div key={fb.id}
-                style={{display:"grid",gridTemplateColumns:"86px 86px 1fr 100px 90px 90px 50px 80px",
+                style={{display:"grid",gridTemplateColumns:"86px 86px 80px 1fr 100px 90px 90px 50px 80px",
                   padding:"10px 16px",gap:8,
                   borderTop:i>0?`1px solid ${C.border}`:"none",
                   borderLeft:`3px solid ${pdSt.color}`,
@@ -1800,6 +1823,10 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                 <span style={{fontSize:12,color:C.sub}}>{fb.receivedDate||fb.date||"-"}</span>
                 <span style={{fontSize:12,color:isOver?"#ef4444":C.sub,fontWeight:isOver?700:400}}>
                   {fb.dueDate||"-"}{isOver&&" ⚠️"}
+                </span>
+                <span>{fb.stage
+                  ? <span style={{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",whiteSpace:"nowrap"}}>{fb.stage}</span>
+                  : <span style={{color:C.border,fontSize:12}}>—</span>}
                 </span>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:tskSt.id==="done"?"#94a3b8":C.dark,
@@ -1843,7 +1870,8 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                   {fb.fileUrl&&<a href={fb.fileUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:15,textDecoration:"none"}}>📎</a>}
                   {imgCount>0&&<span onClick={()=>setLightbox({images:fb.images,idx:0})}
                     style={{fontSize:11,cursor:"pointer",background:"#eff6ff",color:"#2563eb",borderRadius:99,padding:"1px 6px",fontWeight:700}}>🖼{imgCount}</span>}
-                  {!fb.fileUrl&&imgCount===0&&<span style={{color:C.border}}>—</span>}
+                  {(fb.comments||[]).length>0&&<span style={{fontSize:11,background:"#f0fdf4",color:"#16a34a",borderRadius:99,padding:"1px 6px",fontWeight:700}}>💬{(fb.comments||[]).length}</span>}
+                  {!fb.fileUrl&&imgCount===0&&(fb.comments||[]).length===0&&<span style={{color:C.border}}>—</span>}
                 </div>
                 <div style={{display:"flex",gap:4}}>
                   <button onClick={()=>setDetail(fb)}
@@ -1879,9 +1907,8 @@ function FeedbackTab({project, patchProj, user, accounts}) {
       {detail&&(
         <Modal title={detail.title||"피드백 상세"} onClose={()=>setDetail(null)}>
           <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-            {/* PD 상태 */}
+            {detail.stage&&<span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1.5px solid #ddd6fe"}}>📍 {detail.stage}</span>}
             {(()=>{const s=PD_ST.find(x=>x.id===(detail.pdStatus||"urgent"))||PD_ST[0];return <span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:s.bg,color:s.color,border:`1.5px solid ${s.color}55`}}>PD · {s.icon} {s.label}</span>;})()}
-            {/* 담당 상태 */}
             {(()=>{const s=TASK_ST.find(x=>x.id===(detail.taskStatus||"review"))||TASK_ST[0];return <span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:s.bg,color:s.color,border:`1.5px solid ${s.color}55`}}>담당 · {s.icon} {s.label}</span>;})()}
           </div>
           <div style={{background:"#f8fafc",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
@@ -1902,7 +1929,61 @@ function FeedbackTab({project, patchProj, user, accounts}) {
           {detail.detail&&<div style={{marginBottom:12}}><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>세부내용</div><div style={{fontSize:13,color:C.dark,lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px"}}>{detail.detail}</div></div>}
           {detail.fileUrl&&<div style={{marginBottom:12}}><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>첨부링크</div><a href={detail.fileUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:"#fff",color:C.blue,fontSize:13,textDecoration:"none",fontWeight:600}}>📎 링크 열기</a></div>}
           {(detail.images||[]).length>0&&<div style={{marginBottom:12}}><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:8}}>첨부 이미지 ({detail.images.length})</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{detail.images.map((img,i)=><img key={i} src={img.url} alt={img.name} onClick={()=>setLightbox({images:detail.images,idx:i})} style={{width:80,height:80,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`1px solid ${C.border}`}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.05)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}/>)}</div></div>}
-          <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+          {/* 댓글 섹션 */}
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginTop:4}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:10}}>
+              💬 댓글 {(detail.comments||[]).length>0?`(${detail.comments.length})`:""}
+            </div>
+            {/* 댓글 목록 */}
+            {(detail.comments||[]).length===0
+              ? <div style={{fontSize:12,color:C.faint,padding:"12px 0",textAlign:"center"}}>아직 댓글이 없습니다</div>
+              : <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                  {(detail.comments||[]).map(c=>(
+                    <div key={c.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <Avatar name={c.author} size={28}/>
+                      <div style={{flex:1,background:"#f8fafc",borderRadius:"0 10px 10px 10px",
+                        padding:"8px 12px",border:`1px solid ${C.border}`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <span style={{fontSize:12,fontWeight:700,color:C.dark}}>{c.author}</span>
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <span style={{fontSize:10,color:C.faint}}>
+                              {new Date(c.createdAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                            </span>
+                            {(c.author===user.name||user.role==="PD"||user.role==="대표")&&(
+                              <button onClick={()=>deleteComment(detail,c.id)}
+                                style={{fontSize:10,color:C.faint,background:"none",border:"none",cursor:"pointer",padding:"0 2px"}}
+                                title="삭제">✕</button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{fontSize:13,color:C.dark,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{c.text}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+            {/* 댓글 입력 */}
+            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+              <Avatar name={user.name} size={28}/>
+              <div style={{flex:1,position:"relative"}}>
+                <textarea
+                  value={commentText}
+                  onChange={e=>setCommentText(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addComment(detail);}}}
+                  placeholder="댓글을 입력하세요... (Enter로 전송, Shift+Enter 줄바꿈)"
+                  style={{...inp,resize:"none",minHeight:44,paddingRight:70,lineHeight:1.5}}/>
+                <button onClick={()=>addComment(detail)}
+                  disabled={!commentText.trim()}
+                  style={{position:"absolute",right:8,bottom:8,padding:"4px 12px",borderRadius:6,
+                    border:"none",background:commentText.trim()?"#2563eb":"#e2e8f0",
+                    color:commentText.trim()?"#fff":"#94a3b8",fontSize:12,fontWeight:600,cursor:commentText.trim()?"pointer":"default"}}>
+                  전송
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
             <Btn onClick={()=>{setDetail(null);openEdit(detail);}}>✏️ 수정</Btn>
             <Btn primary onClick={()=>setDetail(null)}>닫기</Btn>
           </div>
@@ -1914,6 +1995,19 @@ function FeedbackTab({project, patchProj, user, accounts}) {
         <Modal title={modal==="add"?"피드백 추가":"피드백 수정"} onClose={()=>setModal(null)}>
           <Field label="제목 *">
             <input style={inp} autoFocus value={ff.title||""} onChange={e=>setFf(v=>({...v,title:e.target.value}))} placeholder="피드백 제목 (예: 1차 컷 수정 요청)"/>
+          </Field>
+          <Field label="단계">
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {["기획","트리트먼트","PPM","촬영","편집","DI","사운드","시각디자인","기타"].map(s=>{
+                const sel = ff.stage===s;
+                return <button key={s} onClick={()=>setFf(v=>({...v,stage:v.stage===s?"":s}))}
+                  style={{padding:"5px 12px",borderRadius:99,cursor:"pointer",fontSize:12,fontWeight:sel?700:400,
+                    border:`1.5px solid ${sel?"#7c3aed":C.border}`,
+                    background:sel?"#f5f3ff":"#fff",color:sel?"#7c3aed":C.sub}}>
+                  {s}
+                </button>;
+              })}
+            </div>
           </Field>
           <div style={{display:"flex",gap:12}}>
             <Field label="수신일 *" half><input style={inp} type="date" value={ff.receivedDate||""} onChange={e=>setFf(v=>({...v,receivedDate:e.target.value}))}/></Field>
