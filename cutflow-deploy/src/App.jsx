@@ -1885,7 +1885,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const [modal, setModal]     = useState(null);
   const [tf, setTf]           = useState({title:"",note:"",done:false});
   const [drag, setDrag]       = useState(null);
-  const dragRef               = useRef({dragging:false, drag:null});
+  const dragRef               = useRef({active:false, memberId:null, startHour:null, endHour:null, moved:false});
   const [startH, setStartH]   = useState(10); // 표시 시작 시각
   const [endH,   setEndH]     = useState(19); // 표시 종료 시각 (exclusive)
   const TODO_HOURS = makeHourSlots(startH, endH);
@@ -1916,23 +1916,25 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   // 드래그 핸들러 (useRef로 stale closure 방지)
   const onCellMouseDown = (memberId, hour, e) => {
     if(!canEdit(memberId)) return;
-    e.preventDefault();
-    dragRef.current = {active:true, memberId, startHour:hour, endHour:hour};
-    setDrag({memberId, startHour:hour, endHour:hour});
+    dragRef.current = {active:true, memberId, startHour:hour, endHour:hour, moved:false};
   };
   const onCellMouseEnter = (memberId, hour) => {
     const r = dragRef.current;
-    if(!r.active || r.memberId!==memberId) return;
+    if(!r.active || r.memberId!==memberId || r.startHour===hour) return;
     dragRef.current = {...r, endHour:hour, moved:true};
     setDrag({memberId, startHour:r.startHour, endHour:hour});
   };
-  const onCellMouseUp = (memberId, hour) => {
+  const onCellMouseUp = (memberId, hour, e) => {
     const r = dragRef.current;
+    dragRef.current = {active:false, memberId:null, startHour:null, endHour:null, moved:false};
     if(!r.active) return;
-    const wasDrag = r.moved && r.startHour !== r.endHour;
-    dragRef.current = {active:false};
+    if(!r.moved) {
+      // 드래그 없는 단순 클릭 → 직접 처리
+      setDrag(null);
+      return;
+    }
+    // 드래그 완료
     setDrag(null);
-    if(!wasDrag) return; // 단일 클릭은 onClick이 처리
     const hours = TODO_HOURS.map(h=>h.key);
     const si = hours.indexOf(r.startHour);
     const ei = hours.indexOf(r.endHour);
@@ -2089,7 +2091,8 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                 const editable = canEdit(acc.id);
                 return (
                   <div key={acc.id}
-                    onClick={()=>{ if(!dragRef.current.moved){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
+                    
+                    onClick={()=>{ if(!dragRef.current.moved && !dragRef.current.active){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
                     onMouseDown={e=>onCellMouseDown(acc.id, key, e)}
                     onMouseEnter={()=>onCellMouseEnter(acc.id, key)}
                     onMouseUp={()=>onCellMouseUp(acc.id, key)}
