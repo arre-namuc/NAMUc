@@ -58,7 +58,7 @@ const STAGES = {
   "납품완료":     { color:C.green,  bg:C.greenLight,  icon:"✅" },
 };
 const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","촬영","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
-const FORMATS    = ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"];
+// FORMATS는 App 내부 state로 관리 (아래 참고)
 const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
 const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
 
@@ -1113,7 +1113,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
 // ═══════════════════════════════════════════════════════════
 // 회사 설정 페이지
 // ═══════════════════════════════════════════════════════════
-function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMember }) {
+function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMember, formats, onAddFormat, onDeleteFormat }) {
   const c = company;
   const set = (k,v) => onChange({...c,[k]:v});
   return (
@@ -1156,6 +1156,25 @@ function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMe
       </div>
       <div style={{marginTop:16,padding:"13px 18px",background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,fontSize:13,color:C.green}}>
         ✅ 설정 내용은 자동 저장됩니다. 견적서 탭에서 <b>📄 견적서 PDF 출력</b> 버튼을 누르면 변경된 정보가 바로 반영됩니다.
+      </div>
+
+      {/* 포맷 관리 */}
+      <div style={{marginTop:24,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>🎬 포맷 관리</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+          {formats.map((f,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",background:C.slateLight,borderRadius:99,fontSize:13}}>
+              <span>{f}</span>
+              <button onClick={()=>onDeleteFormat(i)} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1,padding:"0 2px"}}>✕</button>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <input id="new-format-input" style={{...inp,flex:1}} placeholder="새 포맷 입력 (ex. 버티컬 15초)"
+            onKeyDown={e=>{ if(e.key==="Enter"){ const v=e.target.value.trim(); if(v){onAddFormat(v);e.target.value="";} } }}/>
+          <Btn primary sm onClick={()=>{ const el=document.getElementById("new-format-input"); const v=el.value.trim(); if(v){onAddFormat(v);el.value="";} }}>+ 추가</Btn>
+        </div>
+        <div style={{fontSize:11,color:C.faint,marginTop:6}}>Enter 또는 + 추가 버튼으로 입력</div>
       </div>
 
       <div style={{marginTop:28}}>
@@ -1260,6 +1279,10 @@ export default function App() {
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
   const [selId,        setSelId]        = useState("p1");
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
+  const [formats,      setFormats]      = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("cf_formats")||"null") || ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"]; }
+    catch(e) { return ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"]; }
+  });
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
   const [mainTab,      setMainTab]      = useState("tasks");
   const [addProjModal,  setAddProjModal]  = useState(false);
@@ -1408,6 +1431,9 @@ export default function App() {
             accounts={accounts}
             onSaveMember={m=>{setAccounts(p=>p.find(a=>a.id===m.id)?p.map(a=>a.id===m.id?m:a):[...p,m]);if(isConfigured)saveMember(m).catch(console.error);}}
             onDeleteMember={id=>{setAccounts(p=>p.filter(a=>a.id!==id));if(isConfigured)deleteMember(id).catch(console.error);}}
+            formats={formats}
+            onAddFormat={f=>setFormats(p=>[...p,f])}
+            onDeleteFormat={i=>setFormats(p=>p.filter((_,idx)=>idx!==i))}
           />
         ) : (
           <>
@@ -1544,7 +1570,13 @@ export default function App() {
           <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))}/></Field>
           <Field label="클라이언트 *"><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))}/></Field>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{FORMATS.map(f=><option key={f}>{f}</option>)}</select></Field>
+            <Field label="포맷" half><div style={{display:"flex",gap:4}}>
+                <select style={{...inp,flex:1}} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>
+                  {formats.map(f=><option key={f}>{f}</option>)}
+                </select>
+              </div></Field>
+            <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
+            <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
             <Field label="납품일" half><input style={inp} type="date" value={pf.due} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
             <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))}/></Field>
             <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))}/></Field>
@@ -1587,7 +1619,11 @@ export default function App() {
           <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))} placeholder="ex. 나이키 여름 캠페인"/></Field>
           <Field label="클라이언트 *"><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))} placeholder="브랜드명"/></Field>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{FORMATS.map(f=><option key={f}>{f}</option>)}</select></Field>
+            <Field label="포맷" half><div style={{display:"flex",gap:4}}>
+                <select style={{...inp,flex:1}} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>
+                  {formats.map(f=><option key={f}>{f}</option>)}
+                </select>
+              </div></Field>
             <Field label="납품일" half><input style={inp} type="date" value={pf.due||""} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
             <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))} placeholder="이름"/></Field>
             <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))} placeholder="이름"/></Field>
