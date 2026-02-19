@@ -2571,6 +2571,26 @@ function FinanceDash({ projects }) {
   const totalProfit = totalSupply - totalSpent;
   const totalMargin = totalSupply?Math.round(totalProfit/totalSupply*100):0;
 
+  // 월별 수주액 계산 (납품일 기준)
+  const monthlyData = (() => {
+    const map = {};
+    [...active, ...settled].forEach(p => {
+      const d = p.startDate || p.due;
+      if(!d) return;
+      const ym = d.slice(0,7); // "YYYY-MM"
+      if(!map[ym]) map[ym] = {order:0, supply:0, count:0};
+      map[ym].order  += qTotal(p.quote)||0;
+      map[ym].supply += qSupply(p.quote)||0;
+      map[ym].count  += 1;
+    });
+    return Object.entries(map).sort(([a],[b])=>a.localeCompare(b)).map(([ym,v])=>({
+      label: ym.replace("-","년 ")+"월",
+      ym,
+      ...v
+    }));
+  })();
+  const maxOrder = Math.max(...monthlyData.map(d=>d.order), 1);
+
   return (
     <div style={{padding:"0 4px"}}>
       <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>재무 대시보드</h2>
@@ -2589,6 +2609,52 @@ function FinanceDash({ projects }) {
           </div>
         ))}
       </div>
+
+      {/* 월별 수주액 차트 */}
+      <h3 style={{margin:"0 0 14px",fontSize:14,fontWeight:700}}>📅 월별 수주액</h3>
+      {monthlyData.length===0 ? (
+        <div style={{padding:"32px",textAlign:"center",color:C.faint,fontSize:13,background:C.white,borderRadius:12,border:`1px solid ${C.border}`,marginBottom:28}}>
+          납품일이 입력된 프로젝트가 없습니다
+        </div>
+      ) : (
+        <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"20px 24px",marginBottom:28,overflowX:"auto"}}>
+          <div style={{minWidth: Math.max(monthlyData.length * 80, 400), position:"relative"}}>
+            {/* Y축 가이드라인 */}
+            {[0,25,50,75,100].map(pct=>(
+              <div key={pct} style={{position:"absolute",left:0,right:0,
+                top:`${100-pct}%`,borderTop:`1px dashed ${C.border}`,zIndex:0}}>
+                {pct===100&&<span style={{position:"absolute",right:"100%",paddingRight:6,fontSize:10,color:C.faint,whiteSpace:"nowrap"}}>{fmtM(maxOrder)}</span>}
+              </div>
+            ))}
+            {/* 바 차트 */}
+            <div style={{display:"flex",alignItems:"flex-end",height:160,gap:6,position:"relative",zIndex:1,paddingBottom:24}}>
+              {monthlyData.map((d,i)=>(
+                <div key={d.ym} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:60}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.blue,whiteSpace:"nowrap"}}>{fmtM(d.order)}</div>
+                  <div style={{width:"70%",background:`linear-gradient(180deg,#3b82f6,#1d4ed8)`,borderRadius:"4px 4px 0 0",
+                    height:Math.max((d.order/maxOrder)*120,4),transition:"height .3s",position:"relative",cursor:"default"}}
+                    title={`${d.label}
+수주: ${fmtM(d.order)}
+공급가: ${fmtM(d.supply)}
+${d.count}건`}>
+                  </div>
+                  <div style={{fontSize:9,color:C.sub,whiteSpace:"nowrap",marginTop:2,position:"absolute",bottom:2}}>{d.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* 범례 */}
+          <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
+            {monthlyData.map(d=>(
+              <div key={d.ym} style={{fontSize:11,color:C.sub}}>
+                <span style={{fontWeight:700,color:C.dark}}>{d.label}</span>
+                {" · 수주 "}<span style={{color:C.blue,fontWeight:700}}>{fmtM(d.order)}</span>
+                {" · "}<span style={{color:C.faint}}>{d.count}건</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <h3 style={{margin:"0 0 12px",fontSize:14,fontWeight:700}}>진행중 프로젝트 ({active.length}건)</h3>
       <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:28}}>
