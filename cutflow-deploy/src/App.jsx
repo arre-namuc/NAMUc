@@ -2130,7 +2130,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                         if(catTodo){const cat=TODO_CATS.find(c=>c.id===catTodo.cat);if(cat)return cat.color+"25";}
                         return editable?"transparent":"#fafafa";
                       })(),
-                      cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"visible",userSelect:"none",display:"flex",flexDirection:"column",gap:2,
+                      cursor:editable?"cell":"default",boxSizing:"border-box",overflowY:"visible",userSelect:"none",display:"flex",flexDirection:"column",gap:2,
                       borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
                       transition:"background .05s"}}>
                     {covering ? (
@@ -2155,14 +2155,14 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                           </div>
                         ))}
                         {editable&&todos.length===0&&!isInDragRange(acc.id,key)&&(
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:ROW_H-8,opacity:0,transition:"opacity .15s"}}
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:40,opacity:0,transition:"opacity .15s"}}
                             onMouseEnter={e=>e.currentTarget.style.opacity=1}
                             onMouseLeave={e=>e.currentTarget.style.opacity=0}>
                             <span style={{fontSize:18,color:C.border}}>＋</span>
                           </div>
                         )}
                       </>}
-                    {(()=>{const p=getDragPos(acc.id,key);return(p==="first"||p==="single")?<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span><span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span></div>:null;})()}
+                    {(()=>{const p=getDragPos(acc.id,key);return(p==="first"||p==="single")?<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"8px 0",pointerEvents:"none"}}><span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span><span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span></div>:null;})()}
                     {!covering && editable && todos.length===0 && !isInDragRange(acc.id,key) && (
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
                         onMouseEnter={e=>e.currentTarget.style.opacity=1}
