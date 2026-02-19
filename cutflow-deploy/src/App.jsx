@@ -1556,7 +1556,13 @@ function StaffList({ project, onChange, accounts }) {
             </button>
           ))}
         </div>
-        <Btn primary sm onClick={()=>openAdd()}>+ 스탭 추가</Btn>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <div style={{display:"flex",border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+            <button onClick={()=>setViewMode("card")} style={{padding:"5px 10px",border:"none",background:viewMode==="card"?C.blue:"none",color:viewMode==="card"?"#fff":C.sub,cursor:"pointer",fontSize:13}}>&#x229E;</button>
+            <button onClick={()=>setViewMode("table")} style={{padding:"5px 10px",border:"none",background:viewMode==="table"?C.blue:"none",color:viewMode==="table"?"#fff":C.sub,cursor:"pointer",fontSize:13}}>&#x2630;</button>
+          </div>
+          <Btn primary sm onClick={()=>openAdd()}>+ 스탭 추가</Btn>
+        </div>
       </div>
 
       {/* 스탭 없음 */}
@@ -1568,8 +1574,43 @@ function StaffList({ project, onChange, accounts }) {
         </div>
       )}
 
-      {/* 그룹별 렌더링 */}
-      {STAFF_GROUPS.map(grp=>{
+      {viewMode==="table" && sorted.length>0 && (
+        <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr style={{background:"#1e40af"}}>
+                {["역할","이름","소속/회사","연락처","이메일","메모",""].map(h=>(
+                  <th key={h} style={{padding:"9px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((s,i)=>(
+                <tr key={s.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?C.white:"#fafbfc"}}>
+                  <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}>
+                    <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{s.role}</span>
+                  </td>
+                  <td style={{padding:"9px 12px",fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>
+                    {s.name}{s.fromTeam&&<span style={{marginLeft:4,fontSize:10,background:C.greenLight,color:C.green,padding:"1px 5px",borderRadius:99,fontWeight:700}}>내부</span>}
+                  </td>
+                  <td style={{padding:"9px 12px",fontSize:12,color:C.sub}}>{s.company||"—"}</td>
+                  <td style={{padding:"9px 12px",fontSize:12}}>
+                    {s.phone?<a href={"tel:"+s.phone} style={{color:C.blue,textDecoration:"none"}}>{s.phone}</a>:"—"}
+                  </td>
+                  <td style={{padding:"9px 12px",fontSize:12}}>
+                    {s.email?<a href={"mailto:"+s.email} style={{color:C.blue,textDecoration:"none"}}>{s.email}</a>:"—"}
+                  </td>
+                  <td style={{padding:"9px 12px",fontSize:11,color:C.faint,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.note||""}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center"}}>
+                    <button onClick={()=>openEdit(s)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>&#x270F;&#xFE0F;</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {viewMode==="card" && STAFF_GROUPS.map(grp=>{
         const grpStaff = sorted.filter(s=>grp.roles.includes(s.role));
         if ((filterGroup!=="전체"&&filterGroup!==grp.label)||grpStaff.length===0) return null;
         return (
