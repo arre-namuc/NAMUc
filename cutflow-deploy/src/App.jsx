@@ -199,51 +199,287 @@ const SEED_PROJECTS = [
 ];
 
 // ═══════════════════════════════════════════════════════════
-// CSV 내보내기 (아티팩트 환경 안전)
+// PDF 견적서 출력
 // ═══════════════════════════════════════════════════════════
-function downloadCSV(filename, rows) {
-  const BOM = "\uFEFF";
-  const csv = rows.map(r =>
-    r.map(v => {
-      const s = String(v ?? "");
-      return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? '"' + s.replace(/"/g, '""') + '"'
-        : s;
-    }).join(",")
-  ).join("\n");
-  const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+function openQuotePDF(project, quote) {
+  const fmt  = n => (n||0).toLocaleString("ko-KR") + "원";
+  const fmtN = n => (n||0).toLocaleString("ko-KR");
 
-function exportQuoteToCSV(project, quote) {
-  const rows = [
-    [`${project.client} · ${project.name} 견적서`],
-    [],
-    ["대분류","중분류","항목명","단위","수량","단가","금액"],
-  ];
-  let grand = 0;
+  // 계산
+  const sub    = (quote.items||[]).reduce((s,cat)=>s+(cat.groups||[]).reduce((s2,grp)=>s2+(grp.items||[]).reduce((s3,it)=>s3+(it.qty||0)*(it.unitPrice||0),0),0),0);
+  const fee    = Math.round(sub * (quote.agencyFeeRate||0) / 100);
+  const supply = sub + fee;
+  const vat    = quote.vat ? Math.round(supply * 0.1) : 0;
+  const total  = supply + vat;
+
+  // 유효기간 (오늘 + 30일)
+  const today    = new Date();
+  const validEnd = new Date(today); validEnd.setDate(today.getDate() + 30);
+  const dateStr  = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+
+  // 항목 행 생성
+  let itemRows = "";
+  let rowNum = 1;
   for (const cat of (quote.items||[])) {
-    let catTotal = 0;
+    const catTotal = (cat.groups||[]).reduce((s,grp)=>s+(grp.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
+    if (!catTotal) continue;
+    itemRows += `<tr class="cat-row"><td colspan="6">■ ${cat.category}</td></tr>`;
     for (const grp of (cat.groups||[])) {
-      for (const it of (grp.items||[])) {
+      const grpItems = (grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
+      if (!grpItems.length) continue;
+      grpItems.forEach((it, idx) => {
         const amt = (it.qty||0)*(it.unitPrice||0);
-        if (!amt) continue;
-        catTotal += amt;
-        rows.push([cat.category,grp.group,it.name,it.unit,it.qty||1,it.unitPrice||0,amt]);
-      }
+        itemRows += `<tr>
+          <td class="num">${rowNum++}</td>
+          <td class="grp-cell">${idx===0 ? grp.group : ""}</td>
+          <td>${it.name}</td>
+          <td class="center">${it.unit}</td>
+          <td class="right">${fmtN(it.qty)}</td>
+          <td class="right">${fmtN(it.unitPrice)}</td>
+          <td class="right amount">${fmtN(amt)}</td>
+        </tr>`;
+      });
+      const grpTotal = grpItems.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
+      itemRows += `<tr class="subtotal-row">
+        <td colspan="6" class="right" style="font-style:italic;color:#64748b">└ ${grp.group} 소계</td>
+        <td class="right">${fmtN(grpTotal)}</td>
+      </tr>`;
     }
-    if (catTotal) {
-      rows.push([`◆ ${cat.category} 소계`,"","","","","",catTotal]);
-      grand += catTotal;
-    }
+    itemRows += `<tr class="cat-total-row">
+      <td colspan="6" class="right">${cat.category} 합계</td>
+      <td class="right">${fmtN(catTotal)}</td>
+    </tr>`;
   }
-  rows.push([],[" 합 계","","","","","",grand],[" 부가가치세(10%)","","","","","",Math.round(grand*0.1)],[" 최종 청구금액(VAT포함)","","","","","",grand+Math.round(grand*0.1)]);
-  downloadCSV(`${project.client}_${project.name}_견적서.csv`, rows);
-}
 
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<title>견적서 — ${project.name}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Noto Sans KR',sans-serif; background:#f8fafc; color:#1e293b; font-size:13px; }
+  .page { width:210mm; min-height:297mm; margin:0 auto; background:#fff; padding:14mm 14mm 16mm; position:relative; }
+
+  /* 헤더 */
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10mm; padding-bottom:6mm; border-bottom:3px solid #2563eb; }
+  .logo-area { display:flex; flex-direction:column; gap:6px; }
+  .logo-box { width:140px; height:52px; border:2px dashed #cbd5e1; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11px; }
+  .company-name { font-size:18px; font-weight:800; color:#1e293b; letter-spacing:-0.5px; }
+  .doc-title-area { text-align:right; }
+  .doc-title { font-size:30px; font-weight:800; color:#2563eb; letter-spacing:-1px; }
+  .doc-num { font-size:11px; color:#64748b; margin-top:4px; }
+  .doc-date { font-size:11px; color:#64748b; margin-top:2px; }
+
+  /* 수신/발신 */
+  .parties { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8mm; }
+  .party-box { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; position:relative; overflow:hidden; }
+  .party-box::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; }
+  .party-box.to::before { background:#2563eb; }
+  .party-box.from::before { background:#64748b; }
+  .party-label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+  .party-name { font-size:16px; font-weight:800; color:#1e293b; margin-bottom:4px; }
+  .party-project { font-size:12px; color:#475569; }
+  .party-meta { font-size:11px; color:#94a3b8; margin-top:2px; }
+
+  /* 요약 카드 */
+  .summary-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:8mm; }
+  .summary-card { background:linear-gradient(135deg,#eff6ff,#dbeafe); border:1px solid #bfdbfe; border-radius:10px; padding:10px 14px; }
+  .summary-card.total { background:linear-gradient(135deg,#2563eb,#1d4ed8); border-color:#2563eb; }
+  .summary-card .label { font-size:10px; font-weight:600; color:#3b82f6; margin-bottom:4px; }
+  .summary-card.total .label { color:#bfdbfe; }
+  .summary-card .value { font-size:17px; font-weight:800; color:#1e40af; }
+  .summary-card.total .value { color:#fff; font-size:19px; }
+
+  /* 테이블 */
+  .table-wrap { margin-bottom:6mm; }
+  .table-title { font-size:12px; font-weight:700; color:#475569; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+  .table-title::before { content:''; width:3px; height:14px; background:#2563eb; border-radius:2px; display:inline-block; }
+  table { width:100%; border-collapse:collapse; }
+  thead th { background:#1e40af; color:#fff; padding:8px 10px; font-size:11px; font-weight:600; text-align:left; }
+  thead th.right { text-align:right; }
+  thead th.center { text-align:center; }
+  tbody tr { border-bottom:1px solid #f1f5f9; }
+  tbody tr:hover { background:#f8fafc; }
+  td { padding:7px 10px; font-size:12px; vertical-align:middle; }
+  td.num { color:#94a3b8; font-size:11px; width:28px; text-align:center; }
+  td.grp-cell { color:#475569; font-size:11px; font-weight:600; width:90px; }
+  td.center { text-align:center; }
+  td.right { text-align:right; }
+  td.amount { font-weight:600; color:#1e293b; }
+  tr.cat-row td { background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:12px; padding:7px 10px; }
+  tr.subtotal-row td { background:#f8fafc; font-size:11px; padding:5px 10px; }
+  tr.cat-total-row td { background:#dbeafe; color:#1e40af; font-weight:700; font-size:12px; padding:7px 10px; border-top:1px solid #bfdbfe; }
+
+  /* 합계 */
+  .total-section { display:flex; justify-content:flex-end; margin-bottom:8mm; }
+  .total-table { width:280px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  .total-row { display:flex; justify-content:space-between; padding:8px 14px; font-size:12px; border-bottom:1px solid #f1f5f9; }
+  .total-row:last-child { border-bottom:none; background:#2563eb; color:#fff; font-size:14px; font-weight:800; padding:10px 14px; }
+  .total-row .tlabel { color:#64748b; }
+  .total-row:last-child .tlabel { color:#bfdbfe; }
+  .total-row .tvalue { font-weight:600; }
+
+  /* 하단 정보 */
+  .bottom-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8mm; }
+  .info-box { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; }
+  .info-box-title { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:4px; }
+  .info-line { font-size:12px; color:#475569; margin-bottom:4px; }
+  .info-line strong { color:#1e293b; }
+  .valid-date { font-size:13px; font-weight:700; color:#2563eb; }
+  .note-area { min-height:48px; font-size:12px; color:#64748b; line-height:1.6; }
+
+  /* 서명 */
+  .sign-section { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:4mm; }
+  .sign-box { border:1px solid #e2e8f0; border-radius:10px; padding:14px; text-align:center; }
+  .sign-label { font-size:10px; font-weight:700; color:#64748b; letter-spacing:1px; margin-bottom:12px; }
+  .sign-name { font-size:13px; font-weight:600; color:#1e293b; margin-bottom:24px; }
+  .sign-line { border-bottom:1px solid #cbd5e1; margin:0 20px 6px; }
+  .sign-hint { font-size:10px; color:#94a3b8; }
+
+  /* 푸터 */
+  .footer { position:absolute; bottom:8mm; left:14mm; right:14mm; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #f1f5f9; padding-top:6px; }
+
+  @media print {
+    body { background:#fff; }
+    .page { margin:0; padding:12mm; box-shadow:none; }
+    .no-print { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="no-print" style="background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;">
+  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 CutFlow 견적서 미리보기</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
+</div>
+
+<div class="page">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-box">🎬 회사 로고</div>
+      <div class="company-name" style="margin-top:6px">NAMUC</div>
+    </div>
+    <div class="doc-title-area">
+      <div class="doc-title">견 적 서</div>
+      <div class="doc-num">No. ${project.id.toUpperCase()}-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}</div>
+      <div class="doc-date">작성일: ${dateStr(today)}</div>
+    </div>
+  </div>
+
+  <!-- 수신/발신 -->
+  <div class="parties">
+    <div class="party-box to">
+      <div class="party-label">수 신</div>
+      <div class="party-name">${project.client} 귀중</div>
+      <div class="party-project">프로젝트: ${project.name}</div>
+      <div class="party-meta">포맷: ${project.format||"-"} · 납품: ${project.due||"-"}</div>
+    </div>
+    <div class="party-box from">
+      <div class="party-label">발 신</div>
+      <div class="party-name">NAMUC</div>
+      <div class="party-project">담당 PD: ${project.pd||"-"}</div>
+      <div class="party-meta">감독: ${project.director||"-"}</div>
+    </div>
+  </div>
+
+  <!-- 요약 카드 -->
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="label">공급가액 (VAT 제외)</div>
+      <div class="value">${fmtN(supply)}원</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">부가가치세 (10%)</div>
+      <div class="value">${quote.vat ? fmtN(vat)+"원" : "별도"}</div>
+    </div>
+    <div class="summary-card total">
+      <div class="label">최종 견적 금액</div>
+      <div class="value">${fmtN(total)}원</div>
+    </div>
+  </div>
+
+  <!-- 견적 항목 테이블 -->
+  <div class="table-wrap">
+    <div class="table-title">견적 내역</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px">No.</th>
+          <th style="width:90px">중분류</th>
+          <th>항목명</th>
+          <th class="center" style="width:45px">단위</th>
+          <th class="right" style="width:55px">수량</th>
+          <th class="right" style="width:90px">단가</th>
+          <th class="right" style="width:100px">금액</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemRows}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 합계 -->
+  <div class="total-section">
+    <div class="total-table">
+      <div class="total-row"><span class="tlabel">소계</span><span class="tvalue">${fmtN(sub)}원</span></div>
+      ${(quote.agencyFeeRate||0)>0 ? `<div class="total-row"><span class="tlabel">대행수수료 (${quote.agencyFeeRate}%)</span><span class="tvalue">${fmtN(fee)}원</span></div>` : ""}
+      <div class="total-row"><span class="tlabel">공급가액</span><span class="tvalue">${fmtN(supply)}원</span></div>
+      ${quote.vat ? `<div class="total-row"><span class="tlabel">부가가치세 (10%)</span><span class="tvalue">${fmtN(vat)}원</span></div>` : ""}
+      <div class="total-row"><span class="tlabel">최종 견적 금액</span><span class="tvalue">${fmtN(total)}원</span></div>
+    </div>
+  </div>
+
+  <!-- 유효기간 & 비고 -->
+  <div class="bottom-grid">
+    <div class="info-box">
+      <div class="info-box-title">📅 견적 유효기간</div>
+      <div class="info-line">본 견적서의 유효기간은 아래와 같습니다.</div>
+      <div class="valid-date" style="margin-top:8px">${dateStr(today)} ~ ${dateStr(validEnd)}</div>
+      <div class="info-line" style="margin-top:6px;font-size:11px;color:#94a3b8">유효기간 이후에는 금액이 변동될 수 있습니다.</div>
+    </div>
+    <div class="info-box">
+      <div class="info-box-title">💬 특이사항 / 비고</div>
+      <div class="note-area">
+        · 본 견적은 협의된 내용을 기준으로 작성되었습니다.<br/>
+        · 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.<br/>
+        · 계약금 50% 선입금 후 제작 착수합니다.
+      </div>
+    </div>
+  </div>
+
+  <!-- 서명란 -->
+  <div class="sign-section">
+    <div class="sign-box">
+      <div class="sign-label">클라이언트 확인</div>
+      <div class="sign-name">${project.client}</div>
+      <div class="sign-line"></div>
+      <div class="sign-hint">(서명 또는 날인)</div>
+    </div>
+    <div class="sign-box">
+      <div class="sign-label">담당자 확인</div>
+      <div class="sign-name">NAMUC · ${project.pd||"담당 PD"}</div>
+      <div class="sign-line"></div>
+      <div class="sign-hint">(서명 또는 날인)</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    NAMUC · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}
+  </div>
+</div>
+
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+}
 // ═══════════════════════════════════════════════════════════
 // 공통 UI 컴포넌트
 // ═══════════════════════════════════════════════════════════
@@ -451,9 +687,9 @@ function QuoteEditor({ quote, onChange, exportProject }) {
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           {exportProject && (
-            <Btn sm onClick={()=>exportQuoteToCSV(exportProject,q)}
-              style={{background:"#7c3aed10",color:C.purple,border:`1px solid #7c3aed40`}}>
-              📤 CSV 내보내기
+            <Btn sm onClick={()=>openQuotePDF(exportProject,q)}
+              style={{background:"#2563eb10",color:C.blue,border:`1px solid #2563eb40`}}>
+              📄 견적서 PDF 출력
             </Btn>
           )}
           <div style={{textAlign:"right"}}>
