@@ -1554,7 +1554,7 @@ function MonthCalendar({ project, onChange, user }) {
     for(let d=1;d<=daysInMonth;d++) cells.push(d);
 
     return (
-      <div style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"22px 20px",minWidth:0}}>
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"22px 20px",width:"100%"}}>
         <div style={{fontWeight:800,fontSize:15,marginBottom:12,color:C.dark}}>{year}년 {month+1}월</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
           {DAYS.map((d,i)=>(
@@ -1608,7 +1608,7 @@ function MonthCalendar({ project, onChange, user }) {
       </div>
 
       {/* 3개월 달력 */}
-      <div style={{display:"flex",gap:12}}>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
         {months.map(({year,month})=><MiniCal key={`${year}-${month}`} year={year} month={month}/>)}
       </div>
 
@@ -1639,6 +1639,26 @@ function MonthCalendar({ project, onChange, user }) {
   );
 }
 
+
+const STAFF_ROLES = [
+  "EPD","총괄감독","감독","조감독 1st","조감독 2nd",
+  "PD","AD","AE",
+  "촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT",
+  "조명감독","조명 1st","조명 Grip",
+  "미술감독","소품",
+  "편집","DI","2D","3D","FLAME","녹음실",
+  "음악감독","성우",
+  "메이킹","작가","기타"
+];
+
+const STAFF_GROUPS = [
+  { label:"제작/연출",   roles:["EPD","총괄감독","감독","조감독 1st","조감독 2nd","PD","AD","AE"] },
+  { label:"촬영",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
+  { label:"조명",        roles:["조명감독","조명 1st","조명 Grip"] },
+  { label:"미술",        roles:["미술감독","소품"] },
+  { label:"포스트",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
+  { label:"기타",        roles:["메이킹","작가","기타"] },
+];
 
 function StaffList({ project, onChange, accounts }) {
   const staff = project.staff || [];
