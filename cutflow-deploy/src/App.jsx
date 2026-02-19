@@ -2134,10 +2134,19 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                       borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
                       transition:"background .05s"}}>
                     {covering ? (
-                      <div style={{padding:"2px 4px",pointerEvents:"none"}}>
-                        {(()=>{const cat=TODO_CATS.find(c=>c.id===covering.todo.cat);return cat?<span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:cat.color+"30",color:cat.color,fontWeight:700,display:"inline-block",marginBottom:2}}>{cat.label}</span>:null;})()}
-                        {covering.todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginLeft:2}}>🚫</span>}
-                        {covering.todo.note&&<div style={{fontSize:10,fontWeight:600,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.85}}>{covering.todo.note}</div>}
+                      <div onClick={e=>openEdit(acc.id,covering.startKey,covering.todo,e)}
+                        style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,
+                          background:(()=>{const c=TODO_CATS.find(c=>c.id===covering.todo.cat);return covering.todo.done?"#f0fdf4":c?c.color+"15":"#eff6ff";})(),
+                          border:`1px solid ${(()=>{const c=TODO_CATS.find(c=>c.id===covering.todo.cat);return covering.todo.done?"#86efac":c?c.color+"60":"#bfdbfe";})()}`,
+                          cursor:canEdit(acc.id)?"pointer":"default"}}>
+                        <div style={{overflow:"hidden",minWidth:0}}>
+                          {covering.todo.cat&&(()=>{const c=TODO_CATS.find(x=>x.id===covering.todo.cat);return c?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:c.color+"20",color:c.color,fontWeight:700,marginRight:3}}>{c.label}</span>:null;})()}
+                          {covering.todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
+                          {covering.todo.projId&&(()=>{const p=(projects||[]).find(p=>p.id===covering.todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
+                          <span style={{fontSize:11,fontWeight:600,color:covering.todo.done?C.faint:C.dark,textDecoration:covering.todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {covering.todo.note||TODO_CATS.find(c=>c.id===covering.todo.cat)?.label||"(내용 없음)"}
+                          </span>
+                        </div>
                       </div>
                     ) : <>
                         {todos.map(todo=>(
