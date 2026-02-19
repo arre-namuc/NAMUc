@@ -24,6 +24,24 @@ const C = {
 };
 
 // ═══════════════════════════════════════════════════════════
+// 회사 설정 기본값
+// ═══════════════════════════════════════════════════════════
+const DEFAULT_COMPANY = {
+  name:       "NAMUC",
+  ceo:        "",
+  bizNo:      "",
+  address:    "",
+  phone:      "",
+  email:      "",
+  logoUrl:    "",
+  bankName:   "",
+  bankAccount:"",
+  bankHolder: "",
+  quoteNote:  "· 본 견적은 협의된 내용을 기준으로 작성되었습니다.\n· 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.\n· 계약금 50% 선입금 후 제작 착수합니다.",
+  validDays:  30,
+};
+
+// ═══════════════════════════════════════════════════════════
 // 계정 / 역할
 // ═══════════════════════════════════════════════════════════
 const ACCOUNTS = [
@@ -201,7 +219,7 @@ const SEED_PROJECTS = [
 // ═══════════════════════════════════════════════════════════
 // PDF 견적서 출력
 // ═══════════════════════════════════════════════════════════
-function openQuotePDF(project, quote) {
+function openQuotePDF(project, quote, company={}) {
   const fmt  = n => (n||0).toLocaleString("ko-KR") + "원";
   const fmtN = n => (n||0).toLocaleString("ko-KR");
 
@@ -214,7 +232,7 @@ function openQuotePDF(project, quote) {
 
   // 유효기간 (오늘 + 30일)
   const today    = new Date();
-  const validEnd = new Date(today); validEnd.setDate(today.getDate() + 30);
+  const validEnd = new Date(today); validEnd.setDate(today.getDate() + (company.validDays||30));
   const dateStr  = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
 
   // 항목 행 생성
@@ -360,8 +378,11 @@ function openQuotePDF(project, quote) {
   <!-- 헤더 -->
   <div class="header">
     <div class="logo-area">
-      <img src="https://drive.google.com/file/d/1BCnVn8FlI2qeBMX9DW_aZsu4SfIEg8Ia/view?usp=drive_link" style="height:52px;object-fit:contain;"/>
-      <div class="company-name" style="margin-top:6px">NAMU CREATIVE</div>
+      ${company.logoUrl
+        ? `<img src="${company.logoUrl}" style="height:52px;max-width:160px;object-fit:contain;" onerror="this.style.display='none'"/>`
+        : `<div class="logo-box">🎬 로고 미설정</div>`
+      }
+      <div class="company-name" style="margin-top:6px">${company.name||"회사명"}</div>
     </div>
     <div class="doc-title-area">
       <div class="doc-title">견 적 서</div>
@@ -380,9 +401,12 @@ function openQuotePDF(project, quote) {
     </div>
     <div class="party-box from">
       <div class="party-label">발 신</div>
-      <div class="party-name">NAMUC</div>
-      <div class="party-project">담당 PD: ${project.pd||"-"}</div>
-      <div class="party-meta">감독: ${project.director||"-"}</div>
+      <div class="party-name">${company.name||"회사명"}</div>
+      <div class="party-project">담당 PD: ${project.pd||"-"} · 감독: ${project.director||"-"}</div>
+      ${company.phone ? `<div class="party-meta">📞 ${company.phone}</div>` : ""}
+      ${company.email ? `<div class="party-meta">✉️ ${company.email}</div>` : ""}
+      ${company.address ? `<div class="party-meta">📍 ${company.address}</div>` : ""}
+      ${company.bizNo ? `<div class="party-meta">사업자: ${company.bizNo}</div>` : ""}
     </div>
   </div>
 
@@ -445,12 +469,20 @@ function openQuotePDF(project, quote) {
     <div class="info-box">
       <div class="info-box-title">💬 특이사항 / 비고</div>
       <div class="note-area">
-        · 본 견적은 협의된 내용을 기준으로 작성되었습니다.<br/>
-        · 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.<br/>
-        · 계약금 50% 선입금 후 제작 착수합니다.
+        ${(company.quoteNote||"").split("\n").join("<br/>")}
       </div>
     </div>
   </div>
+
+  <!-- 계좌 정보 -->
+  ${(company.bankName||company.bankAccount) ? `
+  <div style="margin-bottom:6mm;">
+    <div class="info-box" style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;">
+      <div class="info-box-title" style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🏦 입금 계좌</div>
+      <div style="font-size:13px;font-weight:700;color:#1e293b;">${company.bankName||""} ${company.bankAccount||""}</div>
+      <div style="font-size:12px;color:#475569;margin-top:2px;">예금주: ${company.bankHolder||""}</div>
+    </div>
+  </div>` : ""}
 
   <!-- 서명란 -->
   <div class="sign-section">
@@ -462,14 +494,14 @@ function openQuotePDF(project, quote) {
     </div>
     <div class="sign-box">
       <div class="sign-label">담당자 확인</div>
-      <div class="sign-name">NAMUC · ${project.pd||"담당 PD"}</div>
+      <div class="sign-name">${company.name||"회사명"} · ${project.pd||"담당 PD"}</div>
       <div class="sign-line"></div>
       <div class="sign-hint">(서명 또는 날인)</div>
     </div>
   </div>
 
   <div class="footer">
-    NAMUC · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}
+    ${company.name||"회사명"} · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}
   </div>
 </div>
 
@@ -687,7 +719,7 @@ function QuoteEditor({ quote, onChange, exportProject }) {
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           {exportProject && (
-            <Btn sm onClick={()=>openQuotePDF(exportProject,q)}
+            <Btn sm onClick={()=>openQuotePDF(exportProject,q,company)}
               style={{background:"#2563eb10",color:C.blue,border:`1px solid #2563eb40`}}>
               📄 견적서 PDF 출력
             </Btn>
@@ -1140,6 +1172,119 @@ function SettlementView({ project, onConfirm }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 회사 설정 페이지
+// ═══════════════════════════════════════════════════════════
+function CompanySettings({ company, onChange }) {
+  const c = company;
+  const set = (k, v) => onChange({ ...c, [k]: v });
+
+  return (
+    <div>
+      <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>회사 설정</h2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+
+        {/* 기본 정보 */}
+        <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+            🏢 기본 정보
+          </div>
+          <Field label="회사명 *">
+            <input style={inp} value={c.name||""} onChange={e=>set("name",e.target.value)} placeholder="ex. NAMUC"/>
+          </Field>
+          <Field label="대표자명">
+            <input style={inp} value={c.ceo||""} onChange={e=>set("ceo",e.target.value)} placeholder="ex. 홍길동"/>
+          </Field>
+          <Field label="사업자등록번호">
+            <input style={inp} value={c.bizNo||""} onChange={e=>set("bizNo",e.target.value)} placeholder="ex. 123-45-67890"/>
+          </Field>
+          <Field label="주소">
+            <input style={inp} value={c.address||""} onChange={e=>set("address",e.target.value)} placeholder="ex. 서울시 마포구 ..."/>
+          </Field>
+          <Field label="전화번호">
+            <input style={inp} value={c.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="ex. 02-1234-5678"/>
+          </Field>
+          <Field label="이메일">
+            <input style={inp} value={c.email||""} onChange={e=>set("email",e.target.value)} placeholder="ex. hello@namuc.kr"/>
+          </Field>
+        </div>
+
+        {/* 로고 & 견적 설정 */}
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {/* 로고 */}
+          <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+              🖼️ 회사 로고
+            </div>
+            <Field label="로고 이미지 URL">
+              <input style={inp} value={c.logoUrl||""} onChange={e=>set("logoUrl",e.target.value)}
+                placeholder="https://... (구글드라이브, imgur 등)"/>
+            </Field>
+            {c.logoUrl ? (
+              <div style={{marginTop:8,padding:12,background:C.slateLight,borderRadius:10,textAlign:"center"}}>
+                <img src={c.logoUrl} alt="로고 미리보기"
+                  style={{maxHeight:60,maxWidth:"100%",objectFit:"contain"}}
+                  onError={e=>{e.target.style.display="none";}}/>
+                <div style={{fontSize:11,color:C.faint,marginTop:6}}>미리보기</div>
+              </div>
+            ) : (
+              <div style={{marginTop:8,padding:"16px 12px",background:C.slateLight,borderRadius:10,textAlign:"center",color:C.faint,fontSize:12}}>
+                URL 입력 시 미리보기가 표시됩니다
+              </div>
+            )}
+            <div style={{marginTop:10,padding:"10px 12px",background:C.blueLight,borderRadius:8,fontSize:12,color:C.blue}}>
+              💡 <b>로고 URL 얻는 법:</b><br/>
+              구글 드라이브에 이미지 업로드 → 공유 → "링크가 있는 모든 사용자"로 설정 →
+              파일 ID를 복사해서 아래 형식으로 입력:<br/>
+              <code style={{fontSize:11}}>https://drive.google.com/uc?id=파일ID</code>
+            </div>
+          </div>
+
+          {/* 계좌 정보 */}
+          <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+              🏦 계좌 정보 (견적서 하단 표시)
+            </div>
+            <Field label="은행명">
+              <input style={inp} value={c.bankName||""} onChange={e=>set("bankName",e.target.value)} placeholder="ex. 국민은행"/>
+            </Field>
+            <Field label="계좌번호">
+              <input style={inp} value={c.bankAccount||""} onChange={e=>set("bankAccount",e.target.value)} placeholder="ex. 123-456-7890"/>
+            </Field>
+            <Field label="예금주">
+              <input style={inp} value={c.bankHolder||""} onChange={e=>set("bankHolder",e.target.value)} placeholder="ex. (주)나믁"/>
+            </Field>
+          </div>
+        </div>
+
+        {/* 견적서 설정 (전체 너비) */}
+        <div style={{gridColumn:"1 / -1",background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+            📄 견적서 기본 설정
+          </div>
+          <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+            <Field label="견적 유효기간 (일)" half>
+              <input style={inp} type="number" value={c.validDays||30}
+                onChange={e=>set("validDays",Number(e.target.value)||30)}/>
+            </Field>
+            <Field label="특이사항 / 비고 기본 문구">
+              <textarea style={{...inp,minHeight:80,resize:"vertical"}}
+                value={c.quoteNote||""} onChange={e=>set("quoteNote",e.target.value)}
+                placeholder="견적서 하단에 표시될 기본 안내문구를 입력하세요"/>
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      {/* 미리보기 안내 */}
+      <div style={{marginTop:16,padding:"13px 18px",background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,fontSize:13,color:C.green}}>
+        ✅ 설정 내용은 자동 저장됩니다. 견적서 탭에서 <b>📄 견적서 PDF 출력</b> 버튼을 누르면 변경된 정보가 바로 반영됩니다.
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // 재무 대시보드
 // ═══════════════════════════════════════════════════════════
 function FinanceDash({ projects }) {
@@ -1237,6 +1382,15 @@ export default function App() {
 
   const [addProjModal, setAddProjModal] = useState(false);
   const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+  const [company,      setCompany]      = useState(() => {
+    try { return JSON.parse(localStorage.getItem("cf_company")||"null") || DEFAULT_COMPANY; }
+    catch(e) { return DEFAULT_COMPANY; }
+  });
+
+  // 회사 설정 localStorage 저장
+  useEffect(() => {
+    try { localStorage.setItem("cf_company", JSON.stringify(company)); } catch(e) {}
+  }, [company]);
 
   // Firebase 실시간 구독 (모든 useState 이후에 위치)
   useEffect(() => {
@@ -1331,7 +1485,7 @@ export default function App() {
         </div>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canViewFinance}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -1350,6 +1504,8 @@ export default function App() {
       <div style={{maxWidth:1400,margin:"0 auto",padding:"24px 24px 48px"}}>
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
+        ) : mainTab==="settings" ? (
+          <CompanySettings company={company} onChange={setCompany}/>
         ) : (
           <>
             {/* 프로젝트 정보 바 */}
