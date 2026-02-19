@@ -2619,21 +2619,62 @@ function FinanceDash({ projects }) {
       ) : (
         <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"20px 24px",marginBottom:28,overflowX:"auto"}}>
           <div style={{width:"100%"}}>
+            {/* 목표액 안내 */}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <span style={{fontSize:12,color:C.sub}}>월 목표 수주액</span>
+              <span style={{fontSize:13,fontWeight:800,color:"#1d4ed8"}}>3억원</span>
+            </div>
             {monthlyData.map((d,i)=>{
-              const color = ["#3b82f6","#8b5cf6","#f97316","#16a34a","#ef4444","#0891b2","#d97706","#db2777","#65a30d","#7c3aed"][i%10];
-              const pct = Math.max((d.order/maxOrder)*100, 1);
+              const TARGET = 300000000;
+              const COLORS = ["#3b82f6","#8b5cf6","#f97316","#16a34a","#ef4444","#0891b2","#d97706","#db2777","#65a30d","#7c3aed"];
+              const color = COLORS[i%10];
+              const achieved = d.order >= TARGET;
+              const barPct = Math.min((d.order/TARGET)*100, 100);
+              const overPct = d.order > TARGET ? Math.min(((d.order-TARGET)/TARGET)*60,40) : 0;
               return (
-                <div key={d.ym} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <div style={{width:80,textAlign:"right",fontSize:11,fontWeight:600,color:C.sub,flexShrink:0}}>{d.label}</div>
-                  <div style={{flex:1,background:"#f1f5f9",borderRadius:99,height:14,position:"relative"}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:99,
-                      background:`linear-gradient(90deg,${color},${color}cc)`,transition:"width .4s"}}/>
+                <div key={d.ym} style={{marginBottom:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                    <div style={{width:80,textAlign:"right",fontSize:11,fontWeight:600,color:C.sub,flexShrink:0}}>{d.label}</div>
+                    <div style={{flex:1,position:"relative",height:18}}>
+                      {/* 배경 트랙 */}
+                      <div style={{position:"absolute",inset:0,background:"#f1f5f9",borderRadius:99}}/>
+                      {/* 목표선 (100% 위치) */}
+                      <div style={{position:"absolute",left:"calc(100% * 300000000 / (300000000 * 1.4))",top:-4,bottom:-4,width:2,background:"#dc2626",borderRadius:2,zIndex:2}}/>
+                      {/* 수주 막대 */}
+                      <div style={{position:"absolute",left:0,top:0,height:"100%",
+                        width:`${(barPct/140)*100}%`,
+                        borderRadius:overPct>0?"99px":"99px",
+                        background:achieved?`linear-gradient(90deg,#16a34a,#22c55e)`:`linear-gradient(90deg,${color},${color}bb)`,
+                        transition:"width .5s",zIndex:1}}/>
+                      {/* 초과분 */}
+                      {overPct>0&&<div style={{position:"absolute",left:`${(100/140)*100}%`,top:2,height:"calc(100% - 4px)",
+                        width:`${(overPct/140)*100}%`,
+                        borderRadius:"0 99px 99px 0",
+                        background:"linear-gradient(90deg,#22c55e88,#22c55e44)",zIndex:1}}/>}
+                    </div>
+                    <div style={{width:70,fontSize:11,fontWeight:700,color:achieved?"#16a34a":color,flexShrink:0,textAlign:"right"}}>{fmtM(d.order)}</div>
+                    <div style={{width:48,flexShrink:0}}>
+                      {achieved
+                        ? <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:99,padding:"2px 6px"}}>✓ 달성</span>
+                        : <span style={{fontSize:10,fontWeight:700,color:"#ef4444",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:99,padding:"2px 6px"}}>{Math.round(barPct)}%</span>
+                      }
+                    </div>
                   </div>
-                  <div style={{width:60,fontSize:11,fontWeight:700,color:color,flexShrink:0}}>{fmtM(d.order)}</div>
-                  <div style={{width:24,fontSize:10,color:C.faint,flexShrink:0}}>{d.count}건</div>
+                  {/* 부족액 표시 */}
+                  {!achieved&&<div style={{paddingLeft:90,fontSize:10,color:"#ef4444"}}>
+                    목표까지 {fmtM(TARGET - d.order)} 부족
+                  </div>}
+                  {achieved&&d.order>TARGET&&<div style={{paddingLeft:90,fontSize:10,color:"#16a34a"}}>
+                    목표 초과 +{fmtM(d.order - TARGET)}
+                  </div>}
                 </div>
               );
             })}
+            {/* 목표선 범례 */}
+            <div style={{display:"flex",alignItems:"center",gap:6,paddingLeft:90,marginTop:4}}>
+              <div style={{width:16,height:3,background:"#dc2626",borderRadius:99}}/>
+              <span style={{fontSize:10,color:C.faint}}>목표 3억 기준선</span>
+            </div>
           </div>
 
         </div>
