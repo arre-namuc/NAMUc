@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  subscribeProjects, saveProject, deleteProject,
+  subscribeProjects, saveProject as fbSaveProject, deleteProject as fbDeleteProject,
   uploadFeedbackImage, subscribeCompany, saveCompany,
   subscribeMembers, saveMember, deleteMember,
   isConfigured,
@@ -2071,14 +2071,14 @@ export default function App(){
   const saveProject = async (p) => {
     const list = projects.find(x=>x.id===p.id) ? projects.map(x=>x.id===p.id?p:x) : [...projects, p];
     setProjects(list);
-    if(isConfigured()){ try{ await saveProject(p); }catch(e){ console.error(e); } }
+    if(isConfigured()){ try{ await fbSaveProject(p); }catch(e){ console.error(e); } }
     setProjectModal(null);
   };
 
   const handleDeleteProject = async (id) => {
     if(!window.confirm("프로젝트를 삭제하시겠습니까?")) return;
     setProjects(prev=>prev.filter(p=>p.id!==id));
-    if(isConfigured()){ try{ await deleteProject(id); }catch(e){ console.error(e); } }
+    if(isConfigured()){ try{ await fbDeleteProject(id); }catch(e){ console.error(e); } }
   };
 
   const saveMembersFn = async (list) => {
