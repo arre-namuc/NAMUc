@@ -1673,6 +1673,8 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const [uploadError, setUploadError] = useState("");
   const [lightbox, setLightbox] = useState(null);
   const [commentText, setCommentText] = useState("");
+  const [mentionSuggest, setMentionSuggest] = useState([]); // @멘션 후보
+  const commentRef = useRef(null);
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
@@ -1694,15 +1696,25 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const isAssignee = (fb) => (fb.assignees||[]).includes(user.name);
 
   const openAdd = () => {
-    setFf({receivedDate:today(), dueDate:"", title:"", content:"", assignees:[], pdStatus:"urgent", taskStatus:"review", fileUrl:"", detail:"", images:[]});
+    setFf({receivedDate:today(), dueDate:"", title:"", content:"", assignees:[], pdStatus:"urgent", taskStatus:"review", fileUrl:"", detail:"", images:[], tags:[], customTag:""});
     setModal("add");
   };
-  const openEdit = fb => { setFf({...fb, assignees:fb.assignees||[], images:fb.images||[]}); setModal("edit"); };
+  const openEdit = fb => { setFf({...fb, assignees:fb.assignees||[], images:fb.images||[], tags:fb.tags||[], customTag:""}); setModal("edit"); };
 
   const toggleAssignee = (name) => setFf(v => {
     const cur = v.assignees||[];
     return {...v, assignees: cur.includes(name) ? cur.filter(n=>n!==name) : [...cur, name]};
   });
+
+  const toggleTag = (tag) => setFf(v=>{
+    const cur = v.tags||[];
+    return {...v, tags: cur.includes(tag)?cur.filter(t=>t!==tag):[...cur, tag]};
+  });
+  const addCustomTag = () => {
+    const t = (ff.customTag||"").trim();
+    if(!t || (ff.tags||[]).includes(t)) return;
+    setFf(v=>({...v, tags:[...(v.tags||[]), t], customTag:""}));
+  };
 
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -1728,26 +1740,77 @@ function FeedbackTab({project, patchProj, user, accounts}) {
 
   const save = () => {
     if(!ff.title?.trim()) return;
+    const isNew = !ff.id;
+    const prevFb = feedbacks.find(f=>f.id===ff.id);
+    const prevAssignees = prevFb?.assignees||[];
     const entry = {...ff, id:ff.id||"fb"+Date.now(), images:ff.images||[], assignees:ff.assignees||[]};
     const list = modal==="edit" ? feedbacks.map(f=>f.id===entry.id?entry:f) : [...feedbacks, entry];
     patchProj(p=>({...p, feedbacks:list}));
+    // 새로 추가된 담당자에게 알림
+    const newAssignees = (ff.assignees||[]).filter(a=>!prevAssignees.includes(a)&&a!==user.name);
+    if(newAssignees.length>0) {
+      const notifs = newAssignees.map(name=>({
+        id: `assign-${entry.id}-${name}-${Date.now()}`,
+        type: "assign",
+        urgent: false,
+        label: "담당자 지정",
+        projName: project.name,
+        fbTitle: entry.title,
+        projId: project.id,
+        fbId: entry.id,
+        from: user.name,
+        to: name,
+        createdAt: new Date().toISOString(),
+        read: false,
+      }));
+      setNotifications(prev=>[...notifs, ...prev]);
+    }
     setModal(null);
   };
   const del = () => { patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)})); setModal(null); };
 
   const addComment = (fb) => {
     if(!commentText.trim()) return;
+    const text = commentText.trim();
     const comment = {
       id: "c"+Date.now(),
       author: user.name,
-      text: commentText.trim(),
+      text,
       createdAt: new Date().toISOString(),
     };
+    // @멘션 파싱 → 알림 생성
+    const mentionPattern = /@([^\s@]+)/g;
+    let m;
+    const newNotifs = [];
+    while((m=mentionPattern.exec(text))!==null) {
+      const mentionedName = m[1];
+      if(mentionedName !== user.name) {
+        newNotifs.push({
+          id: `mention-${comment.id}-${mentionedName}`,
+          type: "mention",
+          urgent: false,
+          label: "댓글 멘션",
+          projName: project.name,
+          fbTitle: fb.title||"(제목없음)",
+          projId: project.id,
+          fbId: fb.id,
+          from: user.name,
+          to: mentionedName,
+          commentText: text,
+          createdAt: comment.createdAt,
+          read: false,
+        });
+      }
+    }
+    if(newNotifs.length>0) {
+      setNotifications(prev=>[...newNotifs, ...prev]);
+    }
     const updated = {...fb, comments:[...(fb.comments||[]), comment]};
     const list = feedbacks.map(f=>f.id===fb.id?updated:f);
     patchProj(p=>({...p, feedbacks:list}));
     setDetail(updated);
     setCommentText("");
+    setMentionSuggest([]);
   };
 
   const deleteComment = (fb, commentId) => {
@@ -1834,6 +1897,12 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                     textDecoration:tskSt.id==="done"?"line-through":"none"}}>
                     {fb.title||"(제목없음)"}
                   </div>
+                  {(fb.tags||[]).length>0&&(
+                    <div style={{display:"flex",gap:3,flexWrap:"wrap",marginTop:3}}>
+                      {(fb.tags||[]).map(t=><span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                        background:"#ecfeff",color:"#0891b2",border:"1px solid #a5f3fc",fontWeight:600}}>#{t}</span>)}
+                    </div>
+                  )}
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
                   {assignees.length>0
@@ -1908,6 +1977,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
         <Modal title={detail.title||"피드백 상세"} onClose={()=>setDetail(null)}>
           <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
             {detail.stage&&<span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1.5px solid #ddd6fe"}}>📍 {detail.stage}</span>}
+            {(detail.tags||[]).map(t=><span key={t} style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:99,background:"#ecfeff",color:"#0891b2",border:"1px solid #a5f3fc"}}>#{t}</span>)}
             {(()=>{const s=PD_ST.find(x=>x.id===(detail.pdStatus||"urgent"))||PD_ST[0];return <span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:s.bg,color:s.color,border:`1.5px solid ${s.color}55`}}>PD · {s.icon} {s.label}</span>;})()}
             {(()=>{const s=TASK_ST.find(x=>x.id===(detail.taskStatus||"review"))||TASK_ST[0];return <span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:s.bg,color:s.color,border:`1.5px solid ${s.color}55`}}>담당 · {s.icon} {s.label}</span>;})()}
           </div>
@@ -1956,7 +2026,13 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                             )}
                           </div>
                         </div>
-                        <div style={{fontSize:13,color:C.dark,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{c.text}</div>
+                        <div style={{fontSize:13,color:C.dark,lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                          {c.text.split(/(@[^\s@]+)/g).map((part,i)=>
+                            part.startsWith("@")
+                              ? <span key={i} style={{color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:4,padding:"0 3px"}}>{part}</span>
+                              : part
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1966,11 +2042,50 @@ function FeedbackTab({project, patchProj, user, accounts}) {
             <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
               <Avatar name={user.name} size={28}/>
               <div style={{flex:1,position:"relative"}}>
+                {/* @멘션 자동완성 */}
+                {mentionSuggest.length>0&&(
+                  <div style={{position:"absolute",bottom:"100%",left:0,marginBottom:4,
+                    background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,
+                    boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:100,minWidth:160}}>
+                    {mentionSuggest.map(a=>(
+                      <div key={a.id} onClick={()=>{
+                        const cur = commentText;
+                        const atIdx = cur.lastIndexOf("@");
+                        setCommentText(cur.slice(0,atIdx)+"@"+a.name+" ");
+                        setMentionSuggest([]);
+                        commentRef.current?.focus();
+                      }} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                        cursor:"pointer",borderBottom:`1px solid ${C.border}`}}
+                        onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                        onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                        <Avatar name={a.name} size={22}/>
+                        <span style={{fontSize:13,fontWeight:600}}>{a.name}</span>
+                        <span style={{fontSize:11,color:C.faint}}>{a.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <textarea
+                  ref={commentRef}
                   value={commentText}
-                  onChange={e=>setCommentText(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addComment(detail);}}}
-                  placeholder="댓글을 입력하세요... (Enter로 전송, Shift+Enter 줄바꿈)"
+                  onChange={e=>{
+                    const val = e.target.value;
+                    setCommentText(val);
+                    // @멘션 감지
+                    const atIdx = val.lastIndexOf("@");
+                    if(atIdx!==-1 && (atIdx===0||val[atIdx-1]===" ")) {
+                      const query = val.slice(atIdx+1).toLowerCase();
+                      const suggestions = accounts.filter(a=>a.name.toLowerCase().includes(query)&&a.name!==user.name);
+                      setMentionSuggest(suggestions.slice(0,5));
+                    } else {
+                      setMentionSuggest([]);
+                    }
+                  }}
+                  onKeyDown={e=>{
+                    if(e.key==="Escape") setMentionSuggest([]);
+                    if(e.key==="Enter"&&!e.shiftKey&&mentionSuggest.length===0){e.preventDefault();addComment(detail);}
+                  }}
+                  placeholder="댓글을 입력하세요... (@이름 으로 멘션, Enter 전송)"
                   style={{...inp,resize:"none",minHeight:44,paddingRight:70,lineHeight:1.5}}/>
                 <button onClick={()=>addComment(detail)}
                   disabled={!commentText.trim()}
@@ -2013,6 +2128,35 @@ function FeedbackTab({project, patchProj, user, accounts}) {
             <Field label="수신일 *" half><input style={inp} type="date" value={ff.receivedDate||""} onChange={e=>setFf(v=>({...v,receivedDate:e.target.value}))}/></Field>
             <Field label="마감일" half><input style={inp} type="date" value={ff.dueDate||""} onChange={e=>setFf(v=>({...v,dueDate:e.target.value}))}/></Field>
           </div>
+          <Field label="태그">
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+              {["수정요청","컨펌","재촬영","색보정","자막","음악","VO","CG","로고","기타"].map(t=>{
+                const sel=(ff.tags||[]).includes(t);
+                return <button key={t} onClick={()=>toggleTag(t)}
+                  style={{padding:"4px 10px",borderRadius:99,cursor:"pointer",fontSize:11,fontWeight:sel?700:400,
+                    border:`1.5px solid ${sel?"#0891b2":C.border}`,
+                    background:sel?"#ecfeff":"#fff",color:sel?"#0891b2":C.sub}}>
+                  #{t}
+                </button>;
+              })}
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <input style={{...inp,flex:1}} value={ff.customTag||""} placeholder="직접 입력 후 Enter"
+                onChange={e=>setFf(v=>({...v,customTag:e.target.value}))}
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addCustomTag();}}}/>
+              <Btn onClick={addCustomTag}>추가</Btn>
+            </div>
+            {(ff.tags||[]).filter(t=>!["수정요청","컨펌","재촬영","색보정","자막","음악","VO","CG","로고","기타"].includes(t)).length>0&&(
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
+                {(ff.tags||[]).filter(t=>!["수정요청","컨펌","재촬영","색보정","자막","음악","VO","CG","로고","기타"].includes(t)).map(t=>(
+                  <span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:"#faf5ff",color:"#7c3aed",
+                    border:"1px solid #ddd6fe",display:"flex",alignItems:"center",gap:4}}>
+                    #{t}<button onClick={()=>toggleTag(t)} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:"#a78bfa",padding:0}}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Field>
           <Field label="피드백 내용">
             <textarea style={{...inp,resize:"vertical",minHeight:80}} value={ff.content||""} onChange={e=>setFf(v=>({...v,content:e.target.value}))} placeholder="클라이언트 피드백 내용..."/>
           </Field>
@@ -2979,6 +3123,8 @@ function App() {
   const [selId,        setSelId]        = useState("p1");
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
   const [dailyTodos,   setDailyTodos]   = useState({});
+  const [notifications, setNotifications] = useState([]);
+  const [showNotif,    setShowNotif]     = useState(false);
   const [formats,      setFormats]      = useState(()=>{
     try { return JSON.parse(localStorage.getItem("cf_formats")||"null") || FORMATS_DEFAULT; }
     catch(e) { return FORMATS_DEFAULT; }
@@ -3000,6 +3146,51 @@ function App() {
   const [viewMode,     setViewMode]     = useState("list");    // list | kanban
   const [taskModal,    setTaskModal]    = useState(null);
   const [tf,           setTf]           = useState({});
+
+  // D-day 알림 자동 생성
+  useEffect(() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const notifs = [];
+    projects.forEach(proj => {
+      (proj.feedbacks||[]).forEach(fb => {
+        if(!fb.dueDate || fb.taskStatus==="done") return;
+        const due = new Date(fb.dueDate); due.setHours(0,0,0,0);
+        const diff = Math.round((due-today)/(1000*60*60*24));
+        if(diff<=1 && diff>=-1) {
+          const label = diff<0?`D+${Math.abs(diff)} 초과`:diff===0?"오늘 마감":`내일 마감 (D-${diff})`;
+          notifs.push({
+            id: `fb-${fb.id}-due`,
+            type: "due",
+            urgent: diff<=0,
+            label,
+            projName: proj.name,
+            fbTitle: fb.title||"(제목없음)",
+            projId: proj.id,
+            fbId: fb.id,
+          });
+        }
+      });
+      // 태스크 마감
+      (proj.tasks||[]).forEach(task => {
+        if(!task.due || task.stage==="납품완료") return;
+        const due = new Date(task.due); due.setHours(0,0,0,0);
+        const diff = Math.round((due-today)/(1000*60*60*24));
+        if(diff<=1 && diff>=-1) {
+          const label = diff<0?`D+${Math.abs(diff)} 초과`:diff===0?"오늘 마감":`내일 마감`;
+          notifs.push({
+            id: `task-${task.id}-due`,
+            type: "task",
+            urgent: diff<=0,
+            label,
+            projName: proj.name,
+            fbTitle: task.title,
+            projId: proj.id,
+          });
+        }
+      });
+    });
+    setNotifications(notifs);
+  }, [projects]);
 
   if (!user) return <LoginScreen onLogin={setUser} accounts={accounts}/>;
 
@@ -3112,6 +3303,69 @@ return (
             </button>
           ))}
         </div>
+        {/* 알림 벨 */}
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setShowNotif(v=>!v)}
+            style={{position:"relative",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,
+              background:showNotif?"#eff6ff":"#fff",cursor:"pointer",fontSize:18,lineHeight:1}}>
+            🔔
+            {(()=>{
+              const myNotifs = notifications.filter(n=>
+                n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)
+              );
+              const hasUrgent = myNotifs.some(n=>n.urgent||n.type==="mention");
+              return myNotifs.length>0&&(
+                <span style={{position:"absolute",top:-4,right:-4,minWidth:17,height:17,
+                  borderRadius:99,background:hasUrgent?"#ef4444":"#f59e0b",
+                  color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",
+                  justifyContent:"center",padding:"0 3px",border:"2px solid #fff"}}>
+                  {myNotifs.length}
+                </span>
+              );
+            })()}
+          </button>
+          {showNotif&&(
+            <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,
+              background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,
+              boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:200,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:700,fontSize:14}}>알림</span>
+                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)).length}건</span>
+              </div>
+              {notifications.length===0
+                ? <div style={{padding:"24px",textAlign:"center",color:C.faint,fontSize:13}}>새 알림이 없습니다</div>
+                : <div style={{maxHeight:360,overflowY:"auto"}}>
+                    {notifications.filter(n=>n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)).map(n=>(
+                      <div key={n.id} onClick={()=>{setShowNotif(false);setMainTab("tasks");}}
+                        style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+                          cursor:"pointer",
+                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#f0fdf4":n.urgent?"#fff5f5":"#fff",
+                          transition:"background .1s"}}
+                        onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#f0fdf4":n.urgent?"#fff5f5":"#fff"}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                          <span style={{fontSize:13}}>
+                            {n.type==="mention"?"💬":n.type==="assign"?"👤":n.urgent?"🔴":"🟡"}
+                          </span>
+                          <span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:99,
+                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#16a34a":n.urgent?"#ef4444":"#f59e0b",
+                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#dcfce7":n.urgent?"#fef2f2":"#fffbeb"}}>
+                            {n.label}
+                          </span>
+                          {n.from&&<span style={{fontSize:11,color:C.faint}}>{n.from} →</span>}
+                        </div>
+                        <div style={{fontSize:12,fontWeight:600,color:C.dark,marginBottom:2}}>{n.fbTitle}</div>
+                        {n.commentText&&<div style={{fontSize:11,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{n.commentText}</div>}
+                        <div style={{fontSize:11,color:C.faint}}>{n.projName}</div>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+          )}
+        </div>
+
         {/* 유저 */}
         <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setUser(null)}>
           <Avatar name={user.name}/>
