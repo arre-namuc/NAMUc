@@ -2102,11 +2102,16 @@ export default function App() {
             <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 20px",marginBottom:20,display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",borderLeft:`4px solid ${proj.color}`}}>
               <div>
                 <div style={{fontWeight:800,fontSize:18}}>{proj.name}</div>
-                <div style={{fontSize:13,color:C.sub,marginTop:2}}>{proj.client} · {proj.format}</div>
+                <div style={{fontSize:13,color:C.sub,marginTop:2}}>{proj.client}{proj.agency&&` · ${proj.agency}`} · {proj.format}</div>
               </div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12,color:C.sub,marginLeft:"auto"}}>
                 {proj.director&&<span>🎬 {proj.director}</span>}
+                {proj.epd&&<span>🎯 EPD {proj.epd}</span>}
+                {proj.assistant&&<span>🎥 조감독 {proj.assistant}</span>}
                 {proj.pd&&<span>📋 {proj.pd}</span>}
+                {proj.agency&&<span>🏢 {proj.agency}</span>}
+                {proj.contactName&&<span>👤 {proj.contactName}{proj.contactPhone&&<span style={{color:C.faint}}> · {proj.contactPhone}</span>}</span>}
+                {proj.startDate&&<span>🗓 시작 {proj.startDate}</span>}
                 {proj.due&&<span>📅 납품 {proj.due}</span>}
                 <select value={proj.stage} onChange={e=>patchProj(p=>({...p,stage:e.target.value}))}
                   style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700}}>
