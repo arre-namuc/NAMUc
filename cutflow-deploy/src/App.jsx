@@ -1854,20 +1854,26 @@ const HOURS = Array.from({length:16}, (_,i)=>{
   return { key:`${String(h).padStart(2,"0")}:${m}`, label };
 }); // 09:00 ~ 16:30 (오전9시~오후5시)
 
-// 오전9시~오전12시 = 09:00~12:00 → 7슬롯 (09:00,09:30,...,11:30)
-const TODO_HOURS = Array.from({length:7}, (_,i)=>{
-  const h = 9 + Math.floor(i/2);
-  const m = i%2===0?"00":"30";
-  const label = `오전 ${h}:${m}`;
+// 오전9시~자정 = 09:00~24:00 → 30슬롯 (09:00,09:30,...,23:30)
+const TODO_HOURS = Array.from({length:30}, (_,i)=>{
+  const totalMin = 9*60 + i*30;
+  const h = Math.floor(totalMin/60);
+  const m = totalMin%60===0?"00":"30";
+  const hDisp = h%12===0?12:h%12;
+  const ampm = h<12?"오전":h===12?"오후":"오후";
+  const label = h<12?`오전 ${h}:${m}`:`오후 ${hDisp}:${m}`;
   return { key:`${String(h).padStart(2,"0")}:${m}`, label };
 });
 
-function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
+function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
   const [selDate, setSelDate] = useState(todayKey);
-  const [modal, setModal]     = useState(null); // {memberId, hour}
+  const [modal, setModal]     = useState(null);
   const [tf, setTf]           = useState({title:"",note:"",done:false});
+  // 드래그 상태
+  const [drag, setDrag]       = useState(null); // {memberId, startHour, endHour}
+  const [dragging, setDragging] = useState(false);
 
   // dailyTodos 구조: { "2026-02-20": { "m1": { "09:00": [{id,title,note,done}] } } }
   const todosOf = (memberId, hour) =>
@@ -1876,9 +1882,46 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
   const canEdit = (memberId) =>
     user.id === memberId || user.role === "PD" || user.canManageMembers;
 
+  // 드래그 핸들러
+  const onDragStart = (memberId, hour, e) => {
+    if(!canEdit(memberId)) return;
+    e.preventDefault();
+    setDragging(true);
+    setDrag({memberId, startHour:hour, endHour:hour});
+  };
+  const onDragEnter = (memberId, hour) => {
+    if(!dragging || !drag || drag.memberId!==memberId) return;
+    const hours = TODO_HOURS.map(h=>h.key);
+    const si = hours.indexOf(drag.startHour);
+    const ei = hours.indexOf(hour);
+    setDrag(d=>({...d, endHour: hour, startHour: si<=ei ? d.startHour : hour}));
+  };
+  const onDragEnd = () => {
+    if(!dragging || !drag) { setDragging(false); setDrag(null); return; }
+    const hours = TODO_HOURS.map(h=>h.key);
+    const si = hours.indexOf(drag.startHour);
+    const ei = hours.indexOf(drag.endHour);
+    const from = hours[Math.min(si,ei)];
+    const to   = hours[Math.max(si,ei)];
+    setDragging(false);
+    setTf({title:"",note:"",projId:"",done:false, startHour:from, endHour:to});
+    setModal({mode:"add", memberId:drag.memberId, hour:from, endHour:to});
+    setDrag(null);
+  };
+
+  // 드래그 선택 범위 확인
+  const isInDragRange = (memberId, hour) => {
+    if(!drag || drag.memberId!==memberId) return false;
+    const hours = TODO_HOURS.map(h=>h.key);
+    const si = hours.indexOf(drag.startHour);
+    const ei = hours.indexOf(drag.endHour);
+    const ci = hours.indexOf(hour);
+    return ci>=Math.min(si,ei) && ci<=Math.max(si,ei);
+  };
+
   const openModal = (memberId, hour) => {
     if(!canEdit(memberId)) return;
-    setTf({title:"",note:"",done:false});
+    setTf({title:"",note:"",projId:"",done:false});
     setModal({mode:"add", memberId, hour});
   };
   const openEdit = (memberId, hour, todo, e) => {
@@ -1890,17 +1933,24 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
 
   const save = () => {
     if(!tf.title?.trim()) return;
-    const {memberId, hour} = modal;
-    const entry = {...tf, id: modal.id||"td"+Date.now()};
+    const {memberId, hour, endHour} = modal;
+    const baseId = modal.id||"td"+Date.now();
+    const entry = {...tf, id: baseId, endHour: endHour||hour};
     setDailyTodos(prev => {
-      const day   = {...(prev[selDate]||{})};
-      const mem   = {...(day[memberId]||{})};
-      const slot  = [...(mem[hour]||[])];
+      const day = {...(prev[selDate]||{})};
+      const mem = {...(day[memberId]||{})};
       if(modal.mode==="edit") {
+        const slot = [...(mem[hour]||[])];
         const idx = slot.findIndex(t=>t.id===modal.id);
-        if(idx!==-1) slot[idx] = entry; else slot.push(entry);
-      } else slot.push(entry);
-      mem[hour] = slot; day[memberId] = mem;
+        if(idx!==-1) slot[idx]=entry; else slot.push(entry);
+        mem[hour] = slot;
+      } else {
+        // 드래그 범위의 시작 슬롯에만 저장 (endHour 정보 포함)
+        const slot = [...(mem[hour]||[])];
+        slot.push(entry);
+        mem[hour] = slot;
+      }
+      day[memberId] = mem;
       return {...prev, [selDate]:day};
     });
     setModal(null);
@@ -1959,7 +2009,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
       </div>
 
       {/* 타임테이블 */}
-      <div style={{overflowX:"auto"}}>
+      <div style={{overflowX:"auto"}} onMouseUp={()=>{ if(dragging) onDragEnd(); }} onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
         <div style={{minWidth: 80 + accounts.length * COL_W}}>
           {/* 헤더 - 구성원 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
@@ -1985,14 +2035,22 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
                 const todos = todosOf(acc.id, key);
                 const editable = canEdit(acc.id);
                 return (
-                  <div key={acc.id} onClick={()=>openModal(acc.id, key)}
-                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",borderRight:`1px solid ${C.border}22`,background:editable?"transparent":"#fafafa",cursor:editable?"pointer":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden"}}>
+                  <div key={acc.id}
+                    onClick={()=>{ if(!dragging) openModal(acc.id, key); }}
+                    onMouseDown={e=>onDragStart(acc.id, key, e)}
+                    onMouseEnter={()=>onDragEnter(acc.id, key)}
+                    onMouseUp={()=>{ if(dragging) onDragEnd(); }}
+                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",borderRight:`1px solid ${C.border}22`,background:isInDragRange(acc.id,key)?"#dbeafe":editable?"transparent":"#fafafa",cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",transition:"background .05s"}}>
                     {todos.map(todo=>(
                       <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
                         style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:todo.done?"#f0fdf4":"#eff6ff",border:`1px solid ${todo.done?"#86efac":"#bfdbfe"}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
                         <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly
                           style={{accentColor:C.green,cursor:editable?"pointer":"default",flexShrink:0}}/>
-                        <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
+                        <div style={{overflow:"hidden",minWidth:0}}>
+                          {todo.endHour&&todo.endHour!==key&&<span style={{fontSize:9,color:C.faint,marginRight:3}}>↕ {todo.endHour}까지</span>}
+                          {todo.projId && (()=>{const p=(projects||[]).find(p=>p.id===todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
+                          <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
+                        </div>
                       </div>
                     ))}
                     {editable && todos.length===0 && (
@@ -2014,8 +2072,14 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
       {modal && (
         <Modal title={modal.mode==="add"?"할 일 추가":"할 일 수정"} onClose={()=>setModal(null)}>
           <div style={{fontSize:12,color:C.sub,marginBottom:12,padding:"6px 10px",background:C.slateLight,borderRadius:8}}>
-            📅 {selDate} &nbsp;·&nbsp; 🕐 {modal.hour} &nbsp;·&nbsp; 👤 {accounts.find(a=>a.id===modal.memberId)?.name}
+            📅 {selDate} &nbsp;·&nbsp; 🕐 {modal.hour}{modal.endHour&&modal.endHour!==modal.hour?` ~ ${modal.endHour}`:""} &nbsp;·&nbsp; 👤 {accounts.find(a=>a.id===modal.memberId)?.name}
           </div>
+          <Field label="프로젝트">
+            <select style={inp} value={tf.projId||""} onChange={e=>setTf(v=>({...v,projId:e.target.value}))}>
+              <option value="">— 없음 —</option>
+              {(projects||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
           <Field label="할 일 *"><input style={inp} autoFocus value={tf.title||""} onChange={e=>setTf(v=>({...v,title:e.target.value}))} placeholder="할 일을 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
           <Field label="메모"><input style={inp} value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세 내용 (선택)"/></Field>
           <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:8}}>
@@ -2619,7 +2683,7 @@ return (
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
         ) : mainTab==="daily-todo" ? (
-          <DailyTodo accounts={accounts} user={user} dailyTodos={dailyTodos} setDailyTodos={setDailyTodos}/>
+          <DailyTodo accounts={accounts} user={user} dailyTodos={dailyTodos} setDailyTodos={setDailyTodos} projects={projects}/>
         ) : mainTab==="master-calendar" ? (
           <MasterCalendar projects={projects} user={user} onCalName={(id,v)=>setProjects(ps=>ps.map(p=>p.id===id?{...p,calName:v}:p))}/>
         ) : mainTab==="settings" ? (
