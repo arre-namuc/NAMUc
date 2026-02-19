@@ -1935,13 +1935,13 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
     setDrag(d=>({...d, endHour: hour, startHour: si<=ei ? d.startHour : hour}));
   };
   // mouseDownCell이 바뀌면 drag 초기화
-  React.useEffect(()=>{
+  useEffect(()=>{
     if(mouseDownCell) setDrag({memberId:mouseDownCell.memberId, startHour:mouseDownCell.hour, endHour:mouseDownCell.hour});
     else setDrag(null);
   }, [mouseDownCell]);
 
   // document mouseup - 어디서 마우스를 떼도 드래그 종료
-  React.useEffect(()=>{
+  useEffect(()=>{
     const up = () => {
       if(mouseDownCell && !dragging) {
         // 드래그 없이 mouseup = 단순 클릭, openModal은 onClick이 처리
