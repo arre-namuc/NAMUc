@@ -4,6 +4,8 @@ import {
   saveProject,
   deleteProject,
   uploadVoucherFile,
+  subscribeCompany,
+  saveCompany,
   isConfigured,
 } from "./firebase.js";
 
@@ -1390,27 +1392,24 @@ export default function App() {
 
   const [addProjModal, setAddProjModal] = useState(false);
   const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
-  const [company,      setCompany]      = useState(() => {
-    try { return JSON.parse(localStorage.getItem("cf_company")||"null") || DEFAULT_COMPANY; }
-    catch(e) { return DEFAULT_COMPANY; }
-  });
-
-  // 회사 설정 localStorage 저장
-  useEffect(() => {
-    try { localStorage.setItem("cf_company", JSON.stringify(company)); } catch(e) {}
-  }, [company]);
+  const [company,      setCompany]      = useState(DEFAULT_COMPANY);
 
   // Firebase 실시간 구독 (모든 useState 이후에 위치)
   useEffect(() => {
     if (!isConfigured) return;
-    const unsub = subscribeProjects((fbProjects) => {
+    // 프로젝트 구독
+    const unsubProjects = subscribeProjects((fbProjects) => {
       if (fbProjects.length > 0) {
         setProjects(fbProjects);
         setSelId(prev => fbProjects.find(p => p.id === prev) ? prev : fbProjects[0].id);
       }
       setFbReady(true);
     });
-    return () => unsub();
+    // 회사 설정 구독
+    const unsubCompany = subscribeCompany((data) => {
+      setCompany(prev => ({ ...DEFAULT_COMPANY, ...data }));
+    });
+    return () => { unsubProjects(); unsubCompany(); };
   }, []);
 
   if (!user) return <LoginScreen onLogin={setUser}/>;
@@ -1513,7 +1512,10 @@ export default function App() {
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
         ) : mainTab==="settings" ? (
-          <CompanySettings company={company} onChange={setCompany}/>
+          <CompanySettings company={company} onChange={(updated) => {
+            setCompany(updated);
+            if (isConfigured) saveCompany(updated).catch(console.error);
+          }}/>
         ) : (
           <>
             {/* 프로젝트 정보 바 */}
