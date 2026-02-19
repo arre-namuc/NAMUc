@@ -1382,7 +1382,7 @@ export default function App() {
         </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -1430,7 +1430,12 @@ export default function App() {
 
             {/* 태스크 탭 */}
             <TabBar
-              tabs={[{id:"tasks",icon:"📋",label:"태스크"},{id:"quote",icon:"💵",label:"견적서"},{id:"budget",icon:"📒",label:"실행예산서"},{id:"settlement",icon:"📊",label:"결산서"}]}
+              tabs={[
+                {id:"tasks",icon:"📋",label:"태스크"},
+                {id:"quote",icon:"💵",label:"견적서",locked:!canAccessFinance},
+                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessFinance},
+                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessFinance},
+              ]}
               active={docTab} onChange={setDocTab}
             />
 
