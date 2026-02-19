@@ -1908,7 +1908,7 @@ function MasterCalendar({ projects, user, onCalName }) {
     for(let d=1;d<=daysInMonth;d++) cells.push(d);
 
     return (
-      <div style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 12px",minWidth:0}}>
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"22px 20px",width:"100%"}}>
         <div style={{fontWeight:800,fontSize:14,marginBottom:10,color:C.dark}}>{year}년 {month+1}월</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,marginBottom:3}}>
           {DAYS.map((d,i)=>(
@@ -1990,7 +1990,7 @@ function MasterCalendar({ projects, user, onCalName }) {
       )}
 
       {/* 3개월 달력 */}
-      <div style={{display:"flex",gap:12}}>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
         {months.map(({year,month})=><MiniCal key={`${year}-${month}`} year={year} month={month}/>)}
       </div>
 
