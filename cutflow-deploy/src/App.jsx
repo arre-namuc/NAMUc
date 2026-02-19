@@ -1685,16 +1685,27 @@ function FeedbackTab({project, patchProj, user, accounts}) {
     return {...v, assignees: cur.includes(name) ? cur.filter(n=>n!==name) : [...cur, name]};
   });
 
+  const [uploadError, setUploadError] = useState("");
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     setUploading(true);
+    setUploadError("");
+    // input 초기화 (같은 파일 재선택 가능하게)
+    e.target.value = "";
     try {
       const fbId = ff.id || "fb"+Date.now();
-      const uploaded = await Promise.all(files.map(f => uploadFeedbackImage(project.id, fbId, f)));
+      const pid = project?.id || "unknown";
+      const uploaded = [];
+      for(const f of files) {
+        const result = await uploadFeedbackImage(pid, fbId, f);
+        uploaded.push(result);
+      }
       setFf(v=>({...v, images:[...(v.images||[]), ...uploaded]}));
-    } catch(err) { alert("업로드 실패: "+err.message); }
-    finally { setUploading(false); }
+    } catch(err) {
+      console.error("이미지 업로드 에러:", err);
+      setUploadError("업로드 실패: " + (err.message||"알 수 없는 오류"));
+    } finally { setUploading(false); }
   };
   const removeImage = (i) => setFf(v=>({...v, images:(v.images||[]).filter((_,j)=>j!==i)}));
 
@@ -1885,6 +1896,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
               <span>{uploading?"업로드 중...":"이미지 선택 (여러 장 가능)"}</span>
               <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleImageUpload} disabled={uploading}/>
             </label>
+            {uploadError&&<div style={{marginTop:6,fontSize:12,color:"#ef4444",padding:"6px 10px",background:"#fef2f2",borderRadius:6}}>{uploadError}</div>}
             {(ff.images||[]).length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>{ff.images.map((img,i)=><div key={i} style={{position:"relative"}}><img src={img.url} alt={img.name} onClick={()=>setLightbox({images:ff.images,idx:i})} style={{width:72,height:72,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`1px solid ${C.border}`}}/><button onClick={()=>removeImage(i)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:99,border:"none",background:"#ef4444",color:"#fff",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button></div>)}</div>}
           </Field>
           <Field label="상태">
