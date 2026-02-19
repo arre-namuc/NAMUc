@@ -741,6 +741,7 @@ tr:hover td{background:#f8fafc}
 // ═══════════════════════════════════════════════════════════
 // 공통 UI 컴포넌트
 // ═══════════════════════════════════════════════════════════
+const btnSm = {padding:"4px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:"#fff",cursor:"pointer",fontSize:12,fontWeight:500};
 const inp = {width:"100%",padding:"9px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
 function Btn({ children, primary, danger, ghost, sm, onClick, style={}, disabled }) {
@@ -1854,222 +1855,166 @@ const HOURS = Array.from({length:16}, (_,i)=>{
   return { key:`${String(h).padStart(2,"0")}:${m}`, label };
 }); // 09:00 ~ 16:30 (오전9시~오후5시)
 
-// 시간 슬롯 생성 함수
-const makeHourSlots = (startH, endH) => {
-  const slots = [];
-  for(let h=startH; h<endH; h++){
-    for(let m of [0,30]){
-      const hStr = String(h).padStart(2,"0");
-      const mStr = m===0?"00":"30";
-      const hDisp = h===0?12:h>12?h-12:h;
-      const ampm = h<12?"오전":h===12?"오후":"오후";
-      const label = h<12?`오전 ${h}:${mStr}`:(h===12?`오후 12:${mStr}`:`오후 ${hDisp}:${mStr}`);
-      slots.push({key:`${hStr}:${mStr}`, label});
-    }
-  }
-  return slots;
-};
-
+// ═══════════════════════════════════════════════════════════
+// 데일리 TODO
+// ═══════════════════════════════════════════════════════════
 const TODO_CATS = [
-  { id:"meal",     label:"🍱 식사",     color:"#f97316" },
-  { id:"outside",  label:"🚗 외근",     color:"#8b5cf6" },
-  { id:"meeting",  label:"💬 회의",     color:"#2563eb" },
-  { id:"rest",     label:"☕ 휴식",     color:"#16a34a" },
-  { id:"personal", label:"📝 개인업무", color:"#64748b" },
+  {id:"meal",label:"🍱 식사",color:"#f97316"},
+  {id:"outside",label:"🚗 외근",color:"#8b5cf6"},
+  {id:"meeting",label:"💬 회의",color:"#2563eb"},
+  {id:"rest",label:"☕ 휴식",color:"#16a34a"},
+  {id:"personal",label:"📝 개인업무",color:"#64748b"},
 ];
 
-function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
+function makeSlots(sh, eh) {
+  const s=[];
+  for(let h=sh;h<eh;h++) for(let m of [0,30]){
+    const hh=String(h).padStart(2,"0"), mm=m===0?"00":"30";
+    const lh=h===0?12:h>12?h-12:h, ap=h<12?"오전":"오후";
+    s.push({key:`${hh}:${mm}`, label:`${ap} ${lh}:${mm}`});
+  }
+  return s;
+}
+
+function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
   const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  const pad = n=>String(n).padStart(2,"0");
+  const todayKey = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+
   const [selDate, setSelDate] = useState(todayKey);
-  const [modal, setModal]     = useState(null);
-  const [tf, setTf]           = useState({title:"",note:"",done:false});
-  const [drag, setDrag]       = useState(null);
-  const dragRef               = useRef({active:false, memberId:null, startHour:null, endHour:null, moved:false});
-  const [startH, setStartH]   = useState(10); // 표시 시작 시각
-  const [endH,   setEndH]     = useState(19); // 표시 종료 시각 (exclusive)
-  const TODO_HOURS = makeHourSlots(startH, endH);
+  const [sh, setSh] = useState(10);
+  const [eh, setEh] = useState(19);
+  const [modal, setModal] = useState(null);
+  const [tf, setTf] = useState({});
 
-  // dailyTodos 구조: { "2026-02-20": { "m1": { "09:00": [{id,title,note,done}] } } }
-  const todosOf = (memberId, hour) =>
-    ((dailyTodos[selDate]||{})[memberId]||{})[hour] || [];
+  const slots = makeSlots(sh, eh);
 
-  // 이 셀(hour)이 포함되는 todo 블록 찾기 (시작 셀이 아닌 범위 내 셀)
-  const getCoveringTodo = (memberId, hour) => {
-    const memberSlots = (dailyTodos[selDate]||{})[memberId]||{};
-    for(const [startKey, todos] of Object.entries(memberSlots)){
-      for(const todo of todos){
-        if(!todo.endHour || todo.endHour===startKey) continue;
-        const hours = TODO_HOURS.map(h=>h.key);
-        const si = hours.indexOf(startKey);
-        const ei = hours.indexOf(todo.endHour);
-        const ci = hours.indexOf(hour);
-        if(ci>si && ci<=ei) return {todo, startKey};
+  const todosOf = (mid, hour) =>
+    ((dailyTodos[selDate]||{})[mid]||{})[hour]||[];
+
+  // 이 칸이 범위 블록의 일부인지 확인
+  const getCovering = (mid, hour) => {
+    const mem = (dailyTodos[selDate]||{})[mid]||{};
+    for(const [sk, ts] of Object.entries(mem)) {
+      for(const t of ts) {
+        if(!t.endHour||t.endHour===sk) continue;
+        const keys = slots.map(s=>s.key);
+        const si=keys.indexOf(sk), ei=keys.indexOf(t.endHour), ci=keys.indexOf(hour);
+        if(ci>si&&ci<=ei) return {todo:t,startKey:sk};
       }
     }
     return null;
   };
 
-  const canEdit = (memberId) =>
-    user.id === memberId || user.role === "PD" || user.canManageMembers;
+  const canEdit = mid => user.id===mid||user.role==="PD"||user.canManageMembers;
 
-  // 드래그 핸들러 (useRef로 stale closure 방지)
-  const onCellMouseDown = (memberId, hour, e) => {
-    if(!canEdit(memberId)) return;
-    dragRef.current = {active:true, memberId, startHour:hour, endHour:hour, moved:false};
-  };
-  const onCellMouseEnter = (memberId, hour) => {
-    const r = dragRef.current;
-    if(!r.active || r.memberId!==memberId || r.startHour===hour) return;
-    dragRef.current = {...r, endHour:hour, moved:true};
-    setDrag({memberId, startHour:r.startHour, endHour:hour});
-  };
-  const onCellMouseUp = (memberId, hour, e) => {
-    const r = dragRef.current;
-    dragRef.current = {active:false, memberId:null, startHour:null, endHour:null, moved:false};
-    if(!r.active) return;
-    if(!r.moved) {
-      // 드래그 없는 단순 클릭 → 직접 처리
-      setDrag(null);
-      return;
-    }
-    // 드래그 완료
-    setDrag(null);
-    const hours = TODO_HOURS.map(h=>h.key);
-    const si = hours.indexOf(r.startHour);
-    const ei = hours.indexOf(r.endHour);
-    const from = hours[Math.min(si,ei)];
-    const to   = hours[Math.max(si,ei)];
-    setTf({title:"",note:"",projId:"",done:false,dnd:false,cat:"", startHour:from, endHour:to});
-    setModal({mode:"add", memberId:r.memberId, hour:from, endHour:to});
+  const openAdd = (mid, hour) => {
+    if(!canEdit(mid)) return;
+    setTf({cat:"",note:"",projId:"",dnd:false,done:false});
+    setModal({mode:"add", mid, hour, endHour:hour});
   };
 
-
-  // 드래그 선택 범위 확인 + 위치(first/last/middle)
-  const getDragPos = (memberId, hour) => {
-    if(!drag || drag.memberId!==memberId) return null; // drag state는 렌더용
-    const hours = TODO_HOURS.map(h=>h.key);
-    const si = Math.min(hours.indexOf(drag.startHour), hours.indexOf(drag.endHour));
-    const ei = Math.max(hours.indexOf(drag.startHour), hours.indexOf(drag.endHour));
-    const ci = hours.indexOf(hour);
-    if(ci<si||ci>ei) return null;
-    if(si===ei) return "single";
-    if(ci===si) return "first";
-    if(ci===ei) return "last";
-    return "middle";
-  };
-  const isInDragRange = (memberId, hour) => getDragPos(memberId, hour)!==null;
-
-  const openModal = (memberId, hour) => {
-    if(!canEdit(memberId)) return;
-    setTf({title:"",note:"",projId:"",done:false,dnd:false,cat:""});
-    setModal({mode:"add", memberId, hour});
-  };
-  const openEdit = (memberId, hour, todo, e) => {
-    e.stopPropagation();
-    if(!canEdit(memberId)) return;
+  const openEdit = (mid, hour, todo) => {
+    if(!canEdit(mid)) return;
     setTf({...todo});
-    setModal({mode:"edit", memberId, hour, id:todo.id});
+    setModal({mode:"edit", mid, hour, id:todo.id});
   };
 
   const save = () => {
-    if(!tf.note?.trim()&&!tf.cat) return;
-    const {memberId, hour, endHour} = modal;
-    const baseId = modal.id||"td"+Date.now();
-    const entry = {...tf, title:tf.note||tf.cat||"업무", id: baseId, endHour: endHour||hour};
-    setDailyTodos(prev => {
-      const day = {...(prev[selDate]||{})};
-      const mem = {...(day[memberId]||{})};
-      if(modal.mode==="edit") {
-        const slot = [...(mem[hour]||[])];
-        const idx = slot.findIndex(t=>t.id===modal.id);
-        if(idx!==-1) slot[idx]=entry; else slot.push(entry);
-        mem[hour] = slot;
-      } else {
-        // 드래그 범위의 시작 슬롯에만 저장 (endHour 정보 포함)
-        const slot = [...(mem[hour]||[])];
-        slot.push(entry);
-        mem[hour] = slot;
-      }
-      day[memberId] = mem;
-      return {...prev, [selDate]:day};
+    const {mid, hour, endHour} = modal;
+    const entry = {...tf, id:modal.id||"td"+Date.now(), endHour:endHour||hour, title:tf.note||TODO_CATS.find(c=>c.id===tf.cat)?.label||"업무"};
+    setDailyTodos(prev=>{
+      const day={...prev[selDate]}, mem={...(day[mid]||{})}, slot=[...(mem[hour]||[])];
+      if(modal.mode==="edit"){const i=slot.findIndex(t=>t.id===modal.id);i!==-1?slot[i]=entry:slot.push(entry);}
+      else slot.push(entry);
+      return {...prev,[selDate]:{...day,[mid]:{...mem,[hour]:slot}}};
     });
     setModal(null);
   };
 
   const del = () => {
-    const {memberId, hour} = modal;
-    setDailyTodos(prev => {
-      const day  = {...(prev[selDate]||{})};
-      const mem  = {...(day[memberId]||{})};
-      mem[hour]  = (mem[hour]||[]).filter(t=>t.id!==modal.id);
-      day[memberId] = mem;
-      return {...prev, [selDate]:day};
+    const {mid, hour} = modal;
+    setDailyTodos(prev=>{
+      const day={...prev[selDate]}, mem={...(day[mid]||{})};
+      return {...prev,[selDate]:{...day,[mid]:{...mem,[hour]:(mem[hour]||[]).filter(t=>t.id!==modal.id)}}};
     });
     setModal(null);
   };
 
-  const toggleDone = (memberId, hour, todoId, e) => {
-    e.stopPropagation();
-    if(!canEdit(memberId)) return;
-    setDailyTodos(prev => {
-      const day  = {...(prev[selDate]||{})};
-      const mem  = {...(day[memberId]||{})};
-      mem[hour]  = (mem[hour]||[]).map(t=>t.id===todoId?{...t,done:!t.done}:t);
-      day[memberId] = mem;
-      return {...prev, [selDate]:day};
+  const toggleDone = (mid, hour, id) => {
+    setDailyTodos(prev=>{
+      const day={...prev[selDate]}, mem={...(day[mid]||{})};
+      return {...prev,[selDate]:{...day,[mid]:{...mem,[hour]:(mem[hour]||[]).map(t=>t.id===id?{...t,done:!t.done}:t)}}};
     });
   };
 
-  // 날짜 이동
-  const moveDate = (d) => {
-    const dt = new Date(selDate); dt.setDate(dt.getDate()+d);
-    setSelDate(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`);
-  };
-  const dateLabel = () => {
-    const dt = new Date(selDate);
-    const days = ["일","월","화","수","목","금","토"];
-    return `${dt.getFullYear()}년 ${dt.getMonth()+1}월 ${dt.getDate()}일 (${days[dt.getDay()]})`;
+  const moveDate = d => {
+    const dt=new Date(selDate); dt.setDate(dt.getDate()+d);
+    setSelDate(`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`);
   };
 
-  const COL_W = 140;
-  const ROW_H = 72;
+  const dateLabel = () => {
+    const dt=new Date(selDate);
+    return `${dt.getFullYear()}년 ${dt.getMonth()+1}월 ${dt.getDate()}일 (${["일","월","화","수","목","금","토"][dt.getDay()]})`;
+  };
+
+  const COL=140, ROW=70;
+
+  const TodoItem = ({todo, mid, hour, isCovering}) => {
+    const cat = TODO_CATS.find(c=>c.id===todo.cat);
+    const proj = (projects||[]).find(p=>p.id===todo.projId);
+    const bg = todo.done?"#f0fdf4":cat?cat.color+"18":"#eff6ff";
+    const bd = todo.done?"#86efac":cat?cat.color+"70":"#bfdbfe";
+    return (
+      <div onClick={e=>{e.stopPropagation();openEdit(mid,hour,todo);}}
+        style={{display:"flex",alignItems:"flex-start",gap:4,padding:"3px 6px",borderRadius:6,
+          background:bg,border:`1px solid ${bd}`,marginBottom:2,
+          cursor:canEdit(mid)?"pointer":"default",userSelect:"none"}}>
+        <input type="checkbox" checked={!!todo.done}
+          onClick={e=>{e.stopPropagation();toggleDone(mid,hour,todo.id);}}
+          style={{accentColor:"#16a34a",marginTop:2,flexShrink:0,cursor:"pointer"}}/>
+        <div style={{minWidth:0,flex:1}}>
+          {cat&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:cat.color+"25",color:cat.color,fontWeight:700,marginRight:3,display:"inline-block"}}>{cat.label}</span>}
+          {todo.dnd&&<span style={{fontSize:9,padding:"1px 3px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
+          {proj&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:proj.color+"22",color:proj.color,fontWeight:700,marginRight:3}}>{proj.name}</span>}
+          <span style={{fontSize:11,fontWeight:600,color:todo.done?"#94a3b8":C.dark,textDecoration:todo.done?"line-through":"none"}}>{todo.note||cat?.label||"업무"}</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
-      {/* 날짜 선택 헤더 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>moveDate(-1)} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>‹</button>
-          <span style={{fontWeight:800,fontSize:17}}>{dateLabel()}</span>
-          <button onClick={()=>moveDate(1)} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>›</button>
-          <button onClick={()=>setSelDate(todayKey)} style={{border:`1px solid ${C.border}`,background:selDate===todayKey?C.blue:C.white,color:selDate===todayKey?"#fff":C.sub,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>오늘</button>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>moveDate(-1)} style={{...btnSm}}>‹</button>
+          <span style={{fontWeight:800,fontSize:16}}>{dateLabel()}</span>
+          <button onClick={()=>moveDate(1)} style={{...btnSm}}>›</button>
+          <button onClick={()=>setSelDate(todayKey)} style={{...btnSm,background:selDate===todayKey?C.blue:"#f1f5f9",color:selDate===todayKey?"#fff":C.sub}}>오늘</button>
         </div>
-        <input type="date" value={selDate} onChange={e=>setSelDate(e.target.value)}
-          style={{...inp,width:160,fontSize:13}}/>
+        <input type="date" value={selDate} onChange={e=>setSelDate(e.target.value)} style={{...inp,width:150,fontSize:13}}/>
       </div>
 
-      {/* 시간 범위 조절 */}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+      {/* 시간 범위 */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,flexWrap:"wrap"}}>
         <span style={{fontSize:12,color:C.sub,fontWeight:600}}>표시 시간</span>
-        <button onClick={()=>setStartH(h=>Math.max(0,h-1))} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12}}>← 앞 추가</button>
-        <span style={{fontSize:12,fontWeight:700,color:C.dark,minWidth:80,textAlign:"center"}}>
-          {startH<12?`오전 ${startH}시`:`오후 ${startH===12?12:startH-12}시`} ~ {endH<=12?`오전 ${endH}시`:`오후 ${endH===12?12:endH-12}시`}
-        </span>
-        <button onClick={()=>setEndH(h=>Math.min(24,h+1))} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12}}>뒤 추가 →</button>
-        <button onClick={()=>setStartH(h=>Math.min(h+1,endH-1))} disabled={endH-startH<=1} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12,color:C.faint}}>← 앞 줄이기</button>
-        <button onClick={()=>setEndH(h=>Math.max(startH+1,h-1))} disabled={endH-startH<=1} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:12,color:C.faint}}>뒤 줄이기 →</button>
-        <button onClick={()=>{setStartH(10);setEndH(19);}} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:11,color:C.faint}}>초기화</button>
+        <button onClick={()=>setSh(h=>Math.max(0,h-1))} style={{...btnSm}}>← 앞 추가</button>
+        <span style={{fontSize:12,fontWeight:700,minWidth:120,textAlign:"center"}}>{sh<12?`오전 ${sh}시`:`오후 ${sh===12?12:sh-12}시`} ~ {eh<=12?`오전 ${eh}시`:`오후 ${eh===12?12:eh-12}시`}</span>
+        <button onClick={()=>setEh(h=>Math.min(24,h+1))} style={{...btnSm}}>뒤 추가 →</button>
+        <button onClick={()=>setSh(h=>Math.min(h+1,eh-1))} style={{...btnSm,color:C.faint}}>← 앞 줄이기</button>
+        <button onClick={()=>setEh(h=>Math.max(sh+1,h-1))} style={{...btnSm,color:C.faint}}>뒤 줄이기 →</button>
+        <button onClick={()=>{setSh(10);setEh(19);}} style={{...btnSm,color:C.faint}}>초기화</button>
       </div>
 
       {/* 타임테이블 */}
-      <div style={{overflowX:"auto"}}  onMouseLeave={()=>{ dragRef.current={active:false,memberId:null,startHour:null,endHour:null,moved:false}; setDrag(null); }}>
-        <div style={{minWidth: 80 + accounts.length * COL_W}}>
-          {/* 헤더 - 구성원 */}
+      <div style={{overflowX:"auto",border:`1px solid ${C.border}`,borderRadius:12}}>
+        <div style={{minWidth:80+accounts.length*COL}}>
+          {/* 헤더 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
-            <div style={{width:80,flexShrink:0,background:C.bg,borderBottom:`2px solid ${C.border}`,borderRight:`1px solid ${C.border}`}}/>
+            <div style={{width:80,flexShrink:0,background:"#1e40af",borderBottom:`2px solid ${C.border}`}}/>
             {accounts.map(acc=>(
-              <div key={acc.id} style={{width:COL_W,flexShrink:0,padding:"10px 8px",textAlign:"center",background:"#1e40af",borderBottom:`2px solid ${C.border}`,borderRight:`1px solid ${C.border}22`}}>
+              <div key={acc.id} style={{width:COL,flexShrink:0,padding:"10px 8px",textAlign:"center",background:"#1e40af",borderBottom:`2px solid ${C.border}`,borderLeft:`1px solid #3b82f622`}}>
                 <Avatar name={acc.name} size={28}/>
                 <div style={{fontSize:12,fontWeight:700,color:"#fff",marginTop:4}}>{acc.name}</div>
                 <div style={{fontSize:10,color:"#93c5fd"}}>{acc.role}</div>
@@ -2077,114 +2022,50 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
             ))}
           </div>
 
-          {/* 시간 슬롯 행 */}
-          {TODO_HOURS.map(({key, label})=>(
+          {/* 슬롯 행 */}
+          {slots.map(({key,label})=>(
             <div key={key} style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
               {/* 시간 라벨 */}
-              <div style={{width:80,flexShrink:0,padding:"6px 10px",fontSize:12,fontWeight:600,color:C.sub,background:C.slateLight,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",minHeight:ROW_H,boxSizing:"border-box"}}>
+              <div style={{width:80,flexShrink:0,padding:"8px 10px",fontSize:12,fontWeight:600,
+                color:C.sub,background:"#f8fafc",borderRight:`1px solid ${C.border}`,
+                display:"flex",alignItems:"flex-start",justifyContent:"flex-end",minHeight:ROW,boxSizing:"border-box"}}>
                 {label}
               </div>
-              {/* 구성원별 셀 */}
+              {/* 구성원 셀 */}
               {accounts.map(acc=>{
-                const todos = todosOf(acc.id, key);
-                const covering = getCoveringTodo(acc.id, key);
-                const editable = canEdit(acc.id);
+                const todos=todosOf(acc.id,key);
+                const covering=getCovering(acc.id,key);
+                const editable=canEdit(acc.id);
+                const cat=covering?TODO_CATS.find(c=>c.id===covering.todo.cat):todos.length>0?TODO_CATS.find(c=>c.id===todos[0].cat):null;
+                const isDnd=covering?covering.todo.dnd:todos.some(t=>t.dnd);
+                const cellBg=isDnd?"#fff5f5":cat?cat.color+"12":editable?"#fff":"#fafafa";
+                const cellBl=isDnd?"3px solid #ef4444":cat?`3px solid ${cat.color}`:"none";
+
                 return (
                   <div key={acc.id}
-                    
-                    onClick={()=>{ if(!dragRef.current.moved && !dragRef.current.active){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
-                    onMouseDown={e=>onCellMouseDown(acc.id, key, e)}
-                    onMouseEnter={()=>onCellMouseEnter(acc.id, key)}
-                    onMouseUp={()=>onCellMouseUp(acc.id, key)}
-                    onMouseUp={()=>onCellMouseUp(acc.id, key)}
-                    style={{width:COL_W,flexShrink:0,minHeight:ROW_H,padding:"4px 6px",
-                      borderRight:`1px solid ${C.border}22`,
-                      borderLeft:(()=>{
-                        const p=getDragPos(acc.id,key);
-                        if(p)return "3px solid #2563eb";
-                        if(covering){
-                          if(covering.todo.dnd)return "3px solid #ef4444";
-                          const cat=TODO_CATS.find(c=>c.id===covering.todo.cat);
-                          return cat?`3px solid ${cat.color}`:"3px solid #3b82f6";
-                        }
-                        if(todos.some(t=>t.dnd))return "3px solid #ef4444";
-                        const catTodo=todos.find(t=>t.cat);
-                        if(catTodo){const cat=TODO_CATS.find(c=>c.id===catTodo.cat);if(cat)return `3px solid ${cat.color}`;}
-                        return "none";
-                      })(),
-                      borderTop:(()=>{
-                        const p=getDragPos(acc.id,key);
-                        if(p)return p==="first"||p==="single"?"2px solid #2563eb":"none";
-                        return "none";
-                      })(),
-                      borderBottom:(()=>{
-                        const p=getDragPos(acc.id,key);
-                        if(p)return p==="last"||p==="single"?"2px solid #2563eb":"none";
-                        // 범위 마지막 셀인지 확인
-                        if(covering&&covering.todo.endHour===key)return "2px solid #3b82f6";
-                        return "none";
-                      })(),
-                      background:(()=>{
-                        const p=getDragPos(acc.id,key);
-                        if(p)return p==="first"||p==="single"?"#1d4ed8":"#dbeafe";
-                        if(covering){
-                          const cat=TODO_CATS.find(c=>c.id===covering.todo.cat);
-                          if(covering.todo.dnd)return "#fecaca";
-                          return cat?cat.color+"25":"#dbeafe";
-                        }
-                        if(todos.some(t=>t.dnd))return "#fff5f5";
-                        const catTodo=todos.find(t=>t.cat);
-                        if(catTodo){const cat=TODO_CATS.find(c=>c.id===catTodo.cat);if(cat)return cat.color+"25";}
-                        return editable?"transparent":"#fafafa";
-                      })(),
-                      cursor:editable?"cell":"default",boxSizing:"border-box",overflowY:"visible",userSelect:"none",display:"flex",flexDirection:"column",gap:2,
-                      borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
-                      transition:"background .05s"}}>
+                    style={{width:COL,flexShrink:0,minHeight:ROW,
+                      padding:"4px 5px",boxSizing:"border-box",
+                      borderLeft:`1px solid ${C.border}22`,
+                      borderLeft:cellBl,
+                      background:cellBg,
+                      cursor:editable?"pointer":"default"}}>
                     {covering ? (
-                      <div onClick={e=>openEdit(acc.id,covering.startKey,covering.todo,e)}
-                        style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,
-                          background:(()=>{const c=TODO_CATS.find(c=>c.id===covering.todo.cat);return covering.todo.done?"#f0fdf4":c?c.color+"15":"#eff6ff";})(),
-                          border:`1px solid ${(()=>{const c=TODO_CATS.find(c=>c.id===covering.todo.cat);return covering.todo.done?"#86efac":c?c.color+"60":"#bfdbfe";})()}`,
-                          cursor:canEdit(acc.id)?"pointer":"default"}}>
-                        <div style={{overflow:"hidden",minWidth:0}}>
-                          {covering.todo.cat&&(()=>{const c=TODO_CATS.find(x=>x.id===covering.todo.cat);return c?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:c.color+"20",color:c.color,fontWeight:700,marginRight:3}}>{c.label}</span>:null;})()}
-                          {covering.todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
-                          {covering.todo.projId&&(()=>{const p=(projects||[]).find(p=>p.id===covering.todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
-                          <span style={{fontSize:11,fontWeight:600,color:covering.todo.done?C.faint:C.dark,textDecoration:covering.todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                            {covering.todo.note||TODO_CATS.find(c=>c.id===covering.todo.cat)?.label||"(내용 없음)"}
-                          </span>
-                        </div>
-                      </div>
-                    ) : <>
+                      <TodoItem todo={covering.todo} mid={acc.id} hour={covering.startKey} isCovering/>
+                    ) : (
+                      <>
                         {todos.map(todo=>(
-                          <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
-                            style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:(()=>{if(todo.done)return "#f0fdf4";const c=TODO_CATS.find(c=>c.id===todo.cat);return c?c.color+"15":"#eff6ff";})(),
-                            border:`1px solid ${(()=>{if(todo.done)return "#86efac";const c=TODO_CATS.find(c=>c.id===todo.cat);return c?c.color+"60":"#bfdbfe";})()}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
-                            <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly style={{accentColor:C.green,cursor:editable?"pointer":"default",flexShrink:0}}/>
-                            <div style={{overflow:"hidden",minWidth:0}}>
-                              {todo.cat&&(()=>{const c=TODO_CATS.find(c=>c.id===todo.cat);return c?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:c.color+"20",color:c.color,fontWeight:700,marginRight:3}}>{c.label}</span>:null;})()}
-                              {todo.dnd&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#fef2f2",color:"#ef4444",fontWeight:700,marginRight:3}}>🚫</span>}
-                              {todo.endHour&&todo.endHour!==key&&<span style={{fontSize:9,color:C.faint,marginRight:3}}>↕ {todo.endHour}까지</span>}
-                              {todo.projId&&(()=>{const p=(projects||[]).find(p=>p.id===todo.projId);return p?<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:p.color+"22",color:p.color,fontWeight:700,marginRight:3,whiteSpace:"nowrap"}}>{p.name}</span>:null;})()}
-                              <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.note||todo.cat&&(TODO_CATS.find(c=>c.id===todo.cat)?.label)||"(내용 없음)"}</span>
-                            </div>
-                          </div>
+                          <TodoItem key={todo.id} todo={todo} mid={acc.id} hour={key}/>
                         ))}
-                        {editable&&todos.length===0&&!isInDragRange(acc.id,key)&&(
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:40,opacity:0,transition:"opacity .15s"}}
+                        {editable&&(
+                          <div onClick={()=>openAdd(acc.id,key)}
+                            style={{width:"100%",minHeight:todos.length?24:ROW-8,display:"flex",alignItems:"center",
+                              justifyContent:"center",opacity:todos.length?0.3:0,transition:"opacity .15s",borderRadius:6}}
                             onMouseEnter={e=>e.currentTarget.style.opacity=1}
-                            onMouseLeave={e=>e.currentTarget.style.opacity=0}>
-                            <span style={{fontSize:18,color:C.border}}>＋</span>
+                            onMouseLeave={e=>e.currentTarget.style.opacity=todos.length?0.3:0}>
+                            <span style={{fontSize:16,color:"#94a3b8"}}>＋</span>
                           </div>
                         )}
-                      </>}
-                    {(()=>{const p=getDragPos(acc.id,key);return(p==="first"||p==="single")?<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"8px 0",pointerEvents:"none"}}><span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span><span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span></div>:null;})()}
-                    {!covering && editable && todos.length===0 && !isInDragRange(acc.id,key) && (
-                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
-                        onMouseEnter={e=>e.currentTarget.style.opacity=1}
-                        onMouseLeave={e=>e.currentTarget.style.opacity=0}>
-                        <span style={{fontSize:18,color:C.border}}>＋</span>
-                      </div>
+                      </>
                     )}
                   </div>
                 );
@@ -2194,41 +2075,48 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
         </div>
       </div>
 
-      {/* 추가/수정 모달 */}
-      {modal && (
+      {/* 모달 */}
+      {modal&&(
         <Modal title={modal.mode==="add"?"할 일 추가":"할 일 수정"} onClose={()=>setModal(null)}>
-          <div style={{fontSize:12,color:C.sub,marginBottom:12,padding:"6px 10px",background:C.slateLight,borderRadius:8}}>
-            📅 {selDate} &nbsp;·&nbsp; 🕐 {modal.hour}{modal.endHour&&modal.endHour!==modal.hour?` ~ ${modal.endHour}`:""} &nbsp;·&nbsp; 👤 {accounts.find(a=>a.id===modal.memberId)?.name}
+          <div style={{fontSize:12,color:C.sub,marginBottom:12,padding:"6px 10px",background:"#f1f5f9",borderRadius:8}}>
+            📅 {selDate} &nbsp;·&nbsp; 🕐 {modal.hour}{modal.endHour&&modal.endHour!==modal.hour?` ~ ${modal.endHour}`:""} &nbsp;·&nbsp; 👤 {accounts.find(a=>a.id===modal.mid)?.name}
           </div>
+          <Field label="카테고리">
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {TODO_CATS.map(c=>(
+                <button key={c.id} onClick={()=>setTf(v=>({...v,cat:v.cat===c.id?"":c.id}))}
+                  style={{padding:"5px 12px",borderRadius:99,border:`2px solid ${tf.cat===c.id?c.color:C.border}`,
+                    background:tf.cat===c.id?c.color+"18":"#fff",color:tf.cat===c.id?c.color:C.sub,
+                    fontSize:12,fontWeight:tf.cat===c.id?700:400,cursor:"pointer"}}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </Field>
           <Field label="프로젝트">
             <select style={inp} value={tf.projId||""} onChange={e=>setTf(v=>({...v,projId:e.target.value}))}>
               <option value="">— 없음 —</option>
               {(projects||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
-
-          <Field label="카테고리">
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {TODO_CATS.map(c=>(
-                <button key={c.id} onClick={()=>setTf(v=>({...v,cat:v.cat===c.id?"":c.id}))}
-                  style={{padding:"5px 12px",borderRadius:99,border:`2px solid ${tf.cat===c.id?c.color:C.border}`,background:tf.cat===c.id?c.color+"18":C.white,color:tf.cat===c.id?c.color:C.sub,fontSize:12,fontWeight:tf.cat===c.id?700:400,cursor:"pointer"}}>
-                  {c.label}
-                </button>
-              ))}
-            </div>
+          <Field label="상세업무">
+            <input style={inp} autoFocus value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))}
+              placeholder="상세 내용을 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/>
           </Field>
-          <Field label="상세업무"><input style={inp} autoFocus value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세업무를 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
-          <div style={{display:"flex",gap:10,marginBottom:8}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",flex:1,padding:"8px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:tf.done?"#f0fdf4":C.white}}>
-              <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:C.green}}/>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <label style={{flex:1,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,
+              border:`1px solid ${C.border}`,background:tf.done?"#f0fdf4":"#fff",cursor:"pointer",fontSize:13}}>
+              <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:"#16a34a"}}/>
               ✅ 완료 처리
             </label>
             <label onClick={()=>setTf(v=>({...v,dnd:!v.dnd}))}
-              style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",flex:1,padding:"8px 12px",borderRadius:8,border:`2px solid ${tf.dnd?"#ef4444":C.border}`,background:tf.dnd?"#fef2f2":C.white,color:tf.dnd?"#ef4444":C.sub,fontWeight:tf.dnd?700:400}}>
+              style={{flex:1,display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,
+                border:`2px solid ${tf.dnd?"#ef4444":C.border}`,background:tf.dnd?"#fef2f2":"#fff",
+                color:tf.dnd?"#ef4444":C.sub,fontWeight:tf.dnd?700:400,cursor:"pointer",fontSize:13}}>
               🚫 방해금지
             </label>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
             {modal.mode==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
