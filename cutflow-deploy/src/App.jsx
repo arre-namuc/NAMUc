@@ -445,7 +445,7 @@ function LoginScreen({ onLogin, accounts }) {
           <div style={{fontSize:13,color:C.faint,marginTop:4}}>광고 영상 프로덕션 관리</div>
         </div>
         <Field label="이름">
-          <select style={inp} value={selId} onChange={e=>{setSelId(Number(e.target.value));setErr("");setPw("");}}>
+          <select style={inp} value={selId} onChange={e=>{setSelId(e.target.value);setErr("");setPw("");}}>
             {accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
           </select>
         </Field>
