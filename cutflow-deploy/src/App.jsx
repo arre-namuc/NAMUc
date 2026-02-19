@@ -360,8 +360,8 @@ function openQuotePDF(project, quote) {
   <!-- 헤더 -->
   <div class="header">
     <div class="logo-area">
-      <div class="logo-box">🎬 회사 로고</div>
-      <div class="company-name" style="margin-top:6px">NAMUC</div>
+      <img src="https://drive.google.com/file/d/1BCnVn8FlI2qeBMX9DW_aZsu4SfIEg8Ia/view?usp=drive_link" style="height:52px;object-fit:contain;"/>
+      <div class="company-name" style="margin-top:6px">NAMU CREATIVE</div>
     </div>
     <div class="doc-title-area">
       <div class="doc-title">견 적 서</div>
