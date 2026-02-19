@@ -508,9 +508,17 @@ function openQuotePDF(project, quote, company={}) {
 </body>
 </html>`;
 
-  const win = window.open("", "_blank");
-  win.document.write(html);
-  win.document.close();
+  // Blob URL 방식 - 팝업 차단 우회
+  const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href   = url;
+  a.target = "_blank";
+  a.rel    = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 // ═══════════════════════════════════════════════════════════
 // 공통 UI 컴포넌트
