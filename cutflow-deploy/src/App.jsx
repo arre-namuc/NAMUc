@@ -1661,182 +1661,193 @@ const STAFF_GROUPS = [
   { label:"기타",        roles:["메이킹","작가","기타"] },
 ];
 
-function StaffList({ project, onChange, accounts }) {
-  const staff = project.staff || [];
+// ═══════════════════════════════════════════════════════════
+// 피드백 히스토리
+// ═══════════════════════════════════════════════════════════
+const FB_STATUSES = [
+  {id:"review",   label:"검토중",  color:"#f59e0b"},
+  {id:"reflected",label:"반영",    color:"#16a34a"},
+  {id:"hold",     label:"보류",    color:"#94a3b8"},
+];
+
+function FeedbackTab({project, patchProj, user, accounts}) {
+  const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
-  const [sf, setSf]       = useState({});
-  const [filterGroup, setFilterGroup] = useState("전체");
-  const [viewMode, setViewMode]       = useState("card");
+  const [ff, setFf] = useState({});
+  const [detail, setDetail] = useState(null); // 세부내용 보기
 
-  const openAdd = (role="") => {
-    setSf({ role, name:"", phone:"", email:"", company:"", note:"", fromTeam:false, memberId:"" });
-    setModal({mode:"add"});
+  const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+
+  const openAdd = () => {
+    setFf({receivedDate:today(), dueDate:"", content:"", assignee:user.name, status:"review", fileUrl:"", detail:""});
+    setModal("add");
   };
-  const openEdit = (s) => { setSf({...s}); setModal({mode:"edit",id:s.id}); };
-
+  const openEdit = fb => { setFf({...fb}); setModal("edit"); };
   const save = () => {
-    if (!sf.name?.trim() && !sf.memberId) return;
-    // 팀원에서 선택한 경우 이름 자동 채움
-    let entry = {...sf, id: modal.id || "s"+Date.now()};
-    if (sf.memberId) {
-      const m = accounts.find(a=>String(a.id)===String(sf.memberId));
-      if (m) { entry.name = m.name; entry.phone = entry.phone||m.phone||""; entry.email = entry.email||m.email||""; entry.fromTeam = true; }
-    }
-    onChange(p => {
-      const prev = p.staff||[];
-      const next = modal.mode==="edit"
-        ? prev.map(s=>s.id===modal.id?entry:s)
-        : [...prev, entry];
-      return {...p, staff:next};
-    });
+    if(!ff.content?.trim()) return;
+    const entry = {...ff, id:ff.id||"fb"+Date.now()};
+    const list = modal==="edit"
+      ? feedbacks.map(f=>f.id===entry.id?entry:f)
+      : [...feedbacks, entry];
+    patchProj(p=>({...p, feedbacks:list}));
+    setModal(null);
+  };
+  const del = () => {
+    patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)}));
     setModal(null);
   };
 
-  const del = (id) => onChange(p=>({...p, staff:(p.staff||[]).filter(s=>s.id!==id)}));
-
-  const filtered = filterGroup==="전체" ? staff
-    : staff.filter(s=>{
-        const g = STAFF_GROUPS.find(g=>g.label===filterGroup);
-        return g?.roles.includes(s.role);
-      });
-
-  // 역할 순서대로 정렬
-  const sorted = [...filtered].sort((a,b)=>STAFF_ROLES.indexOf(a.role)-STAFF_ROLES.indexOf(b.role));
+  const sorted = [...feedbacks].sort((a,b)=>(b.receivedDate||b.date||"").localeCompare(a.receivedDate||a.date||""));
 
   return (
     <div>
-      {/* 헤더 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {["전체",...STAFF_GROUPS.map(g=>g.label)].map(g=>(
-            <button key={g} onClick={()=>setFilterGroup(g)}
-              style={{padding:"4px 12px",borderRadius:99,border:`1px solid ${filterGroup===g?C.blue:C.border}`,background:filterGroup===g?C.blueLight:C.white,color:filterGroup===g?C.blue:C.sub,fontSize:12,fontWeight:filterGroup===g?700:500,cursor:"pointer"}}>
-              {g}
-            </button>
-          ))}
+        <div>
+          <h3 style={{margin:0,fontSize:16,fontWeight:800}}>💬 클라이언트 피드백 히스토리</h3>
+          <p style={{margin:"4px 0 0",fontSize:12,color:C.sub}}>총 {feedbacks.length}건</p>
         </div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <div style={{display:"flex",border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
-            <button onClick={()=>setViewMode("card")} style={{padding:"5px 10px",border:"none",background:viewMode==="card"?C.blue:"none",color:viewMode==="card"?"#fff":C.sub,cursor:"pointer",fontSize:13}}>&#x229E;</button>
-            <button onClick={()=>setViewMode("table")} style={{padding:"5px 10px",border:"none",background:viewMode==="table"?C.blue:"none",color:viewMode==="table"?"#fff":C.sub,cursor:"pointer",fontSize:13}}>&#x2630;</button>
-          </div>
-          <Btn primary sm onClick={()=>openAdd()}>+ 스탭 추가</Btn>
-        </div>
+        <Btn primary onClick={openAdd}>+ 피드백 추가</Btn>
       </div>
 
-      {/* 스탭 없음 */}
-      {sorted.length===0 && (
-        <div style={{textAlign:"center",padding:"60px 0",color:C.faint}}>
-          <div style={{fontSize:32,marginBottom:10}}>👤</div>
-          <div style={{fontSize:14}}>등록된 스탭이 없습니다</div>
-          <div style={{fontSize:12,marginTop:4}}>+ 스탭 추가 버튼으로 등록하세요</div>
+      {feedbacks.length===0 ? (
+        <div style={{padding:"48px 0",textAlign:"center",color:C.faint,fontSize:13,
+          border:`1px dashed ${C.border}`,borderRadius:12}}>
+          아직 등록된 피드백이 없습니다
+        </div>
+      ) : (
+        <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 80px 80px 60px 36px",
+            background:C.slateLight,padding:"9px 16px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+            <span>수신일</span><span>마감일</span><span>내용</span><span>담당자</span><span>상태</span><span style={{textAlign:"center"}}>링크</span><span/>
+          </div>
+          {sorted.map((fb,i)=>{
+            const st = FB_STATUSES.find(s=>s.id===fb.status)||FB_STATUSES[0];
+            const isOver = fb.dueDate && fb.dueDate < today() && fb.status!=="reflected";
+            return (
+              <div key={fb.id}
+                style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 80px 80px 60px 36px",
+                  padding:"11px 16px",gap:8,borderTop:i>0?`1px solid ${C.border}`:"none",
+                  background:"#fff",alignItems:"center",cursor:"pointer",transition:"background .1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                <span style={{fontSize:12,color:C.sub}}>{fb.receivedDate||fb.date||"-"}</span>
+                <span style={{fontSize:12,color:isOver?"#ef4444":C.sub,fontWeight:isOver?700:400}}>
+                  {fb.dueDate||"-"}{isOver&&" ⚠️"}
+                </span>
+                <div onClick={()=>openEdit(fb)} style={{minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:500,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fb.content}</div>
+                  {fb.detail&&<div style={{fontSize:11,color:C.faint,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{fb.detail}</div>}
+                </div>
+                <span style={{fontSize:12,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} onClick={()=>openEdit(fb)}>{fb.assignee}</span>
+                <span onClick={()=>openEdit(fb)}>
+                  <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                    background:st.color+"18",color:st.color,border:`1px solid ${st.color}44`,whiteSpace:"nowrap"}}>
+                    {st.label}
+                  </span>
+                </span>
+                <span style={{textAlign:"center"}}>
+                  {fb.fileUrl
+                    ? <a href={fb.fileUrl} target="_blank" rel="noreferrer"
+                        onClick={e=>e.stopPropagation()}
+                        style={{fontSize:18,textDecoration:"none"}} title={fb.fileUrl}>📎</a>
+                    : <span style={{fontSize:13,color:C.border}}>—</span>
+                  }
+                </span>
+                <span onClick={()=>setDetail(fb)} style={{fontSize:16,color:C.blue,textAlign:"center",cursor:"pointer"}} title="세부내용">›</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {viewMode==="table" && sorted.length>0 && (
-        <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",marginBottom:20}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead>
-              <tr style={{background:"#1e40af"}}>
-                {["역할","이름","소속/회사","연락처","이메일","메모",""].map(h=>(
-                  <th key={h} style={{padding:"9px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((s,i)=>(
-                <tr key={s.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?C.white:"#fafbfc"}}>
-                  <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}>
-                    <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{s.role}</span>
-                  </td>
-                  <td style={{padding:"9px 12px",fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>
-                    {s.name}{s.fromTeam&&<span style={{marginLeft:4,fontSize:10,background:C.greenLight,color:C.green,padding:"1px 5px",borderRadius:99,fontWeight:700}}>내부</span>}
-                  </td>
-                  <td style={{padding:"9px 12px",fontSize:12,color:C.sub}}>{s.company||"—"}</td>
-                  <td style={{padding:"9px 12px",fontSize:12}}>
-                    {s.phone?<a href={"tel:"+s.phone} style={{color:C.blue,textDecoration:"none"}}>{s.phone}</a>:"—"}
-                  </td>
-                  <td style={{padding:"9px 12px",fontSize:12}}>
-                    {s.email?<a href={"mailto:"+s.email} style={{color:C.blue,textDecoration:"none"}}>{s.email}</a>:"—"}
-                  </td>
-                  <td style={{padding:"9px 12px",fontSize:11,color:C.faint,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.note||""}</td>
-                  <td style={{padding:"9px 12px",textAlign:"center"}}>
-                    <button onClick={()=>openEdit(s)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>&#x270F;&#xFE0F;</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {viewMode==="card" && STAFF_GROUPS.map(grp=>{
-        const grpStaff = sorted.filter(s=>grp.roles.includes(s.role));
-        if ((filterGroup!=="전체"&&filterGroup!==grp.label)||grpStaff.length===0) return null;
-        return (
-          <div key={grp.label} style={{marginBottom:20}}>
-            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-              <span style={{width:3,height:14,background:C.blue,borderRadius:2,display:"inline-block"}}/>
-              {grp.label}
-              <span style={{fontSize:11,color:C.faint}}>({grpStaff.length}명)</span>
+      {/* 세부내용 패널 */}
+      {detail&&(
+        <Modal title="피드백 세부내용" onClose={()=>setDetail(null)}>
+          <div style={{background:"#f8fafc",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+            <div style={{display:"flex",gap:24,marginBottom:10,flexWrap:"wrap"}}>
+              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>수신일</span><div style={{fontSize:13,fontWeight:600,marginTop:2}}>{detail.receivedDate||detail.date||"-"}</div></div>
+              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>마감일</span><div style={{fontSize:13,fontWeight:600,marginTop:2,color:detail.dueDate&&detail.dueDate<today()&&detail.status!=="reflected"?"#ef4444":C.dark}}>{detail.dueDate||"-"}</div></div>
+              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>담당자</span><div style={{fontSize:13,fontWeight:600,marginTop:2}}>{detail.assignee}</div></div>
+              <div><span style={{fontSize:11,color:C.sub,fontWeight:600}}>상태</span>
+                <div style={{marginTop:4}}>{(()=>{const st=FB_STATUSES.find(s=>s.id===detail.status)||FB_STATUSES[0];return <span style={{fontSize:12,fontWeight:700,padding:"2px 10px",borderRadius:99,background:st.color+"18",color:st.color,border:`1px solid ${st.color}44`}}>{st.label}</span>;})()}</div>
+              </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
-              {grpStaff.map(s=>(
-                <div key={s.id} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",position:"relative"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <Avatar name={s.name} size={32}/>
-                      <div>
-                        <div style={{fontWeight:700,fontSize:13}}>{s.name}</div>
-                        <span style={{fontSize:11,padding:"1px 7px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{s.role}</span>
-                      </div>
-                    </div>
-                    <button onClick={()=>openEdit(s)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13,color:C.faint,padding:"2px 4px"}}>✏️</button>
-                  </div>
-                  <div style={{marginTop:8,fontSize:12,color:C.sub,display:"flex",flexDirection:"column",gap:3}}>
-                    {s.company&&<span>🏢 {s.company}</span>}
-                    {s.phone&&<a href={`tel:${s.phone}`} style={{color:C.blue,textDecoration:"none"}}>📞 {s.phone}</a>}
-                    {s.email&&<a href={`mailto:${s.email}`} style={{color:C.blue,textDecoration:"none"}}>✉️ {s.email}</a>}
-                    {s.note&&<span style={{color:C.faint,fontSize:11}}>📝 {s.note}</span>}
-                  </div>
-                  {s.fromTeam&&<span style={{position:"absolute",top:10,right:36,fontSize:10,background:C.greenLight,color:C.green,padding:"1px 6px",borderRadius:99,fontWeight:700}}>내부</span>}
-                </div>
-              ))}
-            </div>
+            <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>피드백 내용</div>
+            <div style={{fontSize:13,color:C.dark,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{detail.content}</div>
           </div>
-        );
-      })}
+          {detail.detail&&(
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>세부내용</div>
+              <div style={{fontSize:13,color:C.dark,lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px"}}>{detail.detail}</div>
+            </div>
+          )}
+          {detail.fileUrl&&(
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>첨부파일</div>
+              <a href={detail.fileUrl} target="_blank" rel="noreferrer"
+                style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,
+                  border:`1px solid ${C.border}`,background:"#fff",color:C.blue,fontSize:13,textDecoration:"none",fontWeight:600}}>
+                📎 파일 링크 열기
+              </a>
+            </div>
+          )}
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+            <Btn onClick={()=>{setDetail(null);openEdit(detail);}}>✏️ 수정</Btn>
+            <Btn primary onClick={()=>setDetail(null)}>닫기</Btn>
+          </div>
+        </Modal>
+      )}
 
       {/* 추가/수정 모달 */}
-      {modal && (
-        <Modal title={modal.mode==="add"?"스탭 추가":"스탭 수정"} onClose={()=>setModal(null)}>
-          <div style={{marginBottom:12,padding:"10px 14px",background:C.slateLight,borderRadius:10}}>
-            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8}}>👥 팀 구성원에서 선택</div>
-            <select style={inp} value={sf.memberId||""} onChange={e=>{
-              const m = accounts.find(a=>String(a.id)===e.target.value);
-              setSf(v=>({...v, memberId:e.target.value, name:m?m.name:v.name, phone:m?.phone||v.phone, email:m?.email||v.email}));
-            }}>
-              <option value="">직접 입력</option>
-              {accounts.map(a=><option key={a.id} value={String(a.id)}>{a.name} ({a.role})</option>)}
-            </select>
+      {modal&&(
+        <Modal title={modal==="add"?"피드백 추가":"피드백 수정"} onClose={()=>setModal(null)}>
+          <div style={{display:"flex",gap:12}}>
+            <Field label="수신일 *" half>
+              <input style={inp} type="date" value={ff.receivedDate||""} onChange={e=>setFf(v=>({...v,receivedDate:e.target.value}))}/>
+            </Field>
+            <Field label="마감일" half>
+              <input style={inp} type="date" value={ff.dueDate||""} onChange={e=>setFf(v=>({...v,dueDate:e.target.value}))}/>
+            </Field>
           </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="역할 *" half>
-              <select style={inp} value={sf.role||""} onChange={e=>setSf(v=>({...v,role:e.target.value}))}>
-                <option value="">선택</option>
-                {STAFF_ROLES.map(r=><option key={r}>{r}</option>)}
+          <Field label="피드백 내용 *">
+            <textarea style={{...inp,resize:"vertical",minHeight:80}} autoFocus
+              value={ff.content||""} onChange={e=>setFf(v=>({...v,content:e.target.value}))}
+              placeholder="클라이언트 피드백 내용을 입력하세요..."/>
+          </Field>
+          <Field label="세부내용">
+            <textarea style={{...inp,resize:"vertical",minHeight:60}}
+              value={ff.detail||""} onChange={e=>setFf(v=>({...v,detail:e.target.value}))}
+              placeholder="추가 메모, 참고사항 등..."/>
+          </Field>
+          <div style={{display:"flex",gap:12}}>
+            <Field label="담당자" half>
+              <select style={inp} value={ff.assignee||""} onChange={e=>setFf(v=>({...v,assignee:e.target.value}))}>
+                {accounts.map(a=><option key={a.id}>{a.name}</option>)}
               </select>
             </Field>
-            <Field label="이름 *" half><input style={inp} value={sf.name||""} onChange={e=>setSf(v=>({...v,name:e.target.value}))} placeholder="홍길동" autoFocus/></Field>
-            <Field label="소속/회사" half><input style={inp} value={sf.company||""} onChange={e=>setSf(v=>({...v,company:e.target.value}))} placeholder="프리랜서 / 회사명"/></Field>
-            <Field label="연락처" half><input style={inp} value={sf.phone||""} onChange={e=>setSf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
-            <Field label="이메일"><input style={inp} value={sf.email||""} onChange={e=>setSf(v=>({...v,email:e.target.value}))} placeholder="name@email.com"/></Field>
-            <Field label="메모"><input style={inp} value={sf.note||""} onChange={e=>setSf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 계약조건 등"/></Field>
+            <Field label="첨부파일 링크" half>
+              <input style={inp} value={ff.fileUrl||""} onChange={e=>setFf(v=>({...v,fileUrl:e.target.value}))}
+                placeholder="https://drive.google.com/..."/>
+            </Field>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}>
-            {modal.mode==="edit"&&<Btn danger sm onClick={()=>{del(modal.id);setModal(null);}}>삭제</Btn>}
+          <Field label="상태">
+            <div style={{display:"flex",gap:8}}>
+              {FB_STATUSES.map(s=>(
+                <button key={s.id} onClick={()=>setFf(v=>({...v,status:s.id}))}
+                  style={{flex:1,padding:"8px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:ff.status===s.id?700:400,
+                    border:`2px solid ${ff.status===s.id?s.color:C.border}`,
+                    background:ff.status===s.id?s.color+"15":"#fff",
+                    color:ff.status===s.id?s.color:C.sub}}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:12}}>
+            {modal==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
-            <Btn primary onClick={save} disabled={!sf.name?.trim()&&!sf.memberId}>저장</Btn>
+            <Btn primary onClick={save} disabled={!ff.content?.trim()}>저장</Btn>
           </div>
         </Modal>
       )}
@@ -2932,6 +2943,7 @@ return (
             <TabBar
               tabs={[
                 {id:"tasks",icon:"📋",label:"프로젝트"},
+                {id:"feedback",icon:"💬",label:"피드백"},
                 {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessFinance},
@@ -2990,6 +3002,9 @@ return (
                 )}
               </div>
             )}
+
+            {/* ── 피드백 ── */}
+            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts}/>}
 
             {/* ── 캘린더 ── */}
             {docTab==="calendar"&&<MonthCalendar project={proj} onChange={patchProj} user={user}/>}
