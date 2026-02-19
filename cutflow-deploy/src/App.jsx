@@ -1486,31 +1486,29 @@ function MemberManagement({ accounts, onSave, onDelete }) {
 function MonthCalendar({ project, onChange, user }) {
   const canEdit = user.canManageMembers || user.role === "PD";
   const today = new Date();
-  const [curYear,  setCurYear]  = useState(today.getFullYear());
-  const [curMonth, setCurMonth] = useState(today.getMonth()); // 0-based
-  const [modal, setModal]       = useState(null); // {date:"YYYY-MM-DD", event?:{}}
-  const [ef, setEf]             = useState({});
+  const [baseYear,  setBaseYear]  = useState(today.getFullYear());
+  const [baseMonth, setBaseMonth] = useState(today.getMonth());
+  const [modal, setModal]         = useState(null);
+  const [ef, setEf]               = useState({});
 
   const events = project.calEvents || [];
-
-  // 날짜 유틸
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
   const eventsOn = (date) => events.filter(e => e.start <= date && date <= (e.end||e.start));
+  const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
 
-  // 달력 셀 생성
-  const firstDay = new Date(curYear, curMonth, 1).getDay();
-  const daysInMonth = new Date(curYear, curMonth+1, 0).getDate();
-  const cells = [];
-  for(let i=0; i<firstDay; i++) cells.push(null);
-  for(let d=1; d<=daysInMonth; d++) cells.push(d);
+  const prevGroup = () => { let m=baseMonth-1, y=baseYear; if(m<0){m=11;y--;} setBaseYear(y); setBaseMonth(m); };
+  const nextGroup = () => { let m=baseMonth+1, y=baseYear; if(m>11){m=0;y++;} setBaseYear(y); setBaseMonth(m); };
 
-  const prevMonth = () => { if(curMonth===0){setCurYear(y=>y-1);setCurMonth(11);}else setCurMonth(m=>m-1); };
-  const nextMonth = () => { if(curMonth===11){setCurYear(y=>y+1);setCurMonth(0);}else setCurMonth(m=>m+1); };
+  // 3개월 배열 생성
+  const months = [0,1,2].map(offset => {
+    let m = baseMonth + offset, y = baseYear;
+    if(m > 11){ m -= 12; y++; }
+    return {year:y, month:m};
+  });
 
-  const openDay = (d) => {
+  const openAdd = (date) => {
     if(!canEdit) return;
-    const date = ymd(curYear,curMonth,d);
-    setEf({title:"",date,start:date,end:date,color:"#2563eb",allDay:true,note:""});
+    setEf({title:"",start:date,end:date,color:"#2563eb",note:""});
     setModal({mode:"add"});
   };
   const openEdit = (ev, e) => {
@@ -1519,42 +1517,25 @@ function MonthCalendar({ project, onChange, user }) {
     setEf({...ev});
     setModal({mode:"edit",id:ev.id});
   };
-
   const save = () => {
     if(!ef.title?.trim()) return;
     const entry = {...ef, id: modal.id||"ce"+Date.now()};
     onChange(p=>{
       const prev = p.calEvents||[];
-      const next = modal.mode==="edit"
-        ? prev.map(e=>e.id===modal.id?entry:e)
-        : [...prev, entry];
+      const next = modal.mode==="edit" ? prev.map(e=>e.id===modal.id?entry:e) : [...prev, entry];
       return {...p, calEvents:next};
     });
     setModal(null);
   };
-
   const del = (id) => { onChange(p=>({...p,calEvents:(p.calEvents||[]).filter(e=>e.id!==id)})); setModal(null); };
 
-  // iCal 내보내기
   const exportICal = () => {
-    const lines = [
-      "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CutFlow//KR","CALSCALE:GREGORIAN","METHOD:PUBLISH",
-      `X-WR-CALNAME:${project.name}`,
-    ];
+    const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CutFlow//KR","CALSCALE:GREGORIAN","METHOD:PUBLISH",`X-WR-CALNAME:${project.name}`];
     for(const ev of events){
       const dtStart = ev.start.replace(/-/g,"");
-      const dtEnd   = ev.end ? ev.end.replace(/-/g,"") : dtStart;
-      // end date는 exclusive이므로 하루 더
       const endD = new Date(ev.end||ev.start); endD.setDate(endD.getDate()+1);
       const dtEndEx = `${endD.getFullYear()}${String(endD.getMonth()+1).padStart(2,"0")}${String(endD.getDate()).padStart(2,"0")}`;
-      lines.push("BEGIN:VEVENT",
-        `DTSTART;VALUE=DATE:${dtStart}`,
-        `DTEND;VALUE=DATE:${dtEndEx}`,
-        `SUMMARY:${ev.title}`,
-        ev.note?`DESCRIPTION:${ev.note}`:"",
-        `UID:${ev.id}@cutflow`,
-        "END:VEVENT"
-      );
+      lines.push("BEGIN:VEVENT",`DTSTART;VALUE=DATE:${dtStart}`,`DTEND;VALUE=DATE:${dtEndEx}`,`SUMMARY:${ev.title}`,ev.note?`DESCRIPTION:${ev.note}`:"",`UID:${ev.id}@cutflow`,"END:VEVENT");
     }
     lines.push("END:VCALENDAR");
     const blob = new Blob([lines.filter(Boolean).join("\r\n")],{type:"text/calendar"});
@@ -1564,60 +1545,74 @@ function MonthCalendar({ project, onChange, user }) {
 
   const COLORS = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2","#dc2626","#64748b"];
   const DAYS   = ["일","월","화","수","목","금","토"];
-  const todayStr = ymd(today.getFullYear(),today.getMonth(),today.getDate());
+
+  const MiniCal = ({year, month}) => {
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    const cells = [];
+    for(let i=0;i<firstDay;i++) cells.push(null);
+    for(let d=1;d<=daysInMonth;d++) cells.push(d);
+
+    return (
+      <div style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 14px",minWidth:0}}>
+        <div style={{fontWeight:800,fontSize:15,marginBottom:12,color:C.dark}}>{year}년 {month+1}월</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,marginBottom:4}}>
+          {DAYS.map((d,i)=>(
+            <div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,padding:"3px 0",color:i===0?"#ef4444":i===6?"#2563eb":C.faint}}>{d}</div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+          {cells.map((d,i)=>{
+            if(!d) return <div key={i}/>;
+            const dateStr = ymd(year,month,d);
+            const dayEvs  = eventsOn(dateStr);
+            const isToday = dateStr===todayStr;
+            const dow     = (firstDay+d-1)%7;
+            return (
+              <div key={i} onClick={()=>openAdd(dateStr)}
+                style={{minHeight:64,background:isToday?"#eff6ff":"transparent",borderRadius:6,padding:"3px 2px",cursor:canEdit?"pointer":"default",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
+                <div style={{fontSize:11,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:2,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{})}}>
+                  {d}
+                </div>
+                {dayEvs.slice(0,2).map(ev=>(
+                  <div key={ev.id} onClick={e=>openEdit(ev,e)}
+                    style={{fontSize:9,padding:"1px 3px",borderRadius:3,background:ev.color+"22",color:ev.color,fontWeight:600,marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:canEdit?"pointer":"default",lineHeight:1.4}}>
+                    {ev.title}
+                  </div>
+                ))}
+                {dayEvs.length>2&&<div style={{fontSize:9,color:C.faint,textAlign:"center"}}>+{dayEvs.length-2}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
       {/* 헤더 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={prevMonth} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:14}}>‹</button>
-          <span style={{fontWeight:800,fontSize:18}}>{curYear}년 {curMonth+1}월</span>
-          <button onClick={nextMonth} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:14}}>›</button>
-          <button onClick={()=>{setCurYear(today.getFullYear());setCurMonth(today.getMonth());}} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:C.sub}}>오늘</button>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={prevGroup} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>‹</button>
+          <span style={{fontWeight:800,fontSize:16,color:C.dark}}>{months[0].year}년 {months[0].month+1}월 — {months[2].month+1}월</span>
+          <button onClick={nextGroup} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>›</button>
+          <button onClick={()=>{setBaseYear(today.getFullYear());setBaseMonth(today.getMonth());}} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:C.sub}}>오늘</button>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          {!canEdit && <span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
-          {events.length>0 && <button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
-          {canEdit && <Btn primary sm onClick={()=>{const d=todayStr;setEf({title:"",start:d,end:d,color:"#2563eb",note:""});setModal({mode:"add"});}}>+ 일정 추가</Btn>}
+          {!canEdit&&<span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
+          {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
+          {canEdit&&<Btn primary sm onClick={()=>{setEf({title:"",start:todayStr,end:todayStr,color:"#2563eb",note:""});setModal({mode:"add"});}}>+ 일정 추가</Btn>}
         </div>
       </div>
 
-      {/* 요일 헤더 */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
-        {DAYS.map((d,i)=>(
-          <div key={d} style={{textAlign:"center",fontSize:12,fontWeight:700,padding:"6px 0",color:i===0?"#ef4444":i===6?"#2563eb":C.sub}}>{d}</div>
-        ))}
+      {/* 3개월 달력 */}
+      <div style={{display:"flex",gap:12}}>
+        {months.map(({year,month})=><MiniCal key={`${year}-${month}`} year={year} month={month}/>)}
       </div>
 
-      {/* 날짜 셀 */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
-        {cells.map((d,i)=>{
-          if(!d) return <div key={i}/>;
-          const dateStr = ymd(curYear,curMonth,d);
-          const dayEvs  = eventsOn(dateStr);
-          const isToday = dateStr===todayStr;
-          const dow     = (firstDay+d-1)%7;
-          return (
-            <div key={i} onClick={()=>openDay(d)}
-              style={{minHeight:90,background:isToday?C.blueLight:C.white,border:`1px solid ${isToday?C.blue:C.border}`,borderRadius:10,padding:"6px 8px",cursor:canEdit?"pointer":"default",transition:"background .1s"}}>
-              <div style={{fontSize:13,fontWeight:isToday?800:500,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:4,
-                ...(isToday?{background:C.blue,color:"#fff",width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}:{})}}>
-                {d}
-              </div>
-              {dayEvs.slice(0,3).map(ev=>(
-                <div key={ev.id} onClick={e=>openEdit(ev,e)}
-                  style={{fontSize:10,padding:"2px 5px",borderRadius:4,background:ev.color+"22",color:ev.color,fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:canEdit?"pointer":"default"}}>
-                  {ev.title}
-                </div>
-              ))}
-              {dayEvs.length>3&&<div style={{fontSize:10,color:C.faint}}>+{dayEvs.length-3}개</div>}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 이벤트 추가/수정 모달 */}
+      {/* 모달 */}
       {modal && (
         <Modal title={modal.mode==="add"?"일정 추가":"일정 수정"} onClose={()=>setModal(null)}>
           <Field label="일정명 *"><input style={inp} autoFocus value={ef.title||""} onChange={e=>setEf(v=>({...v,title:e.target.value}))} placeholder="촬영, 편집 마감, 시사 등"/></Field>
@@ -1644,29 +1639,6 @@ function MonthCalendar({ project, onChange, user }) {
   );
 }
 
-
-// ═══════════════════════════════════════════════════════════
-// 스탭리스트
-// ═══════════════════════════════════════════════════════════
-const STAFF_ROLES = [
-  "EPD","총괄감독","감독","조감독 1st","조감독 2nd",
-  "PD","AD","AE",
-  "촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT",
-  "조명감독","조명 1st","조명 Grip",
-  "미술감독","소품",
-  "편집","DI","2D","3D","FLAME","녹음실",
-  "음악감독","성우",
-  "메이킹","작가","기타"
-];
-
-const STAFF_GROUPS = [
-  { label:"제작/연출",   roles:["EPD","총괄감독","감독","조감독 1st","조감독 2nd","PD","AD","AE"] },
-  { label:"촬영",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
-  { label:"조명",        roles:["조명감독","조명 1st","조명 Grip"] },
-  { label:"미술",        roles:["미술감독","소품"] },
-  { label:"포스트",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
-  { label:"기타",        roles:["메이킹","작가","기타"] },
-];
 
 function StaffList({ project, onChange, accounts }) {
   const staff = project.staff || [];
