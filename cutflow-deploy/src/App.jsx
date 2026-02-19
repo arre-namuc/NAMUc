@@ -2235,21 +2235,17 @@ export default function App() {
           <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))}/></Field>
           <Field label="클라이언트 *"><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))}/></Field>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="포맷" half><div style={{display:"flex",gap:4}}>
-                <select style={{...inp,flex:1}} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>
-                  {formats.map(f=><option key={f}>{f}</option>)}
-                </select>
-              </div></Field>
-            <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
-            <Field label="납품일" half><input style={inp} type="date" value={pf.due} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
-            <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))}/></Field>
-            <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))}/></Field>
-            <Field label="EPD" half><input style={inp} value={pf.epd||""} onChange={e=>setPf(v=>({...v,epd:e.target.value}))} placeholder="EPD 이름"/></Field>
-            <Field label="조감독" half><input style={inp} value={pf.assistant||""} onChange={e=>setPf(v=>({...v,assistant:e.target.value}))} placeholder="조감독 이름"/></Field>
             <Field label="대행사" half><input style={inp} value={pf.agency||""} onChange={e=>setPf(v=>({...v,agency:e.target.value}))} placeholder="대행사명"/></Field>
             <Field label="담당자명" half><input style={inp} value={pf.contactName||""} onChange={e=>setPf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동 AE"/></Field>
             <Field label="담당자 연락처" half><input style={inp} value={pf.contactPhone||""} onChange={e=>setPf(v=>({...v,contactPhone:e.target.value}))} placeholder="010-0000-0000"/></Field>
             <Field label="담당자 이메일" half><input style={inp} value={pf.contactEmail||""} onChange={e=>setPf(v=>({...v,contactEmail:e.target.value}))} placeholder="name@agency.com"/></Field>
+            <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{formats.map(f=><option key={f}>{f}</option>)}</select></Field>
+            <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
+            <Field label="납품일" half><input style={inp} type="date" value={pf.due||""} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
+            <Field label="감독" half><input style={inp} value={pf.director||""} onChange={e=>setPf(v=>({...v,director:e.target.value}))}/></Field>
+            <Field label="EPD" half><input style={inp} value={pf.epd||""} onChange={e=>setPf(v=>({...v,epd:e.target.value}))} placeholder="이름"/></Field>
+            <Field label="조감독" half><input style={inp} value={pf.assistant||""} onChange={e=>setPf(v=>({...v,assistant:e.target.value}))} placeholder="이름"/></Field>
+            <Field label="PD" half><input style={inp} value={pf.pd||""} onChange={e=>setPf(v=>({...v,pd:e.target.value}))}/></Field>
           </div>
           <div style={{marginBottom:12}}>
             <div style={{fontSize:12,color:C.sub,marginBottom:6}}>컬러 태그</div>
