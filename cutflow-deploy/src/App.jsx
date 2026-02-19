@@ -1554,14 +1554,14 @@ function MonthCalendar({ project, onChange, user }) {
     for(let d=1;d<=daysInMonth;d++) cells.push(d);
 
     return (
-      <div style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 14px",minWidth:0}}>
+      <div style={{flex:1,background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"22px 20px",minWidth:0}}>
         <div style={{fontWeight:800,fontSize:15,marginBottom:12,color:C.dark}}>{year}년 {month+1}월</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,marginBottom:4}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
           {DAYS.map((d,i)=>(
-            <div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,padding:"3px 0",color:i===0?"#ef4444":i===6?"#2563eb":C.faint}}>{d}</div>
+            <div key={d} style={{textAlign:"center",fontSize:12,fontWeight:700,padding:"5px 0",color:i===0?"#ef4444":i===6?"#2563eb":C.faint}}>{d}</div>
           ))}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
           {cells.map((d,i)=>{
             if(!d) return <div key={i}/>;
             const dateStr = ymd(year,month,d);
@@ -1570,18 +1570,18 @@ function MonthCalendar({ project, onChange, user }) {
             const dow     = (firstDay+d-1)%7;
             return (
               <div key={i} onClick={()=>openAdd(dateStr)}
-                style={{minHeight:64,background:isToday?"#eff6ff":"transparent",borderRadius:6,padding:"3px 2px",cursor:canEdit?"pointer":"default",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
-                <div style={{fontSize:11,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:2,textAlign:"center",
-                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{})}}>
+                style={{minHeight:100,background:isToday?"#eff6ff":"transparent",borderRadius:8,padding:"6px 4px",cursor:canEdit?"pointer":"default",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
+                <div style={{fontSize:13,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:3,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 3px",fontSize:12}:{})}}>
                   {d}
                 </div>
-                {dayEvs.slice(0,2).map(ev=>(
+                {dayEvs.slice(0,3).map(ev=>(
                   <div key={ev.id} onClick={e=>openEdit(ev,e)}
-                    style={{fontSize:9,padding:"1px 3px",borderRadius:3,background:ev.color+"22",color:ev.color,fontWeight:600,marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:canEdit?"pointer":"default",lineHeight:1.4}}>
+                    style={{fontSize:11,padding:"2px 5px",borderRadius:4,background:ev.color+"22",color:ev.color,fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:canEdit?"pointer":"default",lineHeight:1.5}}>
                     {ev.title}
                   </div>
                 ))}
-                {dayEvs.length>2&&<div style={{fontSize:9,color:C.faint,textAlign:"center"}}>+{dayEvs.length-2}</div>}
+                {dayEvs.length>3&&<div style={{fontSize:9,color:C.faint,textAlign:"center"}}>+{dayEvs.length-2}</div>}
               </div>
             );
           })}
