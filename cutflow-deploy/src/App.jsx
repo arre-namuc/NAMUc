@@ -1916,15 +1916,20 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
     setDrag(null);
   };
 
-  // 드래그 선택 범위 확인
-  const isInDragRange = (memberId, hour) => {
-    if(!drag || drag.memberId!==memberId) return false;
+  // 드래그 선택 범위 확인 + 위치(first/last/middle)
+  const getDragPos = (memberId, hour) => {
+    if(!drag || drag.memberId!==memberId) return null;
     const hours = TODO_HOURS.map(h=>h.key);
-    const si = hours.indexOf(drag.startHour);
-    const ei = hours.indexOf(drag.endHour);
+    const si = Math.min(hours.indexOf(drag.startHour), hours.indexOf(drag.endHour));
+    const ei = Math.max(hours.indexOf(drag.startHour), hours.indexOf(drag.endHour));
     const ci = hours.indexOf(hour);
-    return ci>=Math.min(si,ei) && ci<=Math.max(si,ei);
+    if(ci<si||ci>ei) return null;
+    if(si===ei) return "single";
+    if(ci===si) return "first";
+    if(ci===ei) return "last";
+    return "middle";
   };
+  const isInDragRange = (memberId, hour) => getDragPos(memberId, hour)!==null;
 
   const openModal = (memberId, hour) => {
     if(!canEdit(memberId)) return;
@@ -2060,7 +2065,15 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                     onMouseDown={e=>onDragStart(acc.id, key, e)}
                     onMouseEnter={()=>onDragEnter(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
-                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",borderRight:`1px solid ${C.border}22`,background:isInDragRange(acc.id,key)?"#dbeafe":todosOf(acc.id,key).some(t=>t.dnd)?"#fff5f5":editable?"transparent":"#fafafa",borderLeft:todosOf(acc.id,key).some(t=>t.dnd)?"3px solid #ef4444":"none",cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",transition:"background .05s"}}>
+                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",
+                      borderRight:`1px solid ${C.border}22`,
+                      borderLeft:(()=>{const p=getDragPos(acc.id,key);if(p)return "3px solid #2563eb";if(todosOf(acc.id,key).some(t=>t.dnd))return "3px solid #ef4444";return "none";})(),
+                      borderTop:(()=>{const p=getDragPos(acc.id,key);return p==="first"||p==="single"?"2px solid #2563eb":"none";})(),
+                      borderBottom:(()=>{const p=getDragPos(acc.id,key);return p==="last"||p==="single"?"2px solid #2563eb":"none";})(),
+                      background:(()=>{const p=getDragPos(acc.id,key);if(p)return p==="first"||p==="single"?"#1d4ed8":"#dbeafe";if(todosOf(acc.id,key).some(t=>t.dnd))return "#fff5f5";return editable?"transparent":"#fafafa";})(),
+                      cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",
+                      borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
+                      transition:"background .05s"}}>
                     {todos.map(todo=>(
                       <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
                         style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:todo.done?"#f0fdf4":"#eff6ff",border:`1px solid ${todo.done?"#86efac":"#bfdbfe"}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
@@ -2074,7 +2087,11 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                         </div>
                       </div>
                     ))}
-                    {editable && todos.length===0 && (
+                    {(()=>{const p=getDragPos(acc.id,key);return p==="first"||p==="single"?<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+                        <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span>
+                        <span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span>
+                      </div>:null;})()}
+                    {editable && todos.length===0 && !isInDragRange(acc.id,key) && (
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
                         onMouseEnter={e=>e.currentTarget.style.opacity=1}
                         onMouseLeave={e=>e.currentTarget.style.opacity=0}>
