@@ -69,55 +69,96 @@ const newId = () => Math.random().toString(36).slice(2,8);
 
 const QUOTE_TEMPLATE = [
   { category:"기획/제작관리", groups:[
-    { group:"제작관리", items:[
-      { name:"기획비",       unit:"식", qty:1, unitPrice:0 },
-      { name:"제작관리비",   unit:"식", qty:1, unitPrice:0 },
-      { name:"프로듀서비",   unit:"식", qty:1, unitPrice:0 },
+    { group:"대본 구성", items:[
+      { name:"작가 (대본 작성)",             unit:"건", qty:1, unitPrice:0 },
+      { name:"프로듀싱, 프로덕션 매니징",    unit:"건", qty:1, unitPrice:0 },
+      { name:"P.P.M 경비",                   unit:"식", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"프리프로덕션", groups:[
-    { group:"연출", items:[
-      { name:"감독료",       unit:"식", qty:1, unitPrice:0 },
-      { name:"콘티 제작",    unit:"식", qty:1, unitPrice:0 },
+    { group:"기획/연출", items:[
+      { name:"기획 및 구성료 (구성안 작성)", unit:"건", qty:1, unitPrice:0 },
+      { name:"프로듀싱, 프로덕션 매니징",    unit:"건", qty:1, unitPrice:0 },
+      { name:"연출료, 조연출료, 콘티 visualizing (종합 연출료)", unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"캐스팅/로케이션", items:[
-      { name:"캐스팅비",     unit:"명", qty:1, unitPrice:0 },
-      { name:"로케이션 헌팅",unit:"식", qty:1, unitPrice:0 },
-      { name:"장소 사용료",  unit:"일", qty:1, unitPrice:0 },
+      { name:"캐스팅비",       unit:"명", qty:1, unitPrice:0 },
+      { name:"로케이션 헌팅",  unit:"식", qty:1, unitPrice:0 },
+      { name:"장소 사용료",    unit:"일", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"촬영", groups:[
     { group:"촬영 인건비", items:[
-      { name:"촬영감독",     unit:"일", qty:1, unitPrice:0 },
-      { name:"촬영 1st",     unit:"일", qty:1, unitPrice:0 },
-      { name:"조명감독",     unit:"일", qty:1, unitPrice:0 },
+      { name:"촬영팀 운용",    unit:"일", qty:1, unitPrice:0 },
+      { name:"촬영감독료",     unit:"일", qty:1, unitPrice:0 },
+      { name:"촬영 1st",       unit:"일", qty:1, unitPrice:0 },
+      { name:"조명감독료",     unit:"일", qty:1, unitPrice:0 },
+      { name:"조명 Grip팀",    unit:"일", qty:1, unitPrice:0 },
     ]},
-    { group:"촬영 장비", items:[
-      { name:"카메라 렌탈",  unit:"일", qty:1, unitPrice:0 },
-      { name:"조명 렌탈",    unit:"일", qty:1, unitPrice:0 },
-      { name:"기타 장비",    unit:"식", qty:1, unitPrice:0 },
+    { group:"카메라 기자재", items:[
+      { name:"카메라 바디",    unit:"일", qty:1, unitPrice:0 },
+      { name:"렌즈",           unit:"일", qty:1, unitPrice:0 },
+      { name:"모니터",         unit:"일", qty:1, unitPrice:0 },
+      { name:"기타 기자재",    unit:"식", qty:1, unitPrice:0 },
+      { name:"보험료",         unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"조명 기자재", items:[
+      { name:"조명 기자재",    unit:"일", qty:1, unitPrice:0 },
+      { name:"발전차",         unit:"일", qty:1, unitPrice:0 },
+    ]},
+    { group:"특수 기자재", items:[
+      { name:"지미집 (Jimmy Jib)", unit:"일", qty:1, unitPrice:0 },
+      { name:"스테디캠",           unit:"일", qty:1, unitPrice:0 },
+      { name:"드론/헬리캠",        unit:"일", qty:1, unitPrice:0 },
+      { name:"테크노크레인",       unit:"일", qty:1, unitPrice:0 },
     ]},
     { group:"촬영 장소", items:[
-      { name:"스튜디오",     unit:"일", qty:1, unitPrice:0 },
+      { name:"스튜디오 대관료",    unit:"일", qty:1, unitPrice:0 },
+      { name:"로케이션 장소사용료",unit:"일", qty:1, unitPrice:0 },
+    ]},
+    { group:"미술/분장", items:[
+      { name:"미술 세트 제작",     unit:"식", qty:1, unitPrice:0 },
+      { name:"소품비",             unit:"식", qty:1, unitPrice:0 },
+      { name:"Make-Up / Hair",     unit:"일", qty:1, unitPrice:0 },
+      { name:"스타일리스트",       unit:"일", qty:1, unitPrice:0 },
     ]},
     { group:"출연/제작지원", items:[
-      { name:"출연료",       unit:"명", qty:1, unitPrice:0 },
-      { name:"차량/이동비",  unit:"식", qty:1, unitPrice:0 },
-      { name:"식비",         unit:"식", qty:1, unitPrice:0 },
+      { name:"출연료 (모델)",      unit:"명", qty:1, unitPrice:0 },
+      { name:"인터뷰 촬영",        unit:"건", qty:1, unitPrice:0 },
+      { name:"차량/이동비",        unit:"식", qty:1, unitPrice:0 },
+      { name:"식비",               unit:"식", qty:1, unitPrice:0 },
+      { name:"촬영경비, Post경비, 완성진행비, 진행경비, 보험료", unit:"식", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"포스트프로덕션", groups:[
     { group:"편집/DI", items:[
-      { name:"편집비",       unit:"식", qty:1, unitPrice:0 },
-      { name:"색보정(DI)",   unit:"식", qty:1, unitPrice:0 },
-    ]},
-    { group:"사운드", items:[
-      { name:"음악 제작/라이선스",unit:"식",qty:1,unitPrice:0 },
-      { name:"사운드 믹싱",  unit:"식", qty:1, unitPrice:0 },
+      { name:"Editing, 2D",        unit:"건", qty:1, unitPrice:0 },
+      { name:"색보정 (D.I.)",      unit:"건", qty:1, unitPrice:0 },
+      { name:"편집 조연출료",      unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"CG/VFX", items:[
-      { name:"자막/타이틀 CG",unit:"식",qty:1, unitPrice:0 },
-      { name:"VFX",          unit:"식", qty:1, unitPrice:0 },
+      { name:"Rendering",          unit:"건", qty:1, unitPrice:0 },
+      { name:"2D Animation",       unit:"건", qty:1, unitPrice:0 },
+      { name:"3D Modeling/Animation/Lighting", unit:"건", qty:1, unitPrice:0 },
+      { name:"FLAME Compositing",  unit:"건", qty:1, unitPrice:0 },
+      { name:"CG 및 합성 연출료",  unit:"건", qty:1, unitPrice:0 },
+    ]},
+    { group:"사운드", items:[
+      { name:"Sound Design / Mixing / Mastering", unit:"건", qty:1, unitPrice:0 },
+      { name:"작곡 / Jingle",      unit:"건", qty:1, unitPrice:0 },
+      { name:"녹음료",             unit:"건", qty:1, unitPrice:0 },
+      { name:"성우료",             unit:"건", qty:1, unitPrice:0 },
+      { name:"음악 라이선스 (BGM)", unit:"건", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"메이킹/기타", groups:[
+    { group:"메이킹", items:[
+      { name:"메이킹 촬영",        unit:"건", qty:1, unitPrice:0 },
+      { name:"메이킹 편집 (1분)",  unit:"건", qty:1, unitPrice:0 },
+    ]},
+    { group:"저작권/보험", items:[
+      { name:"저작권료",           unit:"식", qty:1, unitPrice:0 },
+      { name:"All Staff 보험료",   unit:"식", qty:1, unitPrice:0 },
     ]},
   ]},
 ];
@@ -129,6 +170,199 @@ const makeTemplate = () => QUOTE_TEMPLATE.map(cat=>({
     items: grp.items.map(it=>({ ...it, id: newId() }))
   }))
 }));
+
+// ── 포맷 B 상세형 템플릿 (Kia Shop 스타일) ──
+const QUOTE_TEMPLATE_B = [
+  { category:"기획료", groups:[
+    { group:"기획", items:[
+      { name:"기획구성료",                   unit:"건", qty:1, unitPrice:0 },
+      { name:"작가료 (카피라이터)",          unit:"건", qty:1, unitPrice:0 },
+      { name:"경쟁 PT료",                    unit:"건", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"콘티작화", groups:[
+    { group:"콘티", items:[
+      { name:"흑백 콘티 (러프)",             unit:"CUT", qty:0, unitPrice:50000 },
+      { name:"정밀 컬러 콘티 (슈팅콘티)",   unit:"CUT", qty:0, unitPrice:0 },
+      { name:"대형 컬러 콘티 B5이상",       unit:"CUT", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"프로덕션비", groups:[
+    { group:"제작관리", items:[
+      { name:"Executive Producer",           unit:"건", qty:1, unitPrice:0 },
+      { name:"Production Producer",          unit:"건", qty:1, unitPrice:0 },
+      { name:"Production Assistant",         unit:"건", qty:1, unitPrice:0 },
+      { name:"P.P.M 경비 (도서/보드/칼라복사 등)", unit:"식", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"연출료", groups:[
+    { group:"감독료", items:[
+      { name:"Pre-prod 연출료",              unit:"건", qty:1, unitPrice:0 },
+      { name:"연출료 (기본 1일 촬영)",       unit:"일", qty:1, unitPrice:0 },
+      { name:"추가 연출료",                  unit:"일", qty:0, unitPrice:0 },
+      { name:"편집 연출료",                  unit:"건", qty:1, unitPrice:0 },
+      { name:"CG 및 합성 연출료",           unit:"건", qty:1, unitPrice:0 },
+      { name:"출장 및 헌팅 연출료 (국내)",  unit:"건", qty:0, unitPrice:0 },
+    ]},
+    { group:"조연출료", items:[
+      { name:"조감독 1st - 연출료",          unit:"일", qty:1, unitPrice:0 },
+      { name:"조감독 1st - 추가 연출료",     unit:"일", qty:0, unitPrice:0 },
+      { name:"조감독 1st - 편집 연출료",     unit:"건", qty:1, unitPrice:0 },
+      { name:"조감독 1st - CG 연출료",       unit:"건", qty:0, unitPrice:0 },
+      { name:"조감독 2nd - 연출료",          unit:"일", qty:1, unitPrice:0 },
+      { name:"조연출 보조료",                unit:"일", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"기술 인건비", groups:[
+    { group:"촬영 인건비", items:[
+      { name:"촬영감독료",                   unit:"일", qty:1, unitPrice:0 },
+      { name:"Hunting 및 Travel Charge",     unit:"건", qty:0, unitPrice:0 },
+      { name:"Over Charge",                  unit:"시간", qty:0, unitPrice:0 },
+      { name:"1st Assist",                   unit:"일", qty:1, unitPrice:0 },
+      { name:"2nd Assist",                   unit:"일", qty:1, unitPrice:0 },
+      { name:"3rd Assist",                   unit:"일", qty:0, unitPrice:0 },
+      { name:"4th Assist",                   unit:"일", qty:0, unitPrice:0 },
+      { name:"DIT",                          unit:"일", qty:0, unitPrice:0 },
+    ]},
+    { group:"조명 인건비", items:[
+      { name:"조명감독료",                   unit:"일", qty:1, unitPrice:0 },
+      { name:"Over Charge",                  unit:"시간", qty:0, unitPrice:0 },
+      { name:"Grip 인건비",                  unit:"일", qty:1, unitPrice:0 },
+      { name:"조명조수 인건비",              unit:"일", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"카메라 기자재", groups:[
+    { group:"카메라/렌즈", items:[
+      { name:"카메라 바디",                  unit:"대/일", qty:1, unitPrice:0 },
+      { name:"렌즈 세트",                    unit:"set/일", qty:1, unitPrice:0 },
+      { name:"모니터 (Small HD 24)",         unit:"대/일", qty:1, unitPrice:0 },
+      { name:"모니터 (Small HD 7)",          unit:"대/일", qty:0, unitPrice:0 },
+      { name:"보험료 (카메라 & 렌즈)",       unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"이동/특수 장비", items:[
+      { name:"Steadicam",                    unit:"일", qty:0, unitPrice:0 },
+      { name:"Jimmy Jib",                    unit:"일", qty:0, unitPrice:0 },
+      { name:"GF Jib",                       unit:"일", qty:0, unitPrice:0 },
+      { name:"프리모 달리 세트",             unit:"일", qty:0, unitPrice:0 },
+      { name:"헬리캠 (드론)",                unit:"일", qty:0, unitPrice:0 },
+      { name:"모션 컨트롤 (M.C.C)",          unit:"일", qty:0, unitPrice:0 },
+      { name:"Teradeck 4K",                  unit:"대/일", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"조명 기자재", groups:[
+    { group:"조명 장비", items:[
+      { name:"9MP (노말)",                   unit:"대/일", qty:0, unitPrice:0 },
+      { name:"4KW",                          unit:"대/일", qty:0, unitPrice:0 },
+      { name:"1.8MP (노말)",                 unit:"대/일", qty:0, unitPrice:0 },
+      { name:"800MP (노말)",                 unit:"대/일", qty:0, unitPrice:0 },
+      { name:"조커 800",                     unit:"대/일", qty:0, unitPrice:0 },
+      { name:"어퓨쳐 600D",                  unit:"대/일", qty:0, unitPrice:0 },
+      { name:"Dedo 150W",                    unit:"대/일", qty:0, unitPrice:0 },
+    ]},
+    { group:"발전/헤이저", items:[
+      { name:"발전차 (서울)",                unit:"일", qty:0, unitPrice:0 },
+      { name:"발전차 (지방)",                unit:"일", qty:0, unitPrice:0 },
+      { name:"헤이저 머신",                  unit:"일", qty:0, unitPrice:0 },
+      { name:"강풍기/스모그기",              unit:"대/일", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"Studio / 장소", groups:[
+    { group:"로케이션", items:[
+      { name:"로케이션 매니저",              unit:"일", qty:1, unitPrice:0 },
+      { name:"장소 사용료 (촬영 & 설치/철수)", unit:"건", qty:1, unitPrice:0 },
+      { name:"Location 경비/경계료",         unit:"식", qty:0, unitPrice:0 },
+    ]},
+    { group:"스튜디오", items:[
+      { name:"스튜디오 대관료",              unit:"일", qty:0, unitPrice:0 },
+      { name:"초과 사용료 (시간당 10%)",     unit:"시간", qty:0, unitPrice:0 },
+      { name:"LED Display System",           unit:"식", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"미술비", groups:[
+    { group:"미술/분장", items:[
+      { name:"세트 제작료",                  unit:"식", qty:0, unitPrice:0 },
+      { name:"도색료 (바닥 및 호리)",        unit:"식", qty:0, unitPrice:0 },
+      { name:"Set Design 및 감리비",         unit:"식", qty:0, unitPrice:0 },
+      { name:"촬영지 대도구",                unit:"식", qty:0, unitPrice:0 },
+      { name:"촬영지 소도구",                unit:"식", qty:0, unitPrice:0 },
+      { name:"Make-Up / Hair",               unit:"일", qty:1, unitPrice:0 },
+      { name:"스타일리스트",                 unit:"일", qty:0, unitPrice:0 },
+      { name:"특수분장료",                   unit:"식", qty:0, unitPrice:0 },
+      { name:"Art팀 료",                     unit:"일", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"촬영 경비", groups:[
+    { group:"촬영 준비비", items:[
+      { name:"헌팅 경비 (차량 및 기타)",     unit:"식", qty:1, unitPrice:0 },
+      { name:"연출부 물품",                  unit:"식", qty:1, unitPrice:0 },
+      { name:"식대",                         unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"본촬영 경비", items:[
+      { name:"인원수송 차량",                unit:"대/일", qty:1, unitPrice:0 },
+      { name:"카메라 운반 차량",             unit:"대/일", qty:1, unitPrice:0 },
+      { name:"조명장비 운반 차량",           unit:"대/일", qty:1, unitPrice:0 },
+      { name:"중형 용달 (대도구)",           unit:"대/일", qty:0, unitPrice:0 },
+      { name:"소형 용달 (소도구/소모품)",    unit:"대/일", qty:0, unitPrice:0 },
+      { name:"고속도로비 / 유류대 / 주차료", unit:"식", qty:1, unitPrice:0 },
+      { name:"진행비 (주차/퀵/통신)",        unit:"식", qty:1, unitPrice:0 },
+      { name:"외장하드 (2T SSD)",            unit:"개", qty:2, unitPrice:0 },
+    ]},
+    { group:"보험료", items:[
+      { name:"All Staff 보험료",             unit:"식", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"출연료", groups:[
+    { group:"출연", items:[
+      { name:"모델료",                       unit:"명", qty:1, unitPrice:0 },
+      { name:"조연 모델료",                  unit:"명", qty:0, unitPrice:0 },
+      { name:"아역 모델",                    unit:"명", qty:0, unitPrice:0 },
+      { name:"대역 모델료",                  unit:"명", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"저작권", groups:[
+    { group:"저작권", items:[
+      { name:"음악 (B.G.M) 사용료 (국내 온라인)", unit:"건", qty:0, unitPrice:0 },
+      { name:"자료 화면 사용료",             unit:"건", qty:0, unitPrice:0 },
+      { name:"원작 저작권료",                unit:"건", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"포스트프로덕션", groups:[
+    { group:"편집", items:[
+      { name:"편집료",                       unit:"건", qty:1, unitPrice:0 },
+      { name:"D.I 및 파일컨버팅",            unit:"건", qty:0, unitPrice:0 },
+      { name:"추가 작업비",                  unit:"건", qty:0, unitPrice:0 },
+    ]},
+    { group:"CG/VFX", items:[
+      { name:"2D Artwork / Animation",       unit:"건", qty:1, unitPrice:0 },
+      { name:"3D Modeling / Texture / Animation / Lighting / Rigging", unit:"건", qty:0, unitPrice:0 },
+      { name:"FLAME Compositing / Clearing (컷다운 포함)", unit:"건", qty:0, unitPrice:0 },
+    ]},
+    { group:"사운드", items:[
+      { name:"Sound Design / Mixing / Mastering", unit:"건", qty:1, unitPrice:0 },
+      { name:"작곡 / Jingle / Logo Song",    unit:"건", qty:0, unitPrice:0 },
+      { name:"성우료",                       unit:"명", qty:0, unitPrice:0 },
+      { name:"동시 녹음",                    unit:"건", qty:0, unitPrice:0 },
+      { name:"선곡료",                       unit:"건", qty:0, unitPrice:0 },
+    ]},
+  ]},
+  { category:"메이킹 촬영", groups:[
+    { group:"메이킹", items:[
+      { name:"메이킹 촬영",                  unit:"건", qty:0, unitPrice:0 },
+      { name:"메이킹 편집 (1분)",            unit:"건", qty:0, unitPrice:0 },
+      { name:"2D",                           unit:"건", qty:0, unitPrice:0 },
+    ]},
+  ]},
+];
+
+const makeTemplateB = () => QUOTE_TEMPLATE_B.map(cat=>({
+  ...cat,
+  groups: cat.groups.map(grp=>({
+    ...grp, gid: newId(),
+    items: grp.items.map(it=>({ ...it, id: newId() }))
+  }))
+}));
+
+
 
 // ═══════════════════════════════════════════════════════════
 // 재무 계산 헬퍼
@@ -1412,7 +1646,7 @@ export default function App() {
   const [mainTab,      setMainTab]      = useState("tasks");
   const [addProjModal,  setAddProjModal]  = useState(false);
   const [editProjModal, setEditProjModal] = useState(false);
-  const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"15초",due:"",director:"",pd:"",color:P_COLORS[0]});
+  const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"15초",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
 
   useEffect(() => {
     if (!isConfigured) return;
@@ -1454,7 +1688,7 @@ export default function App() {
     const np = {
       id, ...pf, stage:"브리프", createdAt:todayStr(),
       tasks:[],
-      quote:{vat:true,agencyFeeRate:10,items:makeTemplate()},
+      quote:{vat:true,agencyFeeRate:10,items:pf.quoteFmt==="B"?makeTemplateB():makeTemplate()},
       budget:{vouchers:[]},
       settlementDate:null, settled:false,
     };
@@ -1768,8 +2002,18 @@ export default function App() {
               {P_COLORS.map(c=><div key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",outline:pf.color===c?`3px solid ${c}`:"none",outlineOffset:2}}/>)}
             </div>
           </Field>
+          <Field label="견적서 포맷">
+            <div style={{display:"flex",gap:8}}>
+              {[{val:"A",label:"📄 표준형",desc:"대분류/중분류 계층"},{val:"B",label:"📋 상세형",desc:"부문별 소계 + 관리비/이윤"}].map(opt=>(
+                <label key={opt.val} style={{flex:1,display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer",padding:"10px 12px",borderRadius:10,border:`2px solid ${(pf.quoteFmt||"A")===opt.val?C.blue:C.border}`,background:(pf.quoteFmt||"A")===opt.val?C.blueLight:C.white}}>
+                  <input type="radio" name="quoteFmtNew" value={opt.val} checked={(pf.quoteFmt||"A")===opt.val} onChange={()=>setPf(v=>({...v,quoteFmt:opt.val}))} style={{marginTop:2,accentColor:C.blue}}/>
+                  <div><div style={{fontWeight:700,fontSize:13}}>{opt.label}</div><div style={{fontSize:11,color:C.faint,marginTop:2}}>{opt.desc}</div></div>
+                </label>
+              ))}
+            </div>
+          </Field>
           <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",fontSize:12,color:C.blue,marginBottom:4}}>
-            💡 생성 시 기획·프리프로덕션·촬영·포스트 기본 견적 항목이 자동으로 추가됩니다.
+            💡 선택한 포맷에 맞는 견적 항목이 자동으로 추가됩니다.
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
             <Btn onClick={()=>setAddProjModal(false)}>취소</Btn>
