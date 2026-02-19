@@ -1548,6 +1548,7 @@ export default function App() {
             <div style={{fontSize:12,color:C.sub,marginBottom:6}}>컬러 태그</div>
             <div style={{display:"flex",gap:6}}>{P_COLORS.map(c=><button key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:24,height:24,borderRadius:"50%",background:c,border:pf.color===c?"3px solid #1e293b":"2px solid transparent",cursor:"pointer"}}/>)}</div>
           </div>
+          {user.canManageMembers && (
           <div style={{background:C.slateLight,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 재무 문서 접근 허용 멤버</div>
             <div style={{fontSize:11,color:C.faint,marginBottom:8}}>미선택 시 '재무 열람' 권한자 전체 접근 가능</div>
@@ -1565,6 +1566,7 @@ export default function App() {
             </div>
             {(pf.allowedFinanceMembers||[]).length>0 && <button onClick={()=>setPf(v=>({...v,allowedFinanceMembers:[]}))} style={{marginTop:6,fontSize:11,color:C.faint,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>전체 허용으로 초기화</button>}
           </div>
+          )}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
             <div style={{display:"flex",gap:8}}>
