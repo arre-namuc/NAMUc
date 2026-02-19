@@ -1678,9 +1678,150 @@ const STAFF_GROUPS = [
   { label:"기타",        roles:["메이킹","작가","기타"] },
 ];
 
-// ═══════════════════════════════════════════════════════════
-// 피드백 히스토리
-// ═══════════════════════════════════════════════════════════
+function StaffList({ project, onChange, accounts }) {
+  const staff = project.staff || [];
+  const [modal, setModal] = useState(null); // null | {mode:"add"|"edit", data:{}}
+  const [sf, setSf]       = useState({});
+  const [filterGroup, setFilterGroup] = useState("\uc804\uccb4");
+
+  const openAdd = (role="") => {
+    setSf({ role, name:"", phone:"", email:"", company:"", note:"", fromTeam:false, memberId:"" });
+    setModal({mode:"add"});
+  };
+  const openEdit = (s) => { setSf({...s}); setModal({mode:"edit",id:s.id}); };
+
+  const save = () => {
+    if (!sf.name?.trim() && !sf.memberId) return;
+    // \ud300\uc6d0\uc5d0\uc11c \uc120\ud0dd\ud55c \uacbd\uc6b0 \uc774\ub984 \uc790\ub3d9 \ucc44\uc6c0
+    let entry = {...sf, id: modal.id || "s"+Date.now()};
+    if (sf.memberId) {
+      const m = accounts.find(a=>String(a.id)===String(sf.memberId));
+      if (m) { entry.name = m.name; entry.phone = entry.phone||m.phone||""; entry.email = entry.email||m.email||""; entry.fromTeam = true; }
+    }
+    onChange(p => {
+      const prev = p.staff||[];
+      const next = modal.mode==="edit"
+        ? prev.map(s=>s.id===modal.id?entry:s)
+        : [...prev, entry];
+      return {...p, staff:next};
+    });
+    setModal(null);
+  };
+
+  const del = (id) => onChange(p=>({...p, staff:(p.staff||[]).filter(s=>s.id!==id)}));
+
+  const filtered = filterGroup==="\uc804\uccb4" ? staff
+    : staff.filter(s=>{
+        const g = STAFF_GROUPS.find(g=>g.label===filterGroup);
+        return g?.roles.includes(s.role);
+      });
+
+  // \uc5ed\ud560 \uc21c\uc11c\ub300\ub85c \uc815\ub82c
+  const sorted = [...filtered].sort((a,b)=>STAFF_ROLES.indexOf(a.role)-STAFF_ROLES.indexOf(b.role));
+
+  return (
+    <div>
+      {/* \ud5e4\ub354 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {["\uc804\uccb4",...STAFF_GROUPS.map(g=>g.label)].map(g=>(
+            <button key={g} onClick={()=>setFilterGroup(g)}
+              style={{padding:"4px 12px",borderRadius:99,border:`1px solid ${filterGroup===g?C.blue:C.border}`,background:filterGroup===g?C.blueLight:C.white,color:filterGroup===g?C.blue:C.sub,fontSize:12,fontWeight:filterGroup===g?700:500,cursor:"pointer"}}>
+              {g}
+            </button>
+          ))}
+        </div>
+        <Btn primary sm onClick={()=>openAdd()}>+ \uc2a4\ud0ed \ucd94\uac00</Btn>
+      </div>
+
+      {/* \uc2a4\ud0ed \uc5c6\uc74c */}
+      {sorted.length===0 && (
+        <div style={{textAlign:"center",padding:"60px 0",color:C.faint}}>
+          <div style={{fontSize:32,marginBottom:10}}>\ud83d\udc64</div>
+          <div style={{fontSize:14}}>\ub4f1\ub85d\ub41c \uc2a4\ud0ed\uc774 \uc5c6\uc2b5\ub2c8\ub2e4</div>
+          <div style={{fontSize:12,marginTop:4}}>+ \uc2a4\ud0ed \ucd94\uac00 \ubc84\ud2bc\uc73c\ub85c \ub4f1\ub85d\ud558\uc138\uc694</div>
+        </div>
+      )}
+
+      {/* \uadf8\ub8f9\ubcc4 \ub80c\ub354\ub9c1 */}
+      {STAFF_GROUPS.map(grp=>{
+        const grpStaff = sorted.filter(s=>grp.roles.includes(s.role));
+        if ((filterGroup!=="\uc804\uccb4"&&filterGroup!==grp.label)||grpStaff.length===0) return null;
+        return (
+          <div key={grp.label} style={{marginBottom:20}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:3,height:14,background:C.blue,borderRadius:2,display:"inline-block"}}/>
+              {grp.label}
+              <span style={{fontSize:11,color:C.faint}}>({grpStaff.length}\uba85)</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+              {grpStaff.map(s=>(
+                <div key={s.id} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",position:"relative"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <Avatar name={s.name} size={32}/>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{s.name}</div>
+                        <span style={{fontSize:11,padding:"1px 7px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{s.role}</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>openEdit(s)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13,color:C.faint,padding:"2px 4px"}}>\u270f\ufe0f</button>
+                  </div>
+                  <div style={{marginTop:8,fontSize:12,color:C.sub,display:"flex",flexDirection:"column",gap:3}}>
+                    {s.company&&<span>\ud83c\udfe2 {s.company}</span>}
+                    {s.phone&&<a href={`tel:${s.phone}`} style={{color:C.blue,textDecoration:"none"}}>\ud83d\udcde {s.phone}</a>}
+                    {s.email&&<a href={`mailto:${s.email}`} style={{color:C.blue,textDecoration:"none"}}>\u2709\ufe0f {s.email}</a>}
+                    {s.note&&<span style={{color:C.faint,fontSize:11}}>\ud83d\udcdd {s.note}</span>}
+                  </div>
+                  {s.fromTeam&&<span style={{position:"absolute",top:10,right:36,fontSize:10,background:C.greenLight,color:C.green,padding:"1px 6px",borderRadius:99,fontWeight:700}}>\ub0b4\ubd80</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* \ucd94\uac00/\uc218\uc815 \ubaa8\ub2ec */}
+      {modal && (
+        <Modal title={modal.mode==="add"?"\uc2a4\ud0ed \ucd94\uac00":"\uc2a4\ud0ed \uc218\uc815"} onClose={()=>setModal(null)}>
+          <div style={{marginBottom:12,padding:"10px 14px",background:C.slateLight,borderRadius:10}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8}}>\ud83d\udc65 \ud300 \uad6c\uc131\uc6d0\uc5d0\uc11c \uc120\ud0dd</div>
+            <select style={inp} value={sf.memberId||""} onChange={e=>{
+              const m = accounts.find(a=>String(a.id)===e.target.value);
+              setSf(v=>({...v, memberId:e.target.value, name:m?m.name:v.name, phone:m?.phone||v.phone, email:m?.email||v.email}));
+            }}>
+              <option value="">\uc9c1\uc811 \uc785\ub825</option>
+              {accounts.map(a=><option key={a.id} value={String(a.id)}>{a.name} ({a.role})</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="\uc5ed\ud560 *" half>
+              <select style={inp} value={sf.role||""} onChange={e=>setSf(v=>({...v,role:e.target.value}))}>
+                <option value="">\uc120\ud0dd</option>
+                {STAFF_ROLES.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </Field>
+            <Field label="\uc774\ub984 *" half><input style={inp} value={sf.name||""} onChange={e=>setSf(v=>({...v,name:e.target.value}))} placeholder="\ud64d\uae38\ub3d9" autoFocus/></Field>
+            <Field label="\uc18c\uc18d/\ud68c\uc0ac" half><input style={inp} value={sf.company||""} onChange={e=>setSf(v=>({...v,company:e.target.value}))} placeholder="\ud504\ub9ac\ub79c\uc11c / \ud68c\uc0ac\uba85"/></Field>
+            <Field label="\uc5f0\ub77d\ucc98" half><input style={inp} value={sf.phone||""} onChange={e=>setSf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
+            <Field label="\uc774\uba54\uc77c"><input style={inp} value={sf.email||""} onChange={e=>setSf(v=>({...v,email:e.target.value}))} placeholder="name@email.com"/></Field>
+            <Field label="\uba54\ubaa8"><input style={inp} value={sf.note||""} onChange={e=>setSf(v=>({...v,note:e.target.value}))} placeholder="\ud2b9\uc774\uc0ac\ud56d, \uacc4\uc57d\uc870\uac74 \ub4f1"/></Field>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:16}}>
+            {modal.mode==="edit"&&<Btn danger sm onClick={()=>{del(modal.id);setModal(null);}}>\uc0ad\uc81c</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setModal(null)}>\ucde8\uc18c</Btn>
+            <Btn primary onClick={save} disabled={!sf.name?.trim()&&!sf.memberId}>\uc800\uc7a5</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+print("\u2705 StaffList \ucef4\ud3ec\ub10c\ud2b8 \ucd94\uac00")
+
+open('/home/claude/cutflow-deploy/src/App.jsx', 'w').write(content)
+c = open('/home/claude/cutflow-deploy/src/App.jsx').read()
 function FeedbackTab({project, patchProj, user, accounts}) {
   const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
