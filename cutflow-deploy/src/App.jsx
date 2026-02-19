@@ -410,8 +410,10 @@ function TabBar({ tabs, active, onChange }) {
   return (
     <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,marginBottom:24}}>
       {tabs.map(t=>(
-        <button key={t.id} onClick={()=>onChange(t.id)} style={{padding:"10px 20px",border:"none",background:"none",cursor:"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6}}>
-          {t.icon} {t.label}
+        <button key={t.id} onClick={()=>!t.locked&&onChange(t.id)}
+          title={t.locked?"접근 권한이 없습니다":""}
+          style={{padding:"10px 20px",border:"none",background:"none",cursor:t.locked?"not-allowed":"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:t.locked?C.faint:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6,opacity:t.locked?0.5:1}}>
+          {t.icon} {t.label}{t.locked?" 🔒":""}
         </button>
       ))}
     </div>
@@ -1279,6 +1281,12 @@ export default function App() {
   if (!user) return <LoginScreen onLogin={setUser} accounts={accounts}/>;
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
+
+  // 재무 문서 접근 권한: canViewFinance 있거나, 프로젝트 허용 멤버에 포함되거나, 허용 멤버 미지정시 전체 허용
+  const canAccessFinance = user.canViewFinance ||
+    !proj?.allowedFinanceMembers?.length ||
+    (proj?.allowedFinanceMembers||[]).includes(String(user.id));
+
   const patchProj = fn => setProjects(ps=>{
     const updated=ps.map(p=>p.id===selId?fn(p):p);
     const changed=updated.find(p=>p.id===selId);
@@ -1312,7 +1320,7 @@ export default function App() {
   const openEditProj = () => {
     const p = projects.find(x=>x.id===selId);
     if(!p) return;
-    setPf({name:p.name,client:p.client,format:p.format||FORMATS[0],due:p.due||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0]});
+    setPf({name:p.name,client:p.client,format:p.format||FORMATS[0],due:p.due||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[]});
     setEditProjModal(true);
   };
 
