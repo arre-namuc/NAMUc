@@ -2063,7 +2063,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
       </div>
 
       {/* 타임테이블 */}
-      <div style={{overflowX:"auto"}}  onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
+      <div style={{overflowX:"auto"}}  onMouseLeave={()=>{ dragRef.current={active:false,memberId:null,startHour:null,endHour:null,moved:false}; setDrag(null); }}>
         <div style={{minWidth: 80 + accounts.length * COL_W}}>
           {/* 헤더 - 구성원 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
@@ -2096,7 +2096,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                     onMouseDown={e=>onCellMouseDown(acc.id, key, e)}
                     onMouseEnter={()=>onCellMouseEnter(acc.id, key)}
                     onMouseUp={()=>onCellMouseUp(acc.id, key)}
-                    onMouseUp={()=>{ if(dragging) onDragEnd(); }}
+                    onMouseUp={()=>onCellMouseUp(acc.id, key)}
                     style={{width:COL_W,flexShrink:0,minHeight:ROW_H,padding:"4px 6px",
                       borderRight:`1px solid ${C.border}22`,
                       borderLeft:(()=>{
