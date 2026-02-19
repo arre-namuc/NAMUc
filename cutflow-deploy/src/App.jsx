@@ -1,0 +1,1271 @@
+import { useState, useMemo, useEffect, useCallback } from "react";
+import {
+  subscribeProjects,
+  saveProject,
+  deleteProject,
+  uploadVoucherFile,
+  isConfigured,
+} from "./firebase.js";
+
+// ═══════════════════════════════════════════════════════════
+// 디자인 토큰
+// ═══════════════════════════════════════════════════════════
+const C = {
+  bg:"#f4f5f7", white:"#ffffff", border:"#e4e7ec",
+  text:"#111827", sub:"#6b7280", faint:"#9ca3af",
+  blue:"#2563eb", blueLight:"#eff6ff", blueMid:"#dbeafe",
+  green:"#16a34a", greenLight:"#f0fdf4",
+  red:"#dc2626", redLight:"#fef2f2",
+  amber:"#d97706", amberLight:"#fffbeb",
+  purple:"#7c3aed", purpleLight:"#f5f3ff",
+  slate:"#475569", slateLight:"#f8fafc",
+  teal:"#0d9488", tealLight:"#f0fdfa",
+  emerald:"#059669", emeraldLight:"#ecfdf5",
+};
+
+// ═══════════════════════════════════════════════════════════
+// 계정 / 역할
+// ═══════════════════════════════════════════════════════════
+const ACCOUNTS = [
+  { id:0, name:"김대표",  role:"대표",    pw:"ceo1234",  canViewFinance:true  },
+  { id:1, name:"박민서",  role:"PD",      pw:"pd1234",   canViewFinance:false },
+  { id:2, name:"이준혁",  role:"감독",    pw:"dir1234",  canViewFinance:false },
+  { id:3, name:"김소연",  role:"촬영감독",pw:"cam1234",  canViewFinance:false },
+  { id:4, name:"최다인",  role:"편집자",  pw:"edit1234", canViewFinance:false },
+  { id:5, name:"정우진",  role:"CG",      pw:"cg1234",   canViewFinance:false },
+  { id:6, name:"한지수",  role:"제작부",  pw:"prod1234", canViewFinance:false },
+  { id:7, name:"오세진",  role:"경영지원",pw:"biz1234",  canViewFinance:true  },
+];
+
+// ═══════════════════════════════════════════════════════════
+// 프로덕션 상수
+// ═══════════════════════════════════════════════════════════
+const STAGES = {
+  "브리프":       { color:C.slate,  bg:C.slateLight, icon:"📋" },
+  "프리프로덕션": { color:C.purple, bg:C.purpleLight, icon:"🎨" },
+  "촬영":         { color:C.amber,  bg:C.amberLight,  icon:"🎬" },
+  "포스트":       { color:C.blue,   bg:C.blueLight,   icon:"✂️" },
+  "납품완료":     { color:C.green,  bg:C.greenLight,  icon:"✅" },
+};
+const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","촬영","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
+const FORMATS    = ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"];
+const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
+const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
+
+// ═══════════════════════════════════════════════════════════
+// 견적서 3단계 템플릿 (대분류 > 중분류 > 소분류)
+// ═══════════════════════════════════════════════════════════
+const newId = () => Math.random().toString(36).slice(2,8);
+
+const QUOTE_TEMPLATE = [
+  { category:"기획/제작관리", groups:[
+    { group:"제작관리", items:[
+      { name:"기획비",       unit:"식", qty:1, unitPrice:0 },
+      { name:"제작관리비",   unit:"식", qty:1, unitPrice:0 },
+      { name:"프로듀서비",   unit:"식", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"프리프로덕션", groups:[
+    { group:"연출", items:[
+      { name:"감독료",       unit:"식", qty:1, unitPrice:0 },
+      { name:"콘티 제작",    unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"캐스팅/로케이션", items:[
+      { name:"캐스팅비",     unit:"명", qty:1, unitPrice:0 },
+      { name:"로케이션 헌팅",unit:"식", qty:1, unitPrice:0 },
+      { name:"장소 사용료",  unit:"일", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"촬영", groups:[
+    { group:"촬영 인건비", items:[
+      { name:"촬영감독",     unit:"일", qty:1, unitPrice:0 },
+      { name:"촬영 1st",     unit:"일", qty:1, unitPrice:0 },
+      { name:"조명감독",     unit:"일", qty:1, unitPrice:0 },
+    ]},
+    { group:"촬영 장비", items:[
+      { name:"카메라 렌탈",  unit:"일", qty:1, unitPrice:0 },
+      { name:"조명 렌탈",    unit:"일", qty:1, unitPrice:0 },
+      { name:"기타 장비",    unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"촬영 장소", items:[
+      { name:"스튜디오",     unit:"일", qty:1, unitPrice:0 },
+    ]},
+    { group:"출연/제작지원", items:[
+      { name:"출연료",       unit:"명", qty:1, unitPrice:0 },
+      { name:"차량/이동비",  unit:"식", qty:1, unitPrice:0 },
+      { name:"식비",         unit:"식", qty:1, unitPrice:0 },
+    ]},
+  ]},
+  { category:"포스트프로덕션", groups:[
+    { group:"편집/DI", items:[
+      { name:"편집비",       unit:"식", qty:1, unitPrice:0 },
+      { name:"색보정(DI)",   unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"사운드", items:[
+      { name:"음악 제작/라이선스",unit:"식",qty:1,unitPrice:0 },
+      { name:"사운드 믹싱",  unit:"식", qty:1, unitPrice:0 },
+    ]},
+    { group:"CG/VFX", items:[
+      { name:"자막/타이틀 CG",unit:"식",qty:1, unitPrice:0 },
+      { name:"VFX",          unit:"식", qty:1, unitPrice:0 },
+    ]},
+  ]},
+];
+
+const makeTemplate = () => QUOTE_TEMPLATE.map(cat=>({
+  ...cat,
+  groups: cat.groups.map(grp=>({
+    ...grp, gid: newId(),
+    items: grp.items.map(it=>({ ...it, id: newId() }))
+  }))
+}));
+
+// ═══════════════════════════════════════════════════════════
+// 재무 계산 헬퍼
+// ═══════════════════════════════════════════════════════════
+const sum     = (arr, fn) => (arr||[]).reduce((s,x)=>s+(fn(x)||0), 0);
+const itemAmt = it  => (it.qty||0)*(it.unitPrice||0);
+const grpAmt  = grp => sum(grp.items, itemAmt);
+const catAmt  = cat => sum(cat.groups, grpAmt);
+const qSub    = q   => sum(q.items, catAmt);
+const qFee    = q   => Math.round(qSub(q) * (q.agencyFeeRate||0) / 100);
+const qSupply = q   => qSub(q) + qFee(q);
+const qVat    = q   => q.vat ? Math.round(qSupply(q) * 0.1) : 0;
+const qTotal  = q   => qSupply(q) + qVat(q);
+const vTotal  = b   => sum(b.vouchers||[], v=>v.amount||0);
+
+const fmt  = n => n==null?"":Math.round(n).toLocaleString("ko-KR")+"원";
+const fmtM = n => {
+  if (!n) return "0원";
+  const abs = Math.abs(n);
+  if (abs >= 1e8) return (n<0?"-":"")+(abs/1e8).toFixed(1)+"억";
+  if (abs >= 1e4) return (n<0?"-":"")+(abs/1e4).toFixed(0)+"만";
+  return n.toLocaleString("ko-KR")+"원";
+};
+
+// ═══════════════════════════════════════════════════════════
+// 시드 데이터
+// ═══════════════════════════════════════════════════════════
+const SEED_PROJECTS = [
+  {
+    id:"p1", name:"기아 EV9 런칭 캠페인", client:"기아자동차", color:"#2563eb",
+    format:"60초", due:"2026-04-15", director:"이준혁", pd:"박민서",
+    stage:"촬영", createdAt:"2026-01-10",
+    tasks:[
+      {id:"t1",title:"브랜드 방향성 확정",type:"스크립트",assignee:"박민서",stage:"납품완료",due:"2026-01-20",priority:"높음",desc:""},
+      {id:"t2",title:"콘티 1차 시안",type:"콘티",assignee:"이준혁",stage:"납품완료",due:"2026-02-05",priority:"높음",desc:""},
+      {id:"t3",title:"촬영지 헌팅",type:"로케이션",assignee:"한지수",stage:"납품완료",due:"2026-02-15",priority:"보통",desc:""},
+      {id:"t4",title:"D-day 촬영",type:"촬영",assignee:"김소연",stage:"촬영",due:"2026-03-10",priority:"긴급",desc:""},
+      {id:"t5",title:"1차 편집",type:"편집",assignee:"최다인",stage:"브리프",due:"2026-03-25",priority:"높음",desc:""},
+    ],
+    quote:{
+      vat:true, agencyFeeRate:10,
+      items: (() => {
+        const prices = [3000000,2500000,1500000,800000,500000,1200000,1000000,800000,700000,500000,1500000,1000000,400000,300000,2000000,1500000,1000000,500000,300000,3500000,2500000,800000,500000,400000,300000];
+        let idx = 0;
+        return makeTemplate().map(cat=>({
+          ...cat,
+          groups: cat.groups.map(grp=>({
+            ...grp,
+            items: grp.items.map(it=>({ ...it, unitPrice: prices[idx++] || 500000 }))
+          }))
+        }));
+      })()
+    },
+    budget:{
+      vouchers:[
+        {id:"v1",name:"이준혁 감독료",vendor:"개인",type:"세금계산서",date:"2026-02-10",amount:3000000,category:"기획/제작관리",group:"제작관리",number:"",note:"",files:[]},
+        {id:"v2",name:"촬영 스튜디오",vendor:"(주)스튜디오101",type:"세금계산서",date:"2026-03-10",amount:2500000,category:"촬영",group:"촬영 장소",number:"",note:"",files:[]},
+        {id:"v3",name:"카메라 렌탈",vendor:"씨네렌탈",type:"영수증",date:"2026-03-10",amount:1800000,category:"촬영",group:"촬영 장비",number:"",note:"",files:[]},
+      ]
+    },
+    settlementDate:null, settled:false,
+  },
+  {
+    id:"p2", name:"현대 수소전기차 다큐", client:"현대자동차", color:"#7c3aed",
+    format:"다큐멘터리형", due:"2026-05-30", director:"이준혁", pd:"박민서",
+    stage:"프리프로덕션", createdAt:"2026-02-01",
+    tasks:[
+      {id:"t6",title:"다큐 기획안 작성",type:"스크립트",assignee:"박민서",stage:"납품완료",due:"2026-02-10",priority:"높음",desc:""},
+      {id:"t7",title:"인터뷰 대상 섭외",type:"캐스팅",assignee:"한지수",stage:"프리프로덕션",due:"2026-03-01",priority:"보통",desc:""},
+    ],
+    quote:{
+      vat:true, agencyFeeRate:10,
+      items: makeTemplate()
+    },
+    budget:{ vouchers:[] },
+    settlementDate:null, settled:false,
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+// CSV 내보내기 (아티팩트 환경 안전)
+// ═══════════════════════════════════════════════════════════
+function downloadCSV(filename, rows) {
+  const BOM = "\uFEFF";
+  const csv = rows.map(r =>
+    r.map(v => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    }).join(",")
+  ).join("\n");
+  const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportQuoteToCSV(project, quote) {
+  const rows = [
+    [`${project.client} · ${project.name} 견적서`],
+    [],
+    ["대분류","중분류","항목명","단위","수량","단가","금액"],
+  ];
+  let grand = 0;
+  for (const cat of (quote.items||[])) {
+    let catTotal = 0;
+    for (const grp of (cat.groups||[])) {
+      for (const it of (grp.items||[])) {
+        const amt = (it.qty||0)*(it.unitPrice||0);
+        if (!amt) continue;
+        catTotal += amt;
+        rows.push([cat.category,grp.group,it.name,it.unit,it.qty||1,it.unitPrice||0,amt]);
+      }
+    }
+    if (catTotal) {
+      rows.push([`◆ ${cat.category} 소계`,"","","","","",catTotal]);
+      grand += catTotal;
+    }
+  }
+  rows.push([],[" 합 계","","","","","",grand],[" 부가가치세(10%)","","","","","",Math.round(grand*0.1)],[" 최종 청구금액(VAT포함)","","","","","",grand+Math.round(grand*0.1)]);
+  downloadCSV(`${project.client}_${project.name}_견적서.csv`, rows);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 공통 UI 컴포넌트
+// ═══════════════════════════════════════════════════════════
+const inp = {width:"100%",padding:"9px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+
+function Btn({ children, primary, danger, ghost, sm, onClick, style={}, disabled }) {
+  const base = {padding:sm?"5px 11px":"9px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",fontSize:sm?12:13,fontWeight:600,transition:"opacity .15s",...style};
+  const variant = primary?{background:C.blue,color:"#fff"}:danger?{background:C.red,color:"#fff"}:ghost?{background:"transparent",color:C.blue,border:`1px solid ${C.blue}`}:{background:C.slateLight,color:C.text,border:`1px solid ${C.border}`};
+  return <button style={{...base,...variant,opacity:disabled?.5:1}} onClick={disabled?undefined:onClick}>{children}</button>;
+}
+
+function Field({ label, children, half }) {
+  return (
+    <div style={{flex:half?"1 1 140px":"1 1 100%",marginBottom:12}}>
+      <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:5}}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children, wide }) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+      <div style={{background:C.white,borderRadius:16,padding:28,width:"100%",maxWidth:wide?700:520,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.15)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontWeight:800,fontSize:16}}>{title}</div>
+          <button onClick={onClose} style={{border:"none",background:"none",fontSize:22,cursor:"pointer",color:C.faint,lineHeight:1}}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ name, size=28 }) {
+  const acc = ACCOUNTS.find(a=>a.name===name);
+  return <div title={`${name}${acc?` · ${acc.role}`:""}`} style={{width:size,height:size,borderRadius:"50%",background:C.blueLight,color:C.blue,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.43,fontWeight:700,flexShrink:0}}>{name[0]}</div>;
+}
+
+function TabBar({ tabs, active, onChange }) {
+  return (
+    <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,marginBottom:24}}>
+      {tabs.map(t=>(
+        <button key={t.id} onClick={()=>onChange(t.id)} style={{padding:"10px 20px",border:"none",background:"none",cursor:"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6}}>
+          {t.icon} {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const todayStr = () => new Date().toISOString().slice(0,10);
+const isOverdue = t => t.stage!=="납품완료" && t.due && t.due < todayStr();
+
+// ═══════════════════════════════════════════════════════════
+// 로그인 화면
+// ═══════════════════════════════════════════════════════════
+function LoginScreen({ onLogin }) {
+  const [selId, setSelId] = useState(ACCOUNTS[0].id);
+  const [pw, setPw]       = useState("");
+  const [err, setErr]     = useState("");
+  const [show, setShow]   = useState(false);
+
+  const login = () => {
+    const acc = ACCOUNTS.find(a=>a.id===selId && a.pw===pw);
+    if (acc) onLogin(acc);
+    else setErr("비밀번호가 올바르지 않습니다.");
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:20,padding:"40px 36px",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,.08)"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:36,marginBottom:8}}>🎬</div>
+          <div style={{fontWeight:800,fontSize:22,letterSpacing:-0.5}}>CutFlow</div>
+          <div style={{fontSize:13,color:C.faint,marginTop:4}}>광고 영상 프로덕션 관리</div>
+        </div>
+        <Field label="이름">
+          <select style={inp} value={selId} onChange={e=>{setSelId(Number(e.target.value));setErr("");setPw("");}}>
+            {ACCOUNTS.map(a=><option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
+          </select>
+        </Field>
+        <Field label="비밀번호">
+          <div style={{position:"relative"}}>
+            <input style={{...inp,paddingRight:40}} type={show?"text":"password"} value={pw}
+              placeholder="비밀번호 입력"
+              onChange={e=>{setPw(e.target.value);setErr("");}}
+              onKeyDown={e=>e.key==="Enter"&&login()}/>
+            <button onClick={()=>setShow(v=>!v)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:15,padding:0}}>
+              {show?"🙈":"👁"}
+            </button>
+          </div>
+        </Field>
+        {err && <div style={{fontSize:13,color:C.red,marginBottom:12,padding:"8px 12px",background:C.redLight,borderRadius:8}}>{err}</div>}
+        <button onClick={login} style={{width:"100%",padding:12,borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>
+          로그인
+        </button>
+        <div style={{marginTop:20,padding:"12px 14px",background:C.slateLight,borderRadius:10,fontSize:12,color:C.sub}}>
+          <div style={{fontWeight:700,marginBottom:6}}>💡 테스트 계정</div>
+          {ACCOUNTS.map(a=>(
+            <div key={a.id} style={{display:"flex",justifyContent:"space-between",marginTop:3}}>
+              <span style={{color:a.canViewFinance?C.emerald:C.sub}}>{a.name} ({a.role}){a.canViewFinance?" 🔑":""}</span>
+              <span style={{fontFamily:"monospace",color:C.slate}}>{a.pw}</span>
+            </div>
+          ))}
+          <div style={{marginTop:8,fontSize:11,color:C.faint}}>🔑 = 재무정보 열람 가능</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 칸반 컬럼
+// ═══════════════════════════════════════════════════════════
+function KanbanCol({ stage, tasks, onEdit }) {
+  const cfg = STAGES[stage];
+  return (
+    <div style={{flex:"0 0 190px",background:C.bg,borderRadius:12,padding:13,border:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+        <span>{cfg.icon}</span>
+        <span style={{fontWeight:700,fontSize:13,color:cfg.color}}>{stage}</span>
+        <span style={{marginLeft:"auto",background:cfg.bg,color:cfg.color,borderRadius:99,padding:"1px 8px",fontSize:12,fontWeight:700}}>{tasks.length}</span>
+      </div>
+      {tasks.map(t=>(
+        <div key={t.id} onClick={()=>onEdit(t)} style={{background:C.white,border:`1px solid ${isOverdue(t)?"#fca5a5":C.border}`,borderRadius:10,padding:"12px 13px",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>{t.title}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:99}}>{t.type}</span>
+            <Avatar name={t.assignee} size={22}/>
+          </div>
+          {t.due&&<div style={{fontSize:11,color:isOverdue(t)?C.red:C.faint,marginTop:6}}>{isOverdue(t)?"⚠ ":"📅 "}{t.due}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 견적서 에디터 (대분류 > 중분류 > 소분류 3단계)
+// ═══════════════════════════════════════════════════════════
+function QuoteEditor({ quote, onChange, exportProject }) {
+  const q = quote;
+  const [addModal,    setAddModal]    = useState(null); // {ci, gi}
+  const [newItem,     setNewItem]     = useState({name:"",unit:"식",qty:1,unitPrice:0});
+  const [addGrpModal, setAddGrpModal] = useState(null); // ci
+  const [newGrp,      setNewGrp]      = useState("");
+
+  /* 소분류 CRUD */
+  const patchItem = (ci,gi,id,k,v) => onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
+    ...cat, groups:cat.groups.map((grp,j)=> j!==gi?grp:{
+      ...grp, items:grp.items.map(it=> it.id!==id?it:{...it,[k]:k==="qty"||k==="unitPrice"?Number(v)||0:v})
+    })
+  })});
+  const removeItem = (ci,gi,id) => onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
+    ...cat, groups:cat.groups.map((grp,j)=> j!==gi?grp:{...grp, items:grp.items.filter(it=>it.id!==id)})
+  })});
+  const addItem = () => {
+    if (!newItem.name.trim()) return;
+    const {ci,gi} = addModal;
+    onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
+      ...cat, groups:cat.groups.map((grp,j)=> j!==gi?grp:{
+        ...grp, items:[...grp.items, {...newItem,id:newId(),qty:Number(newItem.qty)||1,unitPrice:Number(newItem.unitPrice)||0}]
+      })
+    })});
+    setAddModal(null); setNewItem({name:"",unit:"식",qty:1,unitPrice:0});
+  };
+
+  /* 중분류 CRUD */
+  const addGroup = (ci) => {
+    if (!newGrp.trim()) return;
+    onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
+      ...cat, groups:[...cat.groups, {gid:newId(),group:newGrp,items:[]}]
+    })});
+    setAddGrpModal(null); setNewGrp("");
+  };
+  const renameGroup  = (ci,gi,v) => onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
+    ...cat, groups:cat.groups.map((grp,j)=> j!==gi?grp:{...grp,group:v})
+  })});
+  const removeGroup  = (ci,gi) => onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
+    ...cat, groups:cat.groups.filter((_,j)=>j!==gi)
+  })});
+
+  /* 대분류 CRUD */
+  const addCategory    = () => onChange({...q, items:[...q.items, {category:"새 대분류",groups:[{gid:newId(),group:"새 중분류",items:[]}]}]});
+  const renameCategory = (ci,v) => onChange({...q, items:q.items.map((cat,i)=>i===ci?{...cat,category:v}:cat)});
+  const removeCategory = (ci) => onChange({...q, items:q.items.filter((_,i)=>i!==ci)});
+
+  const sub=qSub(q), fee=qFee(q), supply=qSupply(q), vat=qVat(q), total=qTotal(q);
+
+  return (
+    <div>
+      {/* 옵션 바 */}
+      <div style={{display:"flex",gap:16,marginBottom:16,padding:"13px 18px",background:C.blueLight,borderRadius:12,alignItems:"center",flexWrap:"wrap"}}>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+          <input type="checkbox" checked={q.vat} onChange={e=>onChange({...q,vat:e.target.checked})} style={{accentColor:C.blue}}/>
+          부가세 10% 포함
+        </label>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13,fontWeight:600,color:C.sub}}>대행수수료</span>
+          <input type="number" value={q.agencyFeeRate||0} min={0} max={100}
+            onChange={e=>onChange({...q,agencyFeeRate:Number(e.target.value)||0})}
+            style={{...inp,width:60,textAlign:"right"}}/>
+          <span style={{fontSize:13,color:C.sub}}>%</span>
+        </div>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {exportProject && (
+            <Btn sm onClick={()=>exportQuoteToCSV(exportProject,q)}
+              style={{background:"#7c3aed10",color:C.purple,border:`1px solid #7c3aed40`}}>
+              📤 CSV 내보내기
+            </Btn>
+          )}
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:12,color:C.sub}}>견적 합계 (VAT {q.vat?"포함":"제외"})</div>
+            <div style={{fontSize:18,fontWeight:800,color:C.blue}}>{fmt(total)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 대분류 반복 */}
+      {q.items.map((cat,ci)=>(
+        <div key={ci} style={{marginBottom:20,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+          {/* 대분류 헤더 */}
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#f0f4ff",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:13,color:C.blue,fontWeight:700}}>■</span>
+            <input value={cat.category} onChange={e=>renameCategory(ci,e.target.value)}
+              style={{...inp,fontWeight:800,fontSize:15,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:C.blue,width:"auto",minWidth:80}}/>
+            <span style={{fontSize:12,color:C.sub,marginLeft:4}}>합계: <b style={{color:C.blue}}>{fmt(catAmt(cat))}</b></span>
+            <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+              <Btn sm ghost onClick={()=>{setAddGrpModal(ci);setNewGrp("");}}>+ 중분류</Btn>
+              <button onClick={()=>removeCategory(ci)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,lineHeight:1,padding:"2px 4px"}}>×</button>
+            </div>
+          </div>
+
+          {/* 중분류 반복 */}
+          {cat.groups.map((grp,gi)=>(
+            <div key={grp.gid||gi}>
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px 6px",background:"#fafbfc",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontSize:12,color:C.slate,fontWeight:600}}>▸</span>
+                <input value={grp.group} onChange={e=>renameGroup(ci,gi,e.target.value)}
+                  style={{...inp,fontWeight:700,fontSize:13,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:C.slate,width:"auto",minWidth:60}}/>
+                <span style={{fontSize:12,color:C.faint}}>소계: <b style={{color:C.text}}>{fmt(grpAmt(grp))}</b></span>
+                <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+                  <Btn sm ghost onClick={()=>setAddModal({ci,gi})}>+ 항목</Btn>
+                  <button onClick={()=>removeGroup(ci,gi)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15,lineHeight:1,padding:"2px 4px"}}>×</button>
+                </div>
+              </div>
+              {/* 소분류 테이블 헤더 */}
+              {gi===0&&(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",background:C.slateLight,padding:"6px 14px",fontSize:11,fontWeight:700,color:C.faint,gap:8}}>
+                  <span>소분류 항목</span><span>단위</span><span style={{textAlign:"right"}}>수량</span><span style={{textAlign:"right"}}>단가</span><span style={{textAlign:"right"}}>금액</span><span/>
+                </div>
+              )}
+              {/* 소분류 행 */}
+              {grp.items.length===0
+                ? <div style={{padding:"10px 14px",fontSize:12,color:C.faint,fontStyle:"italic"}}>항목을 추가하세요</div>
+                : grp.items.map((it,ii)=>(
+                  <div key={it.id} style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"6px 14px",borderTop:"1px solid #f0f0f0",gap:8,alignItems:"center",background:ii%2===0?C.white:"#fefefe"}}>
+                    <input value={it.name} onChange={e=>patchItem(ci,gi,it.id,"name",e.target.value)}
+                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px"}}
+                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input value={it.unit} onChange={e=>patchItem(ci,gi,it.id,"unit",e.target.value)}
+                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"center"}}
+                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input type="number" value={it.qty} onChange={e=>patchItem(ci,gi,it.id,"qty",e.target.value)}
+                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
+                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input type="number" value={it.unitPrice} onChange={e=>patchItem(ci,gi,it.id,"unitPrice",e.target.value)}
+                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
+                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <span style={{textAlign:"right",fontSize:13,fontWeight:600}}>{fmt(itemAmt(it))}</span>
+                    <button onClick={()=>removeItem(ci,gi,it.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
+                  </div>
+                ))
+              }
+              {/* 중분류 소계 */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"6px 14px",borderTop:`1px solid ${C.border}`,gap:8,background:"#f8f9fa"}}>
+                <span style={{fontSize:12,color:C.sub,fontStyle:"italic"}}>└ {grp.group} 소계</span>
+                <span/><span/><span/>
+                <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:C.slate}}>{fmt(grpAmt(grp))}</span>
+                <span/>
+              </div>
+            </div>
+          ))}
+          {/* 대분류 합계 */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"8px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:"#f0f4ff"}}>
+            <span style={{fontSize:13,fontWeight:800,color:C.blue}}>{cat.category} 합계</span>
+            <span/><span/><span/>
+            <span style={{textAlign:"right",fontSize:13,fontWeight:800,color:C.blue}}>{fmt(catAmt(cat))}</span>
+            <span/>
+          </div>
+        </div>
+      ))}
+
+      <Btn ghost onClick={addCategory} style={{marginBottom:24}}>+ 대분류 추가</Btn>
+
+      {/* 최종 합계 */}
+      <div style={{background:C.slateLight,borderRadius:12,padding:"16px 20px",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",flexDirection:"column",gap:7,maxWidth:340,marginLeft:"auto"}}>
+          {[["소계",sub],q.agencyFeeRate>0?[`대행수수료 (${q.agencyFeeRate}%)`,fee]:null,["공급가액",supply],q.vat?["부가세 (10%)",vat]:null]
+            .filter(Boolean).map(([label,val])=>(
+            <div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.sub}}>
+              <span>{label}</span><span style={{fontWeight:600,color:C.text}}>{fmt(val)}</span>
+            </div>
+          ))}
+          <div style={{borderTop:`2px solid ${C.border}`,marginTop:4,paddingTop:10,display:"flex",justifyContent:"space-between",fontSize:16,fontWeight:800,color:C.blue}}>
+            <span>견적 합계</span><span>{fmt(total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 소분류 추가 모달 */}
+      {addModal!==null && (
+        <Modal title={`소분류 추가 — ${q.items[addModal.ci]?.groups[addModal.gi]?.group}`} onClose={()=>setAddModal(null)}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="항목명 *"><input style={inp} value={newItem.name} autoFocus onChange={e=>setNewItem(v=>({...v,name:e.target.value}))} placeholder="ex. 촬영 1st"/></Field>
+            <Field label="단위" half><input style={inp} value={newItem.unit} onChange={e=>setNewItem(v=>({...v,unit:e.target.value}))} placeholder="식/일/명"/></Field>
+            <Field label="수량" half><input style={inp} type="number" value={newItem.qty} onChange={e=>setNewItem(v=>({...v,qty:e.target.value}))}/></Field>
+            <Field label="단가 (원)"><input style={inp} type="number" value={newItem.unitPrice} onChange={e=>setNewItem(v=>({...v,unitPrice:e.target.value}))} placeholder="0"/></Field>
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <Btn onClick={()=>setAddModal(null)}>취소</Btn>
+            <Btn primary onClick={addItem}>추가</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 중분류 추가 모달 */}
+      {addGrpModal!==null && (
+        <Modal title={`중분류 추가 — ${q.items[addGrpModal]?.category}`} onClose={()=>setAddGrpModal(null)}>
+          <Field label="중분류명 *">
+            <input style={inp} value={newGrp} autoFocus onChange={e=>setNewGrp(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addGroup(addGrpModal)}
+              placeholder="ex. 촬영 인건비"/>
+          </Field>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <Btn onClick={()=>setAddGrpModal(null)}>취소</Btn>
+            <Btn primary onClick={()=>addGroup(addGrpModal)}>추가</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 실행예산서 에디터
+// ═══════════════════════════════════════════════════════════
+function BudgetEditor({ project, onSave }) {
+  const b = project.budget;
+  const q = project.quote;
+
+  const [modal,   setModal]   = useState(false);
+  const [editV,   setEditV]   = useState(null);
+  const [vf,      setVf]      = useState({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:"",group:"",number:"",note:"",files:[]});
+  const [preview, setPreview] = useState(null);
+  const [analyzing,setAnalyzing]=useState(false);
+
+  // 견적서의 카테고리/그룹 목록
+  const catOptions = (q.items||[]).map(c=>c.category);
+  const groupOptions = (cat) => {
+    const c = (q.items||[]).find(c=>c.category===cat);
+    return c ? c.groups.map(g=>g.group) : [];
+  };
+
+  const openAdd = () => {
+    setEditV(null);
+    setVf({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:catOptions[0]||"",group:groupOptions(catOptions[0]||"")[0]||"",number:"",note:"",files:[]});
+    setModal(true);
+  };
+  const openEdit = (v) => {
+    setEditV(v);
+    setVf({...v});
+    setModal(true);
+  };
+
+  const save = () => {
+    if (!vf.name.trim()||!vf.amount) return;
+    const voucher = {...vf, id:editV?editV.id:newId(), amount:Number(vf.amount)||0};
+    const vouchers = editV
+      ? (b.vouchers||[]).map(v=>v.id===editV.id?voucher:v)
+      : [...(b.vouchers||[]), voucher];
+    onSave({...b, vouchers});
+    setModal(false);
+  };
+  const remove = (v) => {
+    onSave({...b, vouchers:(b.vouchers||[]).filter(x=>x.id!==v.id)});
+  };
+
+  // AI 분석 (Anthropic API)
+  const analyzeFile = async (file) => {
+    setAnalyzing(true);
+    try {
+      const toB64 = f => new Promise((res,rej)=>{
+        const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(f);
+      });
+      const b64 = await toB64(file);
+      const isImg = file.type.startsWith("image/");
+      const isPdf = file.type==="application/pdf";
+
+      const msgContent = isImg
+        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
+        : isPdf
+        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
+        : null;
+
+      if (!msgContent) { setAnalyzing(false); return; }
+
+      const res = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"content-type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:msgContent}]})
+      });
+      const data = await res.json();
+      const text = (data.content||[]).map(c=>c.text||"").join("");
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[0]);
+          setVf(v=>({
+            ...v,
+            name:   parsed.name   || v.name,
+            vendor: parsed.vendor || v.vendor,
+            amount: parsed.amount ? String(parsed.amount).replace(/[^0-9]/g,"") : v.amount,
+            date:   parsed.date   || v.date,
+          }));
+        } catch(e) {}
+      }
+    } catch(e) { console.error(e); }
+    setAnalyzing(false);
+  };
+
+  const handleFile = async (file) => {
+    // 임시 미리보기용 로컬 URL 생성
+    const localUrl = URL.createObjectURL(file);
+    setVf(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url:localUrl,size:file.size,_localFile:file}]}));
+    analyzeFile(file);
+  };
+
+  const spent = vTotal(b);
+  const supply = qSupply(q);
+
+  // 예산 현황 by 대분류
+  const catSummary = (q.items||[]).map(cat=>{
+    const planned = catAmt(cat);
+    const actual  = (b.vouchers||[]).filter(v=>v.category===cat.category).reduce((s,v)=>s+(v.amount||0),0);
+    return {cat:cat.category, planned, actual, pct: planned?Math.round(actual/planned*100):0};
+  });
+
+  return (
+    <div>
+      {/* 요약 카드 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {label:"견적 공급가액",val:supply,color:C.blue},
+          {label:"집행 합계",val:spent,color:C.amber},
+          {label:"잔여 예산",val:supply-spent,color:supply-spent>=0?C.green:C.red},
+        ].map(s=>(
+          <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
+            <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
+            <div style={{fontSize:18,fontWeight:800,color:s.color}}>{fmtM(s.val)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 대분류별 현황 */}
+      <div style={{marginBottom:20,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+        <div style={{padding:"10px 14px",background:C.slateLight,fontSize:12,fontWeight:700,color:C.sub}}>대분류별 집행 현황</div>
+        {catSummary.map(s=>(
+          <div key={s.cat} style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:120,fontSize:13,fontWeight:600}}>{s.cat}</div>
+            <div style={{flex:1}}>
+              <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${Math.min(s.pct,100)}%`,background:s.pct>100?C.red:s.pct>80?C.amber:C.blue,borderRadius:99,transition:"width .3s"}}/>
+              </div>
+            </div>
+            <div style={{width:80,textAlign:"right",fontSize:12,color:C.sub}}>{fmtM(s.actual)}</div>
+            <div style={{width:80,textAlign:"right",fontSize:12,color:C.faint}}>/ {fmtM(s.planned)}</div>
+            <div style={{width:48,textAlign:"right",fontSize:12,fontWeight:700,color:s.pct>100?C.red:C.slate}}>{s.pct}%</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 증빙 목록 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontWeight:700,fontSize:14}}>증빙 목록 ({(b.vouchers||[]).length}건)</div>
+        <Btn primary sm onClick={openAdd}>+ 증빙 추가</Btn>
+      </div>
+
+      {(b.vouchers||[]).length===0
+        ? <div style={{textAlign:"center",padding:40,color:C.faint,fontSize:14,border:`2px dashed ${C.border}`,borderRadius:12}}>증빙을 추가하세요</div>
+        : (
+          <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 110px 110px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+              <span>항목명</span><span>구분</span><span>업체명</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span/>
+            </div>
+            {(b.vouchers||[]).map((v,i)=>(
+              <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 110px 110px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
+                  <div style={{fontSize:11,color:C.faint}}>{v.category} › {v.group}</div>
+                </div>
+                <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
+                <span style={{fontSize:13,color:C.sub}}>{v.vendor}</span>
+                <span style={{textAlign:"right",fontWeight:700,fontSize:13}}>{fmt(v.amount)}</span>
+                <span style={{textAlign:"right",fontSize:12,color:C.faint}}>{v.date}</span>
+                <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                  {(v.files||[]).length>0&&<button onClick={()=>setPreview(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.blue}}>📎</button>}
+                  <button onClick={()=>openEdit(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub}}>✏️</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
+
+      {/* 증빙 모달 */}
+      {modal && (
+        <Modal title={editV?"증빙 수정":"증빙 추가"} onClose={()=>setModal(false)} wide>
+          <div style={{display:"flex",gap:20}}>
+            {/* 파일 업로드 패널 */}
+            <div style={{width:220,flexShrink:0}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:8}}>파일 첨부 (선택)</div>
+              <label style={{display:"block",border:`2px dashed ${analyzing?C.blue:C.border}`,borderRadius:10,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:analyzing?C.blueLight:C.bg,transition:"all .2s"}}>
+                <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);}}/>
+                <div style={{fontSize:24,marginBottom:6}}>{analyzing?"⏳":"📎"}</div>
+                <div style={{fontSize:12,color:C.sub}}>{analyzing?"AI 분석 중...":"클릭 또는 드롭"}</div>
+                <div style={{fontSize:11,color:C.faint,marginTop:4}}>이미지·PDF 지원</div>
+              </label>
+              {(vf.files||[]).map((f,i)=>(
+                <div key={i} style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                  <button onClick={()=>setVf(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14,marginLeft:4}}>×</button>
+                </div>
+              ))}
+            </div>
+            {/* 입력 패널 */}
+            <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
+              <Field label="항목명 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.name} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="ex. 카메라 렌탈"/></Field>
+              <Field label="업체명 / 공급처 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.vendor} onChange={e=>setVf(v=>({...v,vendor:e.target.value}))} placeholder="ex. 씨네렌탈"/></Field>
+              <Field label="계산서번호" half><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.number} onChange={e=>setVf(v=>({...v,number:e.target.value}))} placeholder="2026-001"/></Field>
+              <Field label="날짜" half><input style={inp} type="date" value={vf.date} onChange={e=>setVf(v=>({...v,date:e.target.value}))}/></Field>
+              <Field label="금액 (원)"><input style={{...inp,background:analyzing?C.blueLight:C.white,fontWeight:700}} type="number" value={vf.amount} onChange={e=>setVf(v=>({...v,amount:e.target.value}))} placeholder="0"/></Field>
+              <Field label="증빙 구분" half>
+                <select style={inp} value={vf.type} onChange={e=>setVf(v=>({...v,type:e.target.value}))}>
+                  {VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}
+                </select>
+              </Field>
+              <Field label="대분류" half>
+                <select style={inp} value={vf.category} onChange={e=>setVf(v=>({...v,category:e.target.value,group:groupOptions(e.target.value)[0]||""}))}>
+                  {catOptions.map(c=><option key={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="중분류" half>
+                <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
+                  {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
+                </select>
+              </Field>
+              <Field label="메모 / 비고"><input style={inp} value={vf.note} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+            {editV&&<Btn danger sm onClick={()=>{remove(editV);setModal(false);}}>삭제</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setModal(false)}>취소</Btn>
+            <Btn primary onClick={save} disabled={analyzing}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 파일 미리보기 모달 */}
+      {preview && (
+        <Modal title={`첨부파일 — ${preview.name}`} onClose={()=>setPreview(null)} wide>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            {(preview.files||[]).map((f,i)=>(
+              <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:280}}>
+                {f.type.startsWith("image/")?
+                  <img src={f.b64url} alt={f.name} style={{maxWidth:"100%",display:"block"}}/>:
+                  <div style={{padding:16,textAlign:"center",color:C.sub,fontSize:13}}>📄 {f.name}</div>
+                }
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 결산서
+// ═══════════════════════════════════════════════════════════
+function SettlementView({ project, onConfirm }) {
+  const q = project.quote;
+  const b = project.budget;
+  const confirmed = !!project.settlementDate;
+
+  const supply = qSupply(q);
+  const total  = qTotal(q);
+  const spent  = vTotal(b);
+  const profit = supply - spent;
+  const margin = supply ? Math.round(profit/supply*100) : 0;
+
+  const catMap = {};
+  (b.vouchers||[]).forEach(v=>{ catMap[v.category]=(catMap[v.category]||0)+(v.amount||0); });
+  const rows = (q.items||[]).map(cat=>{
+    const planned=catAmt(cat), actual=catMap[cat.category]||0;
+    return {cat:cat.category, planned, actual, diff:planned-actual, rate:planned?Math.round(actual/planned*100):0};
+  });
+
+  return (
+    <div>
+      {confirmed ? (
+        <div style={{background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>✅</span>
+          <div><div style={{fontWeight:700,fontSize:14,color:C.green}}>결산 확정 완료</div><div style={{fontSize:13,color:C.sub}}>확정일: {project.settlementDate}</div></div>
+        </div>
+      ) : (
+        <div style={{background:C.amberLight,border:`1px solid ${C.amber}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>⚠️</span>
+          <div><div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div><div style={{fontSize:13,color:C.sub}}>프로젝트 완료 후 확정하면 재무 대시보드에 반영됩니다.</div></div>
+          <Btn primary onClick={onConfirm} style={{marginLeft:"auto"}}>결산 확정하기</Btn>
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+        {[
+          {label:"수주금액(VAT포함)",val:total,color:C.blue,sub:"클라이언트 청구액"},
+          {label:"매출(공급가액)",val:supply,color:C.purple,sub:`VAT ${fmt(qVat(q))}`},
+          {label:"총 매입(집행)",val:spent,color:C.amber,sub:`${(b.vouchers||[]).length}건 증빙`},
+          {label:"최종 순이익",val:profit,color:profit>=0?C.green:C.red,sub:`이익률 ${margin}%`},
+        ].map(s=>(
+          <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
+            <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
+            <div style={{fontSize:20,fontWeight:800,color:s.color}}>{fmt(s.val)}</div>
+            <div style={{fontSize:11,color:C.faint,marginTop:3}}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{margin:"0 0 10px",fontSize:14,fontWeight:700}}>항목별 집행 현황 (견적 vs 실행)</h3>
+      <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 120px 120px 100px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+          <span>대분류</span><span style={{textAlign:"right"}}>견적</span><span style={{textAlign:"right"}}>실행</span><span style={{textAlign:"right"}}>차이</span><span style={{textAlign:"right"}}>달성률</span>
+        </div>
+        {rows.map((r,i)=>(
+          <div key={r.cat} style={{display:"grid",gridTemplateColumns:"1fr 120px 120px 100px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+            <span style={{fontWeight:600,fontSize:13}}>{r.cat}</span>
+            <span style={{textAlign:"right",fontSize:13}}>{fmt(r.planned)}</span>
+            <span style={{textAlign:"right",fontSize:13}}>{fmt(r.actual)}</span>
+            <span style={{textAlign:"right",fontSize:13,color:r.diff>=0?C.green:C.red,fontWeight:600}}>{r.diff>=0?"+":""}{fmt(r.diff)}</span>
+            <span style={{textAlign:"right"}}><span style={{fontSize:12,padding:"2px 6px",borderRadius:99,background:r.rate>100?C.redLight:r.rate>80?C.amberLight:C.greenLight,color:r.rate>100?C.red:r.rate>80?C.amber:C.green,fontWeight:700}}>{r.rate}%</span></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 재무 대시보드
+// ═══════════════════════════════════════════════════════════
+function FinanceDash({ projects }) {
+  const active  = projects.filter(p=>!p.settled);
+  const settled = projects.filter(p=>p.settled);
+
+  const totalOrder  = active.reduce((s,p)=>s+qTotal(p.quote),0);
+  const totalSupply = active.reduce((s,p)=>s+qSupply(p.quote),0);
+  const totalSpent  = active.reduce((s,p)=>s+vTotal(p.budget),0);
+  const totalProfit = totalSupply - totalSpent;
+  const totalMargin = totalSupply?Math.round(totalProfit/totalSupply*100):0;
+
+  return (
+    <div style={{padding:"0 4px"}}>
+      <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>재무 대시보드</h2>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
+        {[
+          {label:"진행중 프로젝트",val:active.length+"건",color:C.blue,icon:"📋"},
+          {label:"총 수주 (VAT포함)",val:fmtM(totalOrder),color:C.purple,icon:"💰"},
+          {label:"총 집행",val:fmtM(totalSpent),color:C.amber,icon:"📤"},
+          {label:"평균 이익률",val:totalMargin+"%",color:totalMargin>=20?C.green:C.red,icon:"📈"},
+        ].map(s=>(
+          <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 18px",borderTop:`3px solid ${s.color}`}}>
+            <div style={{fontSize:24,marginBottom:8}}>{s.icon}</div>
+            <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:4}}>{s.label}</div>
+            <div style={{fontSize:22,fontWeight:800,color:s.color}}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{margin:"0 0 12px",fontSize:14,fontWeight:700}}>진행중 프로젝트 ({active.length}건)</h3>
+      <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:28}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 100px 120px 110px 110px 80px 80px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+          <span>프로젝트</span><span style={{textAlign:"right"}}>스테이지</span><span style={{textAlign:"right"}}>수주(VAT)</span><span style={{textAlign:"right"}}>매출</span><span style={{textAlign:"right"}}>집행</span><span style={{textAlign:"right"}}>이익률</span><span style={{textAlign:"center"}}>결산</span>
+        </div>
+        {active.map((p,i)=>{
+          const sup=qSupply(p.quote), sp=vTotal(p.budget), mg=sup?Math.round((sup-sp)/sup*100):0;
+          return (
+            <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 120px 110px 110px 80px 80px",padding:"11px 14px",borderTop:i>0?`1px solid ${C.border}`:"none",gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+              <div><div style={{fontSize:14,fontWeight:700}}>{p.name}</div><div style={{fontSize:11,color:C.sub}}>{p.client}</div></div>
+              <span style={{textAlign:"right",fontSize:11}}><span style={{padding:"2px 6px",borderRadius:99,background:STAGES[p.stage]?.bg,color:STAGES[p.stage]?.color,fontWeight:700}}>{p.stage}</span></span>
+              <span style={{textAlign:"right",fontWeight:600,color:C.blue,fontSize:13}}>{fmtM(qTotal(p.quote))}</span>
+              <span style={{textAlign:"right",fontSize:13}}>{fmtM(sup)}</span>
+              <span style={{textAlign:"right",fontSize:13,color:C.sub}}>{fmtM(sp)}</span>
+              <span style={{textAlign:"right"}}><span style={{fontSize:12,padding:"2px 8px",borderRadius:99,background:mg>=30?C.greenLight:mg>=20?C.amberLight:C.redLight,color:mg>=30?C.green:mg>=20?C.amber:C.red,fontWeight:700}}>{mg}%</span></span>
+              <div style={{textAlign:"center"}}>
+                {p.settled?<span style={{fontSize:11,color:C.green,fontWeight:700}}>✅ 확정</span>:<span style={{fontSize:11,color:C.faint}}>미확정</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {settled.length>0&&(
+        <>
+          <h3 style={{margin:"0 0 12px",fontSize:14,fontWeight:700}}>결산 확정 프로젝트 ({settled.length}건)</h3>
+          <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 120px 110px 110px 80px 110px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+              <span>프로젝트</span><span style={{textAlign:"right"}}>수주(VAT)</span><span style={{textAlign:"right"}}>매출</span><span style={{textAlign:"right"}}>매입</span><span style={{textAlign:"right"}}>이익률</span><span style={{textAlign:"center"}}>확정일</span>
+            </div>
+            {settled.map((p,i)=>{
+              const sup=qSupply(p.quote), sp=vTotal(p.budget), mg=sup?Math.round((sup-sp)/sup*100):0;
+              return (
+                <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 110px 110px 80px 110px",padding:"11px 14px",borderTop:i>0?`1px solid ${C.border}`:"none",gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+                  <div><div style={{fontSize:14,fontWeight:700}}>{p.name}</div><div style={{fontSize:11,color:C.sub}}>{p.client}</div></div>
+                  <span style={{textAlign:"right",fontWeight:600,fontSize:13}}>{fmtM(qTotal(p.quote))}</span>
+                  <span style={{textAlign:"right",fontSize:13}}>{fmtM(sup)}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.sub}}>{fmtM(sp)}</span>
+                  <span style={{textAlign:"right"}}><span style={{fontSize:12,padding:"2px 8px",borderRadius:99,background:mg>=30?C.greenLight:C.redLight,color:mg>=30?C.green:C.red,fontWeight:700}}>{mg}%</span></span>
+                  <span style={{textAlign:"center",fontSize:12,color:C.sub}}>{p.settlementDate}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 메인 앱
+// ═══════════════════════════════════════════════════════════
+export default function App() {
+  const [user,         setUser]         = useState(null);
+  const [projects,     setProjects]     = useState(SEED_PROJECTS);
+  const [selId,        setSelId]        = useState("p1");
+  const [fbReady,      setFbReady]      = useState(false);  // Firebase 로드 완료 여부
+
+  // Firebase 실시간 구독
+  useEffect(() => {
+    if (!isConfigured) return;
+    const unsub = subscribeProjects((fbProjects) => {
+      if (fbProjects.length > 0) {
+        setProjects(fbProjects);
+        if (!fbProjects.find(p => p.id === selId)) {
+          setSelId(fbProjects[0].id);
+        }
+      }
+      setFbReady(true);
+    });
+    return () => unsub();
+  }, []);
+  const [mainTab,      setMainTab]      = useState("tasks");   // tasks | finance
+  const [docTab,       setDocTab]       = useState("quote");   // quote | budget | settlement
+  const [viewMode,     setViewMode]     = useState("list");    // list | kanban
+  const [taskModal,    setTaskModal]    = useState(null);
+  const [tf,           setTf]           = useState({});
+  const [addProjModal, setAddProjModal] = useState(false);
+  const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+
+  if (!user) return <LoginScreen onLogin={setUser}/>;
+
+  const proj     = projects.find(p=>p.id===selId)||projects[0];
+  const patchProj = useCallback(fn => {
+    setProjects(ps => {
+      const updated = ps.map(p => p.id === selId ? fn(p) : p);
+      // Firebase에 변경사항 저장
+      const changedProject = updated.find(p => p.id === selId);
+      if (changedProject && isConfigured) {
+        saveProject(changedProject).catch(console.error);
+      }
+      return updated;
+    });
+  }, [selId]);
+
+  const updateTasks = tasks => patchProj(p=>({...p,tasks}));
+  const updateQuote = q     => patchProj(p=>({...p,quote:q}));
+  const updateBudget= b     => patchProj(p=>({...p,budget:b}));
+
+  const confirmSettlement = () => patchProj(p=>({...p,settlementDate:todayStr(),settled:true}));
+
+  const createProject = () => {
+    if (!pf.name.trim()||!pf.client.trim()) return;
+    const id = "p"+Date.now();
+    const np = {
+      id, ...pf, stage:"브리프", createdAt:todayStr(),
+      tasks:[],
+      quote:{vat:true,agencyFeeRate:10,items:makeTemplate()},
+      budget:{vouchers:[]},
+      settlementDate:null, settled:false,
+    };
+    setProjects(ps=>[...ps,np]);
+    setSelId(id);
+    setAddProjModal(false);
+    if (isConfigured) saveProject(np).catch(console.error);
+    setPf({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
+  };
+
+  const saveTask = (tf) => {
+    if (!tf.title?.trim()) return;
+    const tasks = tf.id
+      ? proj.tasks.map(t=>t.id===tf.id?tf:t)
+      : [...proj.tasks, {...tf,id:"t"+Date.now()}];
+    updateTasks(tasks);
+    setTaskModal(null);
+  };
+  const deleteTask = (id) => { updateTasks(proj.tasks.filter(t=>t.id!==id)); setTaskModal(null); };
+
+  const filteredTasks = useMemo(()=>{
+    return proj.tasks.filter(t=>{
+      if (tf.q&&!t.title.toLowerCase().includes(tf.q.toLowerCase())) return false;
+      if (tf.type&&t.type!==tf.type) return false;
+      if (tf.assignee&&t.assignee!==tf.assignee) return false;
+      if (tf.stage&&t.stage!==tf.stage) return false;
+      return true;
+    });
+  },[proj.tasks,tf]);
+
+  const stageKeys = Object.keys(STAGES);
+
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
+      {/* 헤더 */}
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
+        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5}}>🎬 CutFlow</div>
+        {isConfigured
+          ? <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.greenLight,color:C.green,fontWeight:600}}>☁️ 클라우드 연결됨</span>
+          : <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.amberLight,color:C.amber,fontWeight:600}}>⚠️ 로컬 모드 (Firebase 미설정)</span>
+        }
+        {/* 프로젝트 선택 */}
+        <div style={{display:"flex",gap:6,flex:1,overflowX:"auto"}}>
+          {projects.map(p=>(
+            <button key={p.id} onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
+              {p.name}
+            </button>
+          ))}
+          <button onClick={()=>setAddProjModal(true)} style={{padding:"5px 12px",borderRadius:8,border:`2px dashed ${C.border}`,background:"none",cursor:"pointer",fontSize:12,color:C.faint,whiteSpace:"nowrap"}}>
+            + 새 프로젝트
+          </button>
+        </div>
+        {/* 메인탭 */}
+        <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!user.canViewFinance}].map(t=>(
+            <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
+              {t.icon} {t.label}{t.locked?" 🔒":""}
+            </button>
+          ))}
+        </div>
+        {/* 유저 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setUser(null)}>
+          <Avatar name={user.name}/>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,lineHeight:1.2}}>{user.name}</div>
+            <div style={{fontSize:11,color:C.faint}}>{user.role}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{maxWidth:1400,margin:"0 auto",padding:"24px 24px 48px"}}>
+        {mainTab==="finance" ? (
+          <FinanceDash projects={projects}/>
+        ) : (
+          <>
+            {/* 프로젝트 정보 바 */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 20px",marginBottom:20,display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",borderLeft:`4px solid ${proj.color}`}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:18}}>{proj.name}</div>
+                <div style={{fontSize:13,color:C.sub,marginTop:2}}>{proj.client} · {proj.format}</div>
+              </div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12,color:C.sub,marginLeft:"auto"}}>
+                {proj.director&&<span>🎬 {proj.director}</span>}
+                {proj.pd&&<span>📋 {proj.pd}</span>}
+                {proj.due&&<span>📅 납품 {proj.due}</span>}
+                <select value={proj.stage} onChange={e=>patchProj(p=>({...p,stage:e.target.value}))}
+                  style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700}}>
+                  {stageKeys.map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* 태스크 탭 */}
+            <TabBar
+              tabs={[{id:"tasks",icon:"📋",label:"태스크"},{id:"quote",icon:"💵",label:"견적서"},{id:"budget",icon:"📒",label:"실행예산서"},{id:"settlement",icon:"📊",label:"결산서"}]}
+              active={docTab} onChange={setDocTab}
+            />
+
+            {/* ── 태스크 ── */}
+            {docTab==="tasks"&&(
+              <div>
+                {/* 필터 바 */}
+                <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+                  <input value={tf.q||""} onChange={e=>setTf(v=>({...v,q:e.target.value}))} placeholder="🔍 태스크 검색..." style={{...inp,width:200}}/>
+                  <select value={tf.type||""} onChange={e=>setTf(v=>({...v,type:e.target.value}))} style={{...inp,width:140}}>
+                    <option value="">유형 전체</option>
+                    {TASK_TYPES.map(t=><option key={t}>{t}</option>)}
+                  </select>
+                  <select value={tf.stage||""} onChange={e=>setTf(v=>({...v,stage:e.target.value}))} style={{...inp,width:130}}>
+                    <option value="">스테이지 전체</option>
+                    {stageKeys.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                  <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                    <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
+                    <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
+                    <Btn primary sm onClick={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:ACCOUNTS[1].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
+                  </div>
+                </div>
+
+                {viewMode==="kanban"?(
+                  <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
+                    {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskModal({...t})}/>)}
+                  </div>
+                ):(
+                  <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"2fr 100px 90px 90px 80px 32px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+                      <span>태스크</span><span>스테이지</span><span>마감일</span><span>담당자</span><span>우선순위</span><span/>
+                    </div>
+                    {filteredTasks.length===0&&<div style={{padding:"30px",textAlign:"center",color:C.faint,fontSize:14}}>태스크가 없습니다</div>}
+                    {filteredTasks.map((t,i)=>(
+                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"2fr 100px 90px 90px 80px 32px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc",cursor:"pointer"}}
+                        onClick={()=>setTaskModal({...t})}>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:600,color:isOverdue(t)?C.red:C.text}}>{t.title}{isOverdue(t)?" ⚠":""}</div>
+                          <div style={{fontSize:11,color:C.faint,marginTop:2}}>{t.type}</div>
+                        </div>
+                        <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:STAGES[t.stage]?.bg,color:STAGES[t.stage]?.color,fontWeight:600,whiteSpace:"nowrap"}}>{t.stage}</span>
+                        <span style={{fontSize:12,color:isOverdue(t)?C.red:C.faint}}>{t.due||"-"}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={t.assignee} size={22}/><span style={{fontSize:12}}>{t.assignee}</span></div>
+                        <span style={{fontSize:11,color:t.priority==="긴급"?C.red:t.priority==="높음"?C.amber:C.faint,fontWeight:600}}>{t.priority||"-"}</span>
+                        <button onClick={e=>{e.stopPropagation();deleteTask(t.id);}} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:16}}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 견적서 ── */}
+            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj}/>}
+
+            {/* ── 실행예산서 ── */}
+            {docTab==="budget"&&<BudgetEditor project={proj} onSave={updateBudget}/>}
+
+            {/* ── 결산서 ── */}
+            {docTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement}/>}
+          </>
+        )}
+      </div>
+
+      {/* 태스크 모달 */}
+      {taskModal && (
+        <Modal title={taskModal.id?"태스크 수정":"새 태스크"} onClose={()=>setTaskModal(null)}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="태스크명 *"><input style={inp} autoFocus value={taskModal.title||""} onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))} placeholder="ex. 촬영 D-day 준비"/></Field>
+            <Field label="유형" half>
+              <select style={inp} value={taskModal.type||TASK_TYPES[0]} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
+                {TASK_TYPES.map(t=><option key={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="담당자" half>
+              <select style={inp} value={taskModal.assignee||ACCOUNTS[1].name} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
+                {ACCOUNTS.map(a=><option key={a.id}>{a.name}</option>)}
+              </select>
+            </Field>
+            <Field label="스테이지" half>
+              <select style={inp} value={taskModal.stage||"브리프"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
+                {stageKeys.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="우선순위" half>
+              <select style={inp} value={taskModal.priority||"보통"} onChange={e=>setTaskModal(v=>({...v,priority:e.target.value}))}>
+                {["긴급","높음","보통"].map(p=><option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            <Field label="마감일" half><input style={inp} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/></Field>
+            <Field label="설명"><textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/></Field>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
+            {taskModal.id&&<Btn danger sm onClick={()=>deleteTask(taskModal.id)}>삭제</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setTaskModal(null)}>취소</Btn>
+            <Btn primary onClick={()=>saveTask(taskModal)}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 새 프로젝트 모달 */}
+      {addProjModal && (
+        <Modal title="새 프로젝트" onClose={()=>setAddProjModal(false)}>
+          <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))} placeholder="ex. 나이키 여름 캠페인"/></Field>
+          <Field label="클라이언트 *"><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))} placeholder="브랜드명"/></Field>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+            <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{FORMATS.map(f=><option key={f}>{f}</option>)}</select></Field>
+            <Field label="납품일" half><input style={inp} type="date" value={pf.due||""} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
+            <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))} placeholder="이름"/></Field>
+            <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))} placeholder="이름"/></Field>
+          </div>
+          <Field label="프로젝트 색상">
+            <div style={{display:"flex",gap:8,marginTop:2}}>
+              {P_COLORS.map(c=><div key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",outline:pf.color===c?`3px solid ${c}`:"none",outlineOffset:2}}/>)}
+            </div>
+          </Field>
+          <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",fontSize:12,color:C.blue,marginBottom:4}}>
+            💡 생성 시 기획·프리프로덕션·촬영·포스트 기본 견적 항목이 자동으로 추가됩니다.
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
+            <Btn onClick={()=>setAddProjModal(false)}>취소</Btn>
+            <Btn primary onClick={createProject}>생성</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
