@@ -1884,12 +1884,20 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
   const [selDate, setSelDate] = useState(todayKey);
   const [sh, setSh] = useState(10);
   const [eh, setEh] = useState(19);
+  const [hiddenMembers, setHiddenMembers] = useState(new Set());
+  const toggleMember = id => setHiddenMembers(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
   const [modal, setModal] = useState(null);
   const [tf, setTf] = useState({});
   const dragRef = useRef({active:false,mid:null,start:null,end:null,moved:false});
   const [dragSel, setDragSel] = useState(null); // {mid,start,end} 렌더용
 
   const slots = makeSlots(sh, eh);
+  // 본인 맨 앞, 나머지는 기존 순서
+  const sortedAccounts = [
+    ...accounts.filter(a=>a.id===user.id),
+    ...accounts.filter(a=>a.id!==user.id)
+  ];
+  const visibleAccounts = sortedAccounts.filter(a=>a.id===user.id||!hiddenMembers.has(a.id));
 
   const todosOf = (mid, hour) =>
     ((dailyTodos[selDate]||{})[mid]||{})[hour]||[];
@@ -2054,14 +2062,38 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
         <button onClick={()=>{setSh(10);setEh(19);}} style={{...btnSm,color:C.faint}}>초기화</button>
       </div>
 
+      {/* 구성원 토글 */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10,alignItems:"center"}}>
+        <span style={{fontSize:12,color:C.sub,fontWeight:600,marginRight:2}}>구성원</span>
+        {sortedAccounts.filter(a=>a.id!==user.id).map(acc=>(
+          <button key={acc.id} onClick={()=>toggleMember(acc.id)}
+            style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:99,
+              border:`1.5px solid ${hiddenMembers.has(acc.id)?C.border:"#2563eb"}`,
+              background:hiddenMembers.has(acc.id)?"#f1f5f9":"#eff6ff",
+              color:hiddenMembers.has(acc.id)?C.faint:"#2563eb",
+              fontSize:12,fontWeight:hiddenMembers.has(acc.id)?400:600,cursor:"pointer",opacity:hiddenMembers.has(acc.id)?0.6:1}}>
+            <Avatar name={acc.name} size={16}/>
+            {acc.name}
+            <span style={{fontSize:10}}>{hiddenMembers.has(acc.id)?"":"✓"}</span>
+          </button>
+        ))}
+        {hiddenMembers.size>0&&(
+          <button onClick={()=>setHiddenMembers(new Set())}
+            style={{padding:"4px 10px",borderRadius:99,border:`1px solid ${C.border}`,
+              background:"#fff",color:C.sub,fontSize:11,cursor:"pointer"}}>
+            전체 보기
+          </button>
+        )}
+      </div>
+
       {/* 타임테이블 - 가로 스크롤 */}
       <div style={{overflowX:"auto",border:`1px solid ${C.border}`,borderRadius:12}}
         onMouseUp={cancelDrag} onMouseLeave={cancelDrag}>
-        <div style={{minWidth:80+accounts.length*COL}}>
+        <div style={{minWidth:80+visibleAccounts.length*COL}}>
           {/* 헤더 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
             <div style={{width:80,flexShrink:0,background:"#1e40af",borderBottom:`2px solid ${C.border}`}}/>
-            {accounts.map(acc=>(
+            {visibleAccounts.map(acc=>(
               <div key={acc.id} style={{width:COL,flexShrink:0,padding:"10px 8px",textAlign:"center",background:"#1e40af",borderBottom:`2px solid ${C.border}`,borderLeft:`1px solid #3b82f622`}}>
                 <Avatar name={acc.name} size={28}/>
                 <div style={{fontSize:12,fontWeight:700,color:"#fff",marginTop:4}}>{acc.name}</div>
@@ -2080,7 +2112,7 @@ function DailyTodo({accounts, user, dailyTodos, setDailyTodos, projects}) {
                 {label}
               </div>
               {/* 구성원 셀 */}
-              {accounts.map(acc=>{
+              {visibleAccounts.map(acc=>{
                 const todos=todosOf(acc.id,key);
                 const covering=getCovering(acc.id,key);
                 const editable=canEdit(acc.id);
