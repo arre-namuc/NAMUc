@@ -1505,9 +1505,10 @@ const STAFF_GROUPS = [
 
 function StaffList({ project, onChange, accounts }) {
   const staff = project.staff || [];
-  const [modal, setModal] = useState(null); // null | {mode:"add"|"edit", data:{}}
+  const [modal, setModal] = useState(null);
   const [sf, setSf]       = useState({});
   const [filterGroup, setFilterGroup] = useState("전체");
+  const [viewMode, setViewMode]       = useState("card");
 
   const openAdd = (role="") => {
     setSf({ role, name:"", phone:"", email:"", company:"", note:"", fromTeam:false, memberId:"" });
