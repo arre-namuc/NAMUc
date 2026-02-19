@@ -369,6 +369,131 @@ tr.cat-total-row td{background:#dbeafe;color:#1e40af;font-weight:700;font-size:1
   setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
 // ═══════════════════════════════════════════════════════════
+// PDF 견적서 출력 - 포맷 B (상세형)
+// ═══════════════════════════════════════════════════════════
+function openQuotePDFB(project, quote, company={}) {
+  const fmtN = n => (n||0).toLocaleString("ko-KR");
+  const today = new Date();
+  const validEnd = new Date(today); validEnd.setDate(today.getDate()+(company.validDays||30));
+  const dateStr = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+
+  // 부문별 소계 계산
+  let sections = [];
+  let grandTotal = 0;
+  for (const cat of (quote.items||[])) {
+    const catTotal = (cat.groups||[]).reduce((s,g)=>s+(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
+    if (!catTotal) continue;
+    let rows = "";
+    for (const grp of (cat.groups||[])) {
+      const grpItems = (grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
+      if (!grpItems.length) continue;
+      rows += `<tr class="grp-header"><td colspan="5" style="padding:6px 10px;font-size:11px;font-weight:700;color:#475569;background:#f8fafc;">[ ${grp.group} ]</td></tr>`;
+      grpItems.forEach(it=>{
+        const amt=(it.qty||0)*(it.unitPrice||0);
+        rows+=`<tr><td style="padding:6px 10px;font-size:12px;">${it.name}</td><td style="text-align:center;padding:6px 10px;font-size:12px;">${it.unit||""}</td><td style="text-align:center;padding:6px 10px;font-size:12px;">${fmtN(it.qty)}</td><td style="text-align:right;padding:6px 10px;font-size:12px;">${fmtN(it.unitPrice)}</td><td style="text-align:right;padding:6px 10px;font-size:12px;font-weight:600;">${fmtN(amt)}</td></tr>`;
+      });
+    }
+    sections.push({label:cat.category, total:catTotal, rows});
+    grandTotal += catTotal;
+  }
+
+  const agencyFee = Math.round(grandTotal*(quote.agencyFeeRate||0)/100);
+  const supply = grandTotal + agencyFee;
+  const mgmt = Math.round(supply*0.10);   // 일반관리비 10%
+  const profit = Math.round((supply+mgmt)*0.05); // 기업이윤 5%
+  const finalSupply = supply + mgmt + profit;
+  const vat = quote.vat ? Math.round(finalSupply*0.1) : 0;
+  const total = finalSupply + vat;
+
+  let sectionsHtml = "";
+  sections.forEach((sec,i)=>{
+    sectionsHtml += `
+    <tr class="cat-header">
+      <td colspan="4" style="padding:8px 10px;font-weight:800;font-size:13px;background:#1e40af;color:#fff;">${String.fromCharCode(65+i)}. ${sec.label}</td>
+      <td style="text-align:right;padding:8px 10px;font-weight:800;font-size:13px;background:#1e40af;color:#fff;">${fmtN(sec.total)}</td>
+    </tr>
+    ${sec.rows}
+    <tr class="subtotal">
+      <td colspan="4" style="text-align:right;padding:7px 10px;font-size:12px;font-weight:700;color:#1e40af;background:#eff6ff;">소 계 (${String.fromCharCode(65+i)})</td>
+      <td style="text-align:right;padding:7px 10px;font-size:12px;font-weight:700;color:#1e40af;background:#eff6ff;">${fmtN(sec.total)}</td>
+    </tr>`;
+  });
+
+  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
+<title>견적서(상세) — ${project.name}</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:13px}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 12mm 14mm}
+.no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+table{width:100%;border-collapse:collapse;}
+th{background:#1e40af;color:#fff;padding:8px 10px;font-size:11px;font-weight:700;text-align:left;border:1px solid #1e3a8a}
+td{border:1px solid #e2e8f0;vertical-align:middle}
+tr:hover td{background:#f8fafc}
+.cat-header td{border-color:#1e3a8a}
+@media print{body{background:#fff}.page{margin:0;padding:10mm}.no-print{display:none}}
+</style></head><body>
+<div class="no-print">
+  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 ${company.name||"견적서"} · 상세형</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
+</div>
+<div class="page">
+  <!-- 헤더 -->
+  <div style="text-align:center;border-bottom:3px solid #1e40af;padding-bottom:8mm;margin-bottom:8mm;">
+    <div style="font-size:28px;font-weight:800;letter-spacing:8px;color:#1e293b;">견 적 서</div>
+  </div>
+  <table style="margin-bottom:6mm;border:1px solid #e2e8f0">
+    <tr><td style="width:80px;padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">수 신</td><td style="padding:7px 10px;font-size:13px;font-weight:700">${project.client} 귀중</td><td style="width:80px;padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">발행일</td><td style="padding:7px 10px;font-size:12px;">${dateStr(today)}</td></tr>
+    <tr><td style="padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">제 목</td><td style="padding:7px 10px;font-size:13px;font-weight:700">${project.name}</td><td style="padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">유효기간</td><td style="padding:7px 10px;font-size:12px;">${dateStr(validEnd)}까지</td></tr>
+    <tr><td style="padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">견적가액</td><td colspan="3" style="padding:7px 10px;font-size:14px;font-weight:800;color:#1e40af;">총 ${fmtN(total)}원 ${quote.vat?"(VAT포함)":"(VAT별도)"}</td></tr>
+  </table>
+
+  <!-- 항목 테이블 -->
+  <table style="margin-bottom:4mm">
+    <thead><tr><th style="width:auto">품 명</th><th style="width:50px;text-align:center">단위</th><th style="width:50px;text-align:center">수량</th><th style="width:90px;text-align:right">단 가</th><th style="width:100px;text-align:right">견적금액</th></tr></thead>
+    <tbody>${sectionsHtml}</tbody>
+  </table>
+
+  <!-- 합계 -->
+  <table style="margin-bottom:6mm;margin-left:auto;width:280px">
+    <tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">제작비 소계</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(grandTotal)}원</td></tr>
+    ${agencyFee>0?`<tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">대행수수료 (${quote.agencyFeeRate}%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(agencyFee)}원</td></tr>`:""}
+    <tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">일반관리비 (10%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(mgmt)}원</td></tr>
+    <tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">기업이윤 (5%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(profit)}원</td></tr>
+    ${quote.vat?`<tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">부가세 (10%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(vat)}원</td></tr>`:""}
+    <tr><td style="padding:9px 12px;background:#1e40af;color:#fff;font-size:13px;font-weight:800">최종 견적금액</td><td style="text-align:right;padding:9px 12px;background:#1e40af;color:#fff;font-size:14px;font-weight:800">${fmtN(total)}원</td></tr>
+  </table>
+
+  <!-- 비고 -->
+  ${(company.quoteNote||"")?`<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6mm;font-size:12px;color:#64748b;line-height:1.8">${(company.quoteNote||"").split("\n").join("<br/>")}</div>`:""}
+
+  <!-- 계좌 + 서명 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6mm">
+    ${(company.bankName||company.bankAccount)?`<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px"><div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px">🏦 입금 계좌</div><div style="font-size:13px;font-weight:700">${company.bankName} ${company.bankAccount}</div><div style="font-size:12px;color:#475569">예금주: ${company.bankHolder||""}</div></div>`:"<div></div>"}
+    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;text-align:center">
+      <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:10px">공급자</div>
+      <div style="font-size:13px;font-weight:700">${company.name||""}</div>
+      ${company.phone?`<div style="font-size:11px;color:#64748b;margin-top:2px">Tel: ${company.phone}</div>`:""}
+      ${company.email?`<div style="font-size:11px;color:#64748b">Email: ${company.email}</div>`:""}
+      ${company.bizNo?`<div style="font-size:11px;color:#64748b">사업자: ${company.bizNo}</div>`:""}
+      <div style="border-bottom:1px solid #cbd5e1;margin:12px 20px 6px"></div>
+      <div style="font-size:10px;color:#94a3b8">(서명 또는 날인)</div>
+    </div>
+  </div>
+  <div style="text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:6px">${company.name||""} · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}</div>
+</div></body></html>`;
+
+  const blob=new Blob([html],{type:"text/html;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.target="_blank";a.rel="noopener";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // 공통 UI 컴포넌트
 // ═══════════════════════════════════════════════════════════
 const inp = {width:"100%",padding:"9px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
@@ -566,9 +691,9 @@ function QuoteEditor({ quote, onChange, exportProject }) {
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           {exportProject && (
-            <Btn sm onClick={()=>openQuotePDF(exportProject,q,company)}
+            <Btn sm onClick={()=>(exportProject.quoteFmt||"A")==="B"?openQuotePDFB(exportProject,q,company):openQuotePDF(exportProject,q,company)}
               style={{background:"#2563eb10",color:C.blue,border:`1px solid #2563eb40`}}>
-              📄 견적서 PDF 출력
+              📄 견적서 PDF {exportProject.quoteFmt==="B"?"(상세형)":"(표준형)"} 출력
             </Btn>
           )}
           <div style={{textAlign:"right"}}>
@@ -1343,7 +1468,7 @@ export default function App() {
   const openEditProj = () => {
     const p = projects.find(x=>x.id===selId);
     if(!p) return;
-    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"15초",due:p.due||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[]});
+    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"15초",due:p.due||"",startDate:p.startDate||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[],quoteFmt:p.quoteFmt||"A"});
     setEditProjModal(true);
   };
 
@@ -1585,6 +1710,16 @@ export default function App() {
             <div style={{fontSize:12,color:C.sub,marginBottom:6}}>컬러 태그</div>
             <div style={{display:"flex",gap:6}}>{P_COLORS.map(c=><button key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:24,height:24,borderRadius:"50%",background:c,border:pf.color===c?"3px solid #1e293b":"2px solid transparent",cursor:"pointer"}}/>)}</div>
           </div>
+          <Field label="기본 견적서 포맷">
+            <div style={{display:"flex",gap:8}}>
+              {[{val:"A",label:"📄 포맷 A — 표준형",desc:"대분류/중분류 계층 구조"},{val:"B",label:"📋 포맷 B — 상세형",desc:"부문별 소계 + 관리비/이윤 자동계산"}].map(opt=>(
+                <label key={opt.val} style={{flex:1,display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer",padding:"10px 12px",borderRadius:10,border:`2px solid ${(pf.quoteFmt||"A")===opt.val?C.blue:C.border}`,background:(pf.quoteFmt||"A")===opt.val?C.blueLight:C.white}}>
+                  <input type="radio" name="quoteFmt" value={opt.val} checked={(pf.quoteFmt||"A")===opt.val} onChange={()=>setPf(v=>({...v,quoteFmt:opt.val}))} style={{marginTop:2,accentColor:C.blue}}/>
+                  <div><div style={{fontWeight:700,fontSize:13}}>{opt.label}</div><div style={{fontSize:11,color:C.faint,marginTop:2}}>{opt.desc}</div></div>
+                </label>
+              ))}
+            </div>
+          </Field>
           {user.canManageMembers && (
           <div style={{background:C.slateLight,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 재무 문서 접근 허용 멤버</div>
