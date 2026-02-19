@@ -582,7 +582,7 @@ const isOverdue = t => t.stage!=="납품완료" && t.due && t.due < todayStr();
 // 로그인 화면
 // ═══════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, accounts }) {
-  const [selId, setSelId] = useState(ACCOUNTS[0].id);
+  const [selId, setSelId] = useState(SEED_ACCOUNTS[0].id);
   const [pw, setPw]       = useState("");
   const [err, setErr]     = useState("");
   const [show, setShow]   = useState(false);
@@ -1749,7 +1749,7 @@ export default function App() {
                   <div style={{marginLeft:"auto",display:"flex",gap:8}}>
                     <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
                     <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
-                    <Btn primary sm onClick={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:ACCOUNTS[1].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
+                    <Btn primary sm onClick={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
                   </div>
                 </div>
 
@@ -1805,7 +1805,7 @@ export default function App() {
               </select>
             </Field>
             <Field label="담당자" half>
-              <select style={inp} value={taskModal.assignee||ACCOUNTS[1].name} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
+              <select style={inp} value={taskModal.assignee||SEED_ACCOUNTS[0].name} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
                 {accounts.map(a=><option key={a.id}>{a.name}</option>)}
               </select>
             </Field>
