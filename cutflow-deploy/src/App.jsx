@@ -29,13 +29,13 @@ const C = {
 // 회사 설정 기본값
 // ═══════════════════════════════════════════════════════════
 const DEFAULT_COMPANY = {
-  name:       "NAMUC",
+  name:       "NAMUc",
   ceo:        "",
   bizNo:      "",
   address:    "",
   phone:      "",
   email:      "",
-  logoUrl:    "",
+  logoUrl:    "https://i.imgur.com/ONdvF5Q.jpeg",
   bankName:   "",
   bankAccount:"",
   bankHolder: "",
@@ -1474,7 +1474,13 @@ export default function App() {
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       {/* 헤더 */}
       <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
-        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5}}>🎬 CutFlow</div>
+        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8}}>
+          {company.logoUrl
+            ? <img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>
+            : "🎬"
+          }
+          {company.name||"CutFlow"}
+        </div>
         {isConfigured
           ? <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.greenLight,color:C.green,fontWeight:600}}>☁️ 클라우드 연결됨</span>
           : <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.amberLight,color:C.amber,fontWeight:600}}>⚠️ 로컬 모드 (Firebase 미설정)</span>
