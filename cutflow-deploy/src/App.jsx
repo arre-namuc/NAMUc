@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   subscribeProjects,
   saveProject,
@@ -1019,7 +1019,7 @@ export default function App() {
   if (!user) return <LoginScreen onLogin={setUser}/>;
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
-  const patchProj = useCallback(fn => {
+  const patchProj = fn => {
     setProjects(ps => {
       const updated = ps.map(p => p.id === selId ? fn(p) : p);
       // Firebase에 변경사항 저장
@@ -1029,7 +1029,7 @@ export default function App() {
       }
       return updated;
     });
-  }, [selId]);
+  };
 
   const updateTasks = tasks => patchProj(p=>({...p,tasks}));
   const updateQuote = q     => patchProj(p=>({...p,quote:q}));
