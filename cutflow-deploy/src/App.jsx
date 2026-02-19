@@ -1886,6 +1886,22 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const todosOf = (memberId, hour) =>
     ((dailyTodos[selDate]||{})[memberId]||{})[hour] || [];
 
+  // 이 셀(hour)이 포함되는 todo 블록 찾기 (시작 셀이 아닌 범위 내 셀)
+  const getCoveringTodo = (memberId, hour) => {
+    const memberSlots = (dailyTodos[selDate]||{})[memberId]||{};
+    for(const [startKey, todos] of Object.entries(memberSlots)){
+      for(const todo of todos){
+        if(!todo.endHour || todo.endHour===startKey) continue;
+        const hours = TODO_HOURS.map(h=>h.key);
+        const si = hours.indexOf(startKey);
+        const ei = hours.indexOf(todo.endHour);
+        const ci = hours.indexOf(hour);
+        if(ci>si && ci<=ei) return {todo, startKey};
+      }
+    }
+    return null;
+  };
+
   const canEdit = (memberId) =>
     user.id === memberId || user.role === "PD" || user.canManageMembers;
 
@@ -2058,6 +2074,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
               {/* 구성원별 셀 */}
               {accounts.map(acc=>{
                 const todos = todosOf(acc.id, key);
+                const covering = getCoveringTodo(acc.id, key);
                 const editable = canEdit(acc.id);
                 return (
                   <div key={acc.id}
@@ -2067,14 +2084,43 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
                     style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",
                       borderRight:`1px solid ${C.border}22`,
-                      borderLeft:(()=>{const p=getDragPos(acc.id,key);if(p)return "3px solid #2563eb";if(todosOf(acc.id,key).some(t=>t.dnd))return "3px solid #ef4444";return "none";})(),
-                      borderTop:(()=>{const p=getDragPos(acc.id,key);return p==="first"||p==="single"?"2px solid #2563eb":"none";})(),
-                      borderBottom:(()=>{const p=getDragPos(acc.id,key);return p==="last"||p==="single"?"2px solid #2563eb":"none";})(),
-                      background:(()=>{const p=getDragPos(acc.id,key);if(p)return p==="first"||p==="single"?"#1d4ed8":"#dbeafe";if(todosOf(acc.id,key).some(t=>t.dnd))return "#fff5f5";return editable?"transparent":"#fafafa";})(),
+                      borderLeft:(()=>{
+                        const p=getDragPos(acc.id,key);
+                        if(p)return "3px solid #2563eb";
+                        if(covering)return covering.todo.dnd?"3px solid #ef4444":"3px solid #3b82f6";
+                        if(todos.some(t=>t.dnd))return "3px solid #ef4444";
+                        return "none";
+                      })(),
+                      borderTop:(()=>{
+                        const p=getDragPos(acc.id,key);
+                        if(p)return p==="first"||p==="single"?"2px solid #2563eb":"none";
+                        return "none";
+                      })(),
+                      borderBottom:(()=>{
+                        const p=getDragPos(acc.id,key);
+                        if(p)return p==="last"||p==="single"?"2px solid #2563eb":"none";
+                        // 범위 마지막 셀인지 확인
+                        if(covering&&covering.todo.endHour===key)return "2px solid #3b82f6";
+                        return "none";
+                      })(),
+                      background:(()=>{
+                        const p=getDragPos(acc.id,key);
+                        if(p)return p==="first"||p==="single"?"#1d4ed8":"#dbeafe";
+                        if(covering)return covering.todo.dnd?"#fecaca":"#bfdbfe";
+                        if(todos.some(t=>t.dnd))return "#fff5f5";
+                        return editable?"transparent":"#fafafa";
+                      })(),
                       cursor:editable?"cell":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden",userSelect:"none",
                       borderRadius:(()=>{const p=getDragPos(acc.id,key);if(p==="single")return "8px";if(p==="first")return "8px 8px 0 0";if(p==="last")return "0 0 8px 8px";return "0";})(),
                       transition:"background .05s"}}>
-                    {todos.map(todo=>(
+                    {covering && (
+                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",padding:"0 8px",pointerEvents:"none"}}>
+                        <span style={{fontSize:10,color:covering.todo.dnd?"#ef4444":"#3b82f6",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.7}}>
+                          {covering.todo.dnd?"🚫 ":""}{covering.todo.title}
+                        </span>
+                      </div>
+                    )}
+                    {!covering && todos.map(todo=>(
                       <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
                         style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:todo.done?"#f0fdf4":"#eff6ff",border:`1px solid ${todo.done?"#86efac":"#bfdbfe"}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
                         <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly
@@ -2091,7 +2137,8 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                         <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>📌</span>
                         <span style={{fontSize:10,color:"#bfdbfe",fontWeight:600,marginTop:2}}>{drag?.startHour}~{drag?.endHour}</span>
                       </div>:null;})()}
-                    {editable && todos.length===0 && !isInDragRange(acc.id,key) && (
+                    )}
+                    {!covering && editable && todos.length===0 && !isInDragRange(acc.id,key) && (
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
                         onMouseEnter={e=>e.currentTarget.style.opacity=1}
                         onMouseLeave={e=>e.currentTarget.style.opacity=0}>
