@@ -1822,7 +1822,7 @@ print("\u2705 StaffList \ucef4\ud3ec\ub10c\ud2b8 \ucd94\uac00")
 
 open('/home/claude/cutflow-deploy/src/App.jsx', 'w').write(content)
 c = open('/home/claude/cutflow-deploy/src/App.jsx').read()
-function FeedbackTab({project, patchProj, user, accounts}) {
+function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
   const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
   const [ff, setFf] = useState({});
@@ -3643,7 +3643,7 @@ return (
             )}
 
             {/* ── 피드백 ── */}
-            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts}/>}
+            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts} setNotifications={setNotifications}/>}
 
             {/* ── 캘린더 ── */}
             {docTab==="calendar"&&<MonthCalendar project={proj} onChange={patchProj} user={user}/>}
