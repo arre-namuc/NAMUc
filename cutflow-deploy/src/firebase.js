@@ -103,3 +103,22 @@ export async function deleteVoucherFile(filePath) {
     console.warn("파일 삭제 실패:", e);
   }
 }
+
+// ── 회사 설정 ────────────────────────────────────────────
+
+/** 회사 설정 실시간 구독 */
+export function subscribeCompany(callback) {
+  if (!isConfigured) return () => {};
+  return onSnapshot(doc(db, "settings", "company"), (snap) => {
+    if (snap.exists()) callback(snap.data());
+  });
+}
+
+/** 회사 설정 저장 */
+export async function saveCompany(data) {
+  if (!isConfigured) return;
+  await setDoc(doc(db, "settings", "company"), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
