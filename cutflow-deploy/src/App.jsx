@@ -2086,7 +2086,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                 const editable = canEdit(acc.id);
                 return (
                   <div key={acc.id}
-                    onClick={()=>{ if(!dragging) openModal(acc.id, key); }}
+                    onClick={()=>{ if(!dragging){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
                     onMouseDown={e=>onDragStart(acc.id, key, e)}
                     onMouseEnter={()=>onDragEnter(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
