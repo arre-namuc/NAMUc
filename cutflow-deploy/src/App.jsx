@@ -1,14 +1,8 @@
 import { useState, useEffect } from "react";
 import {
-  subscribeProjects,
-  saveProject,
-  deleteProject,
-  uploadVoucherFile,
-  subscribeCompany,
-  saveCompany,
-  subscribeMembers,
-  saveMember,
-  deleteMember,
+  subscribeProjects, saveProject, deleteProject,
+  uploadVoucherFile, subscribeCompany, saveCompany,
+  subscribeMembers, saveMember, deleteMember,
   isConfigured,
 } from "./firebase.js";
 
@@ -32,18 +26,11 @@ const C = {
 // 회사 설정 기본값
 // ═══════════════════════════════════════════════════════════
 const DEFAULT_COMPANY = {
-  name:       "NAMUc",
-  ceo:        "",
-  bizNo:      "",
-  address:    "",
-  phone:      "",
-  email:      "",
-  logoUrl:    "https://i.imgur.com/ONdvF5Q.jpeg",
-  bankName:   "",
-  bankAccount:"",
-  bankHolder: "",
-  quoteNote:  "· 본 견적은 협의된 내용을 기준으로 작성되었습니다.\n· 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.\n· 계약금 50% 선입금 후 제작 착수합니다.",
-  validDays:  30,
+  name:"NAMUc", ceo:"", bizNo:"", address:"", phone:"", email:"",
+  logoUrl:"https://i.imgur.com/ONdvF5Q.jpeg",
+  bankName:"", bankAccount:"", bankHolder:"",
+  quoteNote:"· 본 견적은 협의된 내용을 기준으로 작성되었습니다.\n· 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.\n· 계약금 50% 선입금 후 제작 착수합니다.",
+  validDays:30,
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -183,17 +170,16 @@ const SEED_PROJECTS = [
     ],
     quote:{
       vat:true, agencyFeeRate:10,
-      items: (() => {
-        const prices = [3000000,2500000,1500000,800000,500000,1200000,1000000,800000,700000,500000,1500000,1000000,400000,300000,2000000,1500000,1000000,500000,300000,3500000,2500000,800000,500000,400000,300000];
-        let idx = 0;
-        return makeTemplate().map(cat=>({
-          ...cat,
-          groups: cat.groups.map(grp=>({
-            ...grp,
-            items: grp.items.map(it=>({ ...it, unitPrice: prices[idx++] || 500000 }))
+      items: makeTemplate().map((cat,ci)=>({
+        ...cat,
+        groups: cat.groups.map((grp,gi)=>({
+          ...grp,
+          items: grp.items.map((it,ii)=>({
+            ...it,
+            unitPrice: [[3000000,2500000,1500000],[800000,500000],[1200000,1000000,800000,700000,500000],[1500000,1000000],[400000,300000],[2000000,1500000,1000000],[500000,300000],[3500000,2500000],[800000,500000,400000,300000]].flat()[ci*3+gi+ii] || 500000
           }))
-        }));
-      })()
+        }))
+      }))
     },
     budget:{
       vouchers:[
@@ -225,305 +211,162 @@ const SEED_PROJECTS = [
 // PDF 견적서 출력
 // ═══════════════════════════════════════════════════════════
 function openQuotePDF(project, quote, company={}) {
-  const fmt  = n => (n||0).toLocaleString("ko-KR") + "원";
   const fmtN = n => (n||0).toLocaleString("ko-KR");
-
-  // 계산
   const sub    = (quote.items||[]).reduce((s,cat)=>s+(cat.groups||[]).reduce((s2,grp)=>s2+(grp.items||[]).reduce((s3,it)=>s3+(it.qty||0)*(it.unitPrice||0),0),0),0);
-  const fee    = Math.round(sub * (quote.agencyFeeRate||0) / 100);
-  const supply = sub + fee;
-  const vat    = quote.vat ? Math.round(supply * 0.1) : 0;
-  const total  = supply + vat;
-
-  // 유효기간 (오늘 + 30일)
-  const today    = new Date();
-  const validEnd = new Date(today); validEnd.setDate(today.getDate() + (company.validDays||30));
-  const dateStr  = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
-
-  // 항목 행 생성
-  let itemRows = "";
-  let rowNum = 1;
-  for (const cat of (quote.items||[])) {
-    const catTotal = (cat.groups||[]).reduce((s,grp)=>s+(grp.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
-    if (!catTotal) continue;
-    itemRows += `<tr class="cat-row"><td colspan="6">■ ${cat.category}</td></tr>`;
-    for (const grp of (cat.groups||[])) {
-      const grpItems = (grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
-      if (!grpItems.length) continue;
-      grpItems.forEach((it, idx) => {
-        const amt = (it.qty||0)*(it.unitPrice||0);
-        itemRows += `<tr>
-          <td class="num">${rowNum++}</td>
-          <td class="grp-cell">${idx===0 ? grp.group : ""}</td>
-          <td>${it.name}</td>
-          <td class="center">${it.unit}</td>
-          <td class="right">${fmtN(it.qty)}</td>
-          <td class="right">${fmtN(it.unitPrice)}</td>
-          <td class="right amount">${fmtN(amt)}</td>
-        </tr>`;
+  const fee    = Math.round(sub*(quote.agencyFeeRate||0)/100);
+  const supply = sub+fee;
+  const vat    = quote.vat?Math.round(supply*0.1):0;
+  const total  = supply+vat;
+  const today  = new Date();
+  const validEnd = new Date(today); validEnd.setDate(today.getDate()+(company.validDays||30));
+  const dateStr = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+  let itemRows="",rowNum=1;
+  for(const cat of (quote.items||[])){
+    const catTotal=(cat.groups||[]).reduce((s,g)=>s+(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
+    if(!catTotal)continue;
+    itemRows+=`<tr class="cat-row"><td colspan="7">■ ${cat.category}</td></tr>`;
+    for(const grp of (cat.groups||[])){
+      const gi=(grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
+      if(!gi.length)continue;
+      gi.forEach((it,idx)=>{
+        const amt=(it.qty||0)*(it.unitPrice||0);
+        itemRows+=`<tr><td class="num">${rowNum++}</td><td class="grp-cell">${idx===0?grp.group:""}</td><td>${it.name}</td><td class="center">${it.unit}</td><td class="right">${fmtN(it.qty)}</td><td class="right">${fmtN(it.unitPrice)}</td><td class="right amount">${fmtN(amt)}</td></tr>`;
       });
-      const grpTotal = grpItems.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
-      itemRows += `<tr class="subtotal-row">
-        <td colspan="6" class="right" style="font-style:italic;color:#64748b">└ ${grp.group} 소계</td>
-        <td class="right">${fmtN(grpTotal)}</td>
-      </tr>`;
+      const gt=gi.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
+      itemRows+=`<tr class="subtotal-row"><td colspan="6" class="right" style="font-style:italic;color:#64748b">└ ${grp.group} 소계</td><td class="right">${fmtN(gt)}</td></tr>`;
     }
-    itemRows += `<tr class="cat-total-row">
-      <td colspan="6" class="right">${cat.category} 합계</td>
-      <td class="right">${fmtN(catTotal)}</td>
-    </tr>`;
+    itemRows+=`<tr class="cat-total-row"><td colspan="6" class="right">${cat.category} 합계</td><td class="right">${fmtN(catTotal)}</td></tr>`;
   }
-
-  const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8"/>
+  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
 <title>견적서 — ${project.name}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:'Noto Sans KR',sans-serif; background:#f8fafc; color:#1e293b; font-size:13px; }
-  .page { width:210mm; min-height:297mm; margin:0 auto; background:#fff; padding:14mm 14mm 16mm; position:relative; }
-
-  /* 헤더 */
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10mm; padding-bottom:6mm; border-bottom:3px solid #2563eb; }
-  .logo-area { display:flex; flex-direction:column; gap:6px; }
-  .logo-box { width:140px; height:52px; border:2px dashed #cbd5e1; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11px; }
-  .company-name { font-size:18px; font-weight:800; color:#1e293b; letter-spacing:-0.5px; }
-  .doc-title-area { text-align:right; }
-  .doc-title { font-size:30px; font-weight:800; color:#2563eb; letter-spacing:-1px; }
-  .doc-num { font-size:11px; color:#64748b; margin-top:4px; }
-  .doc-date { font-size:11px; color:#64748b; margin-top:2px; }
-
-  /* 수신/발신 */
-  .parties { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8mm; }
-  .party-box { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; position:relative; overflow:hidden; }
-  .party-box::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; }
-  .party-box.to::before { background:#2563eb; }
-  .party-box.from::before { background:#64748b; }
-  .party-label { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
-  .party-name { font-size:16px; font-weight:800; color:#1e293b; margin-bottom:4px; }
-  .party-project { font-size:12px; color:#475569; }
-  .party-meta { font-size:11px; color:#94a3b8; margin-top:2px; }
-
-  /* 요약 카드 */
-  .summary-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:8mm; }
-  .summary-card { background:linear-gradient(135deg,#eff6ff,#dbeafe); border:1px solid #bfdbfe; border-radius:10px; padding:10px 14px; }
-  .summary-card.total { background:linear-gradient(135deg,#2563eb,#1d4ed8); border-color:#2563eb; }
-  .summary-card .label { font-size:10px; font-weight:600; color:#3b82f6; margin-bottom:4px; }
-  .summary-card.total .label { color:#bfdbfe; }
-  .summary-card .value { font-size:17px; font-weight:800; color:#1e40af; }
-  .summary-card.total .value { color:#fff; font-size:19px; }
-
-  /* 테이블 */
-  .table-wrap { margin-bottom:6mm; }
-  .table-title { font-size:12px; font-weight:700; color:#475569; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
-  .table-title::before { content:''; width:3px; height:14px; background:#2563eb; border-radius:2px; display:inline-block; }
-  table { width:100%; border-collapse:collapse; }
-  thead th { background:#1e40af; color:#fff; padding:8px 10px; font-size:11px; font-weight:600; text-align:left; }
-  thead th.right { text-align:right; }
-  thead th.center { text-align:center; }
-  tbody tr { border-bottom:1px solid #f1f5f9; }
-  tbody tr:hover { background:#f8fafc; }
-  td { padding:7px 10px; font-size:12px; vertical-align:middle; }
-  td.num { color:#94a3b8; font-size:11px; width:28px; text-align:center; }
-  td.grp-cell { color:#475569; font-size:11px; font-weight:600; width:90px; }
-  td.center { text-align:center; }
-  td.right { text-align:right; }
-  td.amount { font-weight:600; color:#1e293b; }
-  tr.cat-row td { background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:12px; padding:7px 10px; }
-  tr.subtotal-row td { background:#f8fafc; font-size:11px; padding:5px 10px; }
-  tr.cat-total-row td { background:#dbeafe; color:#1e40af; font-weight:700; font-size:12px; padding:7px 10px; border-top:1px solid #bfdbfe; }
-
-  /* 합계 */
-  .total-section { display:flex; justify-content:flex-end; margin-bottom:8mm; }
-  .total-table { width:280px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
-  .total-row { display:flex; justify-content:space-between; padding:8px 14px; font-size:12px; border-bottom:1px solid #f1f5f9; }
-  .total-row:last-child { border-bottom:none; background:#2563eb; color:#fff; font-size:14px; font-weight:800; padding:10px 14px; }
-  .total-row .tlabel { color:#64748b; }
-  .total-row:last-child .tlabel { color:#bfdbfe; }
-  .total-row .tvalue { font-weight:600; }
-
-  /* 하단 정보 */
-  .bottom-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8mm; }
-  .info-box { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; }
-  .info-box-title { font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:4px; }
-  .info-line { font-size:12px; color:#475569; margin-bottom:4px; }
-  .info-line strong { color:#1e293b; }
-  .valid-date { font-size:13px; font-weight:700; color:#2563eb; }
-  .note-area { min-height:48px; font-size:12px; color:#64748b; line-height:1.6; }
-
-  /* 서명 */
-  .sign-section { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:4mm; }
-  .sign-box { border:1px solid #e2e8f0; border-radius:10px; padding:14px; text-align:center; }
-  .sign-label { font-size:10px; font-weight:700; color:#64748b; letter-spacing:1px; margin-bottom:12px; }
-  .sign-name { font-size:13px; font-weight:600; color:#1e293b; margin-bottom:24px; }
-  .sign-line { border-bottom:1px solid #cbd5e1; margin:0 20px 6px; }
-  .sign-hint { font-size:10px; color:#94a3b8; }
-
-  /* 푸터 */
-  .footer { position:absolute; bottom:8mm; left:14mm; right:14mm; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #f1f5f9; padding-top:6px; }
-
-  @media print {
-    body { background:#fff; }
-    .page { margin:0; padding:12mm; box-shadow:none; }
-    .no-print { display:none; }
-  }
-</style>
-</head>
-<body>
-
-<div class="no-print" style="background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;">
-  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 CutFlow 견적서 미리보기</span>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:13px}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:14mm 14mm 16mm;position:relative}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10mm;padding-bottom:6mm;border-bottom:3px solid #2563eb}
+.logo-box{width:140px;height:52px;border:2px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
+.doc-title{font-size:30px;font-weight:800;color:#2563eb;letter-spacing:-1px}
+.parties{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8mm}
+.party-box{border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;position:relative;overflow:hidden}
+.party-box::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px}
+.party-box.to::before{background:#2563eb}.party-box.from::before{background:#64748b}
+.party-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.party-name{font-size:16px;font-weight:800;color:#1e293b;margin-bottom:4px}
+.party-meta{font-size:11px;color:#94a3b8;margin-top:2px}
+.summary-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8mm}
+.sc{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px}
+.sc.total{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#2563eb}
+.sc .label{font-size:10px;font-weight:600;color:#3b82f6;margin-bottom:4px}
+.sc.total .label{color:#bfdbfe}
+.sc .value{font-size:17px;font-weight:800;color:#1e40af}
+.sc.total .value{color:#fff;font-size:19px}
+table{width:100%;border-collapse:collapse;margin-bottom:6mm}
+thead th{background:#1e40af;color:#fff;padding:8px 10px;font-size:11px;font-weight:600;text-align:left}
+thead th.right{text-align:right}thead th.center{text-align:center}
+tbody tr{border-bottom:1px solid #f1f5f9}
+td{padding:7px 10px;font-size:12px;vertical-align:middle}
+td.num{color:#94a3b8;font-size:11px;width:28px;text-align:center}
+td.grp-cell{color:#475569;font-size:11px;font-weight:600;width:90px}
+td.center{text-align:center}td.right{text-align:right}td.amount{font-weight:600}
+tr.cat-row td{background:#eff6ff;color:#1d4ed8;font-weight:700;font-size:12px;padding:7px 10px}
+tr.subtotal-row td{background:#f8fafc;font-size:11px;padding:5px 10px}
+tr.cat-total-row td{background:#dbeafe;color:#1e40af;font-weight:700;font-size:12px;padding:7px 10px;border-top:1px solid #bfdbfe}
+.total-section{display:flex;justify-content:flex-end;margin-bottom:8mm}
+.total-table{width:280px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
+.tr{display:flex;justify-content:space-between;padding:8px 14px;font-size:12px;border-bottom:1px solid #f1f5f9}
+.tr:last-child{border-bottom:none;background:#2563eb;color:#fff;font-size:14px;font-weight:800;padding:10px 14px}
+.tr .tl{color:#64748b}.tr:last-child .tl{color:#bfdbfe}.tr .tv{font-weight:600}
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8mm}
+.info-box{border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
+.info-title{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.sign-section{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:4mm}
+.sign-box{border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center}
+.sign-label{font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;margin-bottom:12px}
+.sign-name{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:24px}
+.sign-line{border-bottom:1px solid #cbd5e1;margin:0 20px 6px}
+.sign-hint{font-size:10px;color:#94a3b8}
+.footer{position:absolute;bottom:8mm;left:14mm;right:14mm;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:6px}
+.no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+@media print{body{background:#fff}.page{margin:0;padding:12mm}.no-print{display:none}}
+</style></head><body>
+<div class="no-print">
+  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 ${company.name||"견적서"} 미리보기</span>
   <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
 </div>
-
 <div class="page">
-
-  <!-- 헤더 -->
   <div class="header">
-    <div class="logo-area">
-      ${company.logoUrl
-        ? `<img src="${company.logoUrl}" style="height:104px;max-width:320px;object-fit:contain;" onerror="this.style.display='none'"/>`
-        : `<div class="logo-box">🎬 로고 미설정</div>`
-      }
-      <div class="company-name" style="margin-top:6px">${company.name||"회사명"}</div>
+    <div>
+      ${company.logoUrl?`<img src="${company.logoUrl}" style="height:104px;max-width:320px;object-fit:contain;" onerror="this.style.display='none'"/>`:`<div class="logo-box">🎬 로고 미설정</div>`}
+      <div style="font-size:18px;font-weight:800;margin-top:6px">${company.name||"회사명"}</div>
     </div>
-    <div class="doc-title-area">
+    <div style="text-align:right">
       <div class="doc-title">견 적 서</div>
-      <div class="doc-num">No. ${project.id.toUpperCase()}-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}</div>
-      <div class="doc-date">작성일: ${dateStr(today)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">No. ${project.id.toUpperCase()}-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">작성일: ${dateStr(today)}</div>
     </div>
   </div>
-
-  <!-- 수신/발신 -->
   <div class="parties">
     <div class="party-box to">
       <div class="party-label">수 신</div>
       <div class="party-name">${project.client} 귀중</div>
-      <div class="party-project">프로젝트: ${project.name}</div>
+      <div style="font-size:12px;color:#475569">프로젝트: ${project.name}</div>
       <div class="party-meta">포맷: ${project.format||"-"} · 납품: ${project.due||"-"}</div>
     </div>
     <div class="party-box from">
       <div class="party-label">발 신</div>
       <div class="party-name">${company.name||"회사명"}</div>
-      <div class="party-project">담당 PD: ${project.pd||"-"} · 감독: ${project.director||"-"}</div>
-      ${company.phone ? `<div class="party-meta">📞 ${company.phone}</div>` : ""}
-      ${company.email ? `<div class="party-meta">✉️ ${company.email}</div>` : ""}
-      ${company.address ? `<div class="party-meta">📍 ${company.address}</div>` : ""}
-      ${company.bizNo ? `<div class="party-meta">사업자: ${company.bizNo}</div>` : ""}
+      <div style="font-size:12px;color:#475569">담당 PD: ${project.pd||"-"} · 감독: ${project.director||"-"}</div>
+      ${company.phone?`<div class="party-meta">📞 ${company.phone}</div>`:""}
+      ${company.email?`<div class="party-meta">✉️ ${company.email}</div>`:""}
+      ${company.address?`<div class="party-meta">📍 ${company.address}</div>`:""}
+      ${company.bizNo?`<div class="party-meta">사업자: ${company.bizNo}</div>`:""}
     </div>
   </div>
-
-  <!-- 요약 카드 -->
   <div class="summary-cards">
-    <div class="summary-card">
-      <div class="label">공급가액 (VAT 제외)</div>
-      <div class="value">${fmtN(supply)}원</div>
-    </div>
-    <div class="summary-card">
-      <div class="label">부가가치세 (10%)</div>
-      <div class="value">${quote.vat ? fmtN(vat)+"원" : "별도"}</div>
-    </div>
-    <div class="summary-card total">
-      <div class="label">최종 견적 금액</div>
-      <div class="value">${fmtN(total)}원</div>
-    </div>
+    <div class="sc"><div class="label">공급가액 (VAT 제외)</div><div class="value">${fmtN(supply)}원</div></div>
+    <div class="sc"><div class="label">부가가치세 (10%)</div><div class="value">${quote.vat?fmtN(vat)+"원":"별도"}</div></div>
+    <div class="sc total"><div class="label">최종 견적 금액</div><div class="value">${fmtN(total)}원</div></div>
   </div>
-
-  <!-- 견적 항목 테이블 -->
-  <div class="table-wrap">
-    <div class="table-title">견적 내역</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:28px">No.</th>
-          <th style="width:90px">중분류</th>
-          <th>항목명</th>
-          <th class="center" style="width:45px">단위</th>
-          <th class="right" style="width:55px">수량</th>
-          <th class="right" style="width:90px">단가</th>
-          <th class="right" style="width:100px">금액</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemRows}
-      </tbody>
-    </table>
-  </div>
-
-  <!-- 합계 -->
+  <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span style="width:3px;height:14px;background:#2563eb;border-radius:2px;display:inline-block"></span>견적 내역</div>
+  <table>
+    <thead><tr><th style="width:28px">No.</th><th style="width:90px">중분류</th><th>항목명</th><th class="center" style="width:45px">단위</th><th class="right" style="width:55px">수량</th><th class="right" style="width:90px">단가</th><th class="right" style="width:100px">금액</th></tr></thead>
+    <tbody>${itemRows}</tbody>
+  </table>
   <div class="total-section">
     <div class="total-table">
-      <div class="total-row"><span class="tlabel">소계</span><span class="tvalue">${fmtN(sub)}원</span></div>
-      ${(quote.agencyFeeRate||0)>0 ? `<div class="total-row"><span class="tlabel">대행수수료 (${quote.agencyFeeRate}%)</span><span class="tvalue">${fmtN(fee)}원</span></div>` : ""}
-      <div class="total-row"><span class="tlabel">공급가액</span><span class="tvalue">${fmtN(supply)}원</span></div>
-      ${quote.vat ? `<div class="total-row"><span class="tlabel">부가가치세 (10%)</span><span class="tvalue">${fmtN(vat)}원</span></div>` : ""}
-      <div class="total-row"><span class="tlabel">최종 견적 금액</span><span class="tvalue">${fmtN(total)}원</span></div>
+      <div class="tr"><span class="tl">소계</span><span class="tv">${fmtN(sub)}원</span></div>
+      ${(quote.agencyFeeRate||0)>0?`<div class="tr"><span class="tl">대행수수료 (${quote.agencyFeeRate}%)</span><span class="tv">${fmtN(fee)}원</span></div>`:""}
+      <div class="tr"><span class="tl">공급가액</span><span class="tv">${fmtN(supply)}원</span></div>
+      ${quote.vat?`<div class="tr"><span class="tl">부가세 (10%)</span><span class="tv">${fmtN(vat)}원</span></div>`:""}
+      <div class="tr"><span class="tl">최종 견적 금액</span><span class="tv">${fmtN(total)}원</span></div>
     </div>
   </div>
-
-  <!-- 유효기간 & 비고 -->
   <div class="bottom-grid">
     <div class="info-box">
-      <div class="info-box-title">📅 견적 유효기간</div>
-      <div class="info-line">본 견적서의 유효기간은 아래와 같습니다.</div>
-      <div class="valid-date" style="margin-top:8px">${dateStr(today)} ~ ${dateStr(validEnd)}</div>
-      <div class="info-line" style="margin-top:6px;font-size:11px;color:#94a3b8">유효기간 이후에는 금액이 변동될 수 있습니다.</div>
+      <div class="info-title">📅 견적 유효기간</div>
+      <div style="font-size:13px;font-weight:700;color:#2563eb">${dateStr(today)} ~ ${dateStr(validEnd)}</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:6px">유효기간 이후 금액이 변동될 수 있습니다.</div>
     </div>
     <div class="info-box">
-      <div class="info-box-title">💬 특이사항 / 비고</div>
-      <div class="note-area">
-        ${(company.quoteNote||"").split("\n").join("<br/>")}
-      </div>
+      <div class="info-title">💬 특이사항 / 비고</div>
+      <div style="font-size:12px;color:#64748b;line-height:1.6">${(company.quoteNote||"").split("\n").join("<br/>")}</div>
     </div>
   </div>
-
-  <!-- 계좌 정보 -->
-  ${(company.bankName||company.bankAccount) ? `
-  <div style="margin-bottom:6mm;">
-    <div class="info-box" style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;">
-      <div class="info-box-title" style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🏦 입금 계좌</div>
-      <div style="font-size:13px;font-weight:700;color:#1e293b;">${company.bankName||""} ${company.bankAccount||""}</div>
-      <div style="font-size:12px;color:#475569;margin-top:2px;">예금주: ${company.bankHolder||""}</div>
-    </div>
-  </div>` : ""}
-
-  <!-- 서명란 -->
+  ${(company.bankName||company.bankAccount)?`<div class="info-box" style="margin-bottom:8mm"><div class="info-title">🏦 입금 계좌</div><div style="font-size:13px;font-weight:700">${company.bankName||""} ${company.bankAccount||""}</div><div style="font-size:12px;color:#475569;margin-top:2px">예금주: ${company.bankHolder||""}</div></div>`:""}
   <div class="sign-section">
-    <div class="sign-box">
-      <div class="sign-label">클라이언트 확인</div>
-      <div class="sign-name">${project.client}</div>
-      <div class="sign-line"></div>
-      <div class="sign-hint">(서명 또는 날인)</div>
-    </div>
-    <div class="sign-box">
-      <div class="sign-label">담당자 확인</div>
-      <div class="sign-name">${company.name||"회사명"} · ${project.pd||"담당 PD"}</div>
-      <div class="sign-line"></div>
-      <div class="sign-hint">(서명 또는 날인)</div>
-    </div>
+    <div class="sign-box"><div class="sign-label">클라이언트 확인</div><div class="sign-name">${project.client}</div><div class="sign-line"></div><div class="sign-hint">(서명 또는 날인)</div></div>
+    <div class="sign-box"><div class="sign-label">담당자 확인</div><div class="sign-name">${company.name||"회사명"} · ${project.pd||"담당 PD"}</div><div class="sign-line"></div><div class="sign-hint">(서명 또는 날인)</div></div>
   </div>
-
-  <div class="footer">
-    ${company.name||"회사명"} · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}
-  </div>
-</div>
-
-</body>
-</html>`;
-
-  // Blob URL 방식 - 팝업 차단 우회
-  const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href   = url;
-  a.target = "_blank";
-  a.rel    = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  <div class="footer">${company.name||"회사명"} · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}</div>
+</div></body></html>`;
+  const blob=new Blob([html],{type:"text/html;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.target="_blank";a.rel="noopener";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
 // ═══════════════════════════════════════════════════════════
 // 공통 UI 컴포넌트
@@ -621,17 +464,7 @@ function LoginScreen({ onLogin, accounts }) {
         <button onClick={login} style={{width:"100%",padding:12,borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>
           로그인
         </button>
-        <div style={{marginTop:20,padding:"12px 14px",background:C.slateLight,borderRadius:10,fontSize:12,color:C.sub}}>
-          <div style={{fontWeight:700,marginBottom:6}}>💡 테스트 계정</div>
-          {accounts.map(a=>(
-            <div key={a.id} style={{display:"flex",justifyContent:"space-between",marginTop:3}}>
-              <span style={{color:a.canViewFinance?C.emerald:C.sub}}>{a.name} ({a.role}){a.canViewFinance?" 🔑":""}</span>
-              <span style={{fontFamily:"monospace",color:C.slate}}>{a.pw}</span>
-            </div>
-          ))}
-          <div style={{marginTop:8,fontSize:11,color:C.faint}}>🔑 = 재무정보 열람 가능</div>
         </div>
-      </div>
     </div>
   );
 }
@@ -665,7 +498,7 @@ function KanbanCol({ stage, tasks, onEdit }) {
 // ═══════════════════════════════════════════════════════════
 // 견적서 에디터 (대분류 > 중분류 > 소분류 3단계)
 // ═══════════════════════════════════════════════════════════
-function QuoteEditor({ quote, onChange, exportProject, company }) {
+function QuoteEditor({ quote, onChange, exportProject }) {
   const q = quote;
   const [addModal,    setAddModal]    = useState(null); // {ci, gi}
   const [newItem,     setNewItem]     = useState({name:"",unit:"식",qty:1,unitPrice:0});
@@ -925,16 +758,16 @@ function BudgetEditor({ project, onSave }) {
       const isPdf = file.type==="application/pdf";
 
       const msgContent = isImg
-        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"영상 제작 견적서나 영수증이야. 발행처(vendor), 항목명(name), 최종합계금액 숫자(amount), 발행일자 YYYY-MM-DD(date) 를 추출해서 JSON으로만 답해줘."}]
+        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
         : isPdf
-        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"영상 제작 견적서나 영수증이야. 발행처(vendor), 항목명(name), 최종합계금액 숫자(amount), 발행일자 YYYY-MM-DD(date) 를 추출해서 JSON으로만 답해줘."}]
+        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
         : null;
 
       if (!msgContent) { setAnalyzing(false); return; }
 
       const res = await fetch("https://api.anthropic.com/v1/messages",{
         method:"POST",
-        headers:{"content-type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        headers:{"content-type":"application/json"},
         body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:msgContent}]})
       });
       const data = await res.json();
@@ -957,9 +790,9 @@ function BudgetEditor({ project, onSave }) {
   };
 
   const handleFile = async (file) => {
-    // 임시 미리보기용 로컬 URL 생성
-    const localUrl = URL.createObjectURL(file);
-    setVf(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url:localUrl,size:file.size,_localFile:file}]}));
+    const toB64 = f => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
+    const b64url = await toB64(file);
+    setVf(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
     analyzeFile(file);
   };
 
@@ -1189,26 +1022,16 @@ function SettlementView({ project, onConfirm }) {
 const ROLES = ["대표","PD","감독","촬영감독","편집자","CG","제작부","경영지원","기타"];
 
 function MemberManagement({ accounts, onSave, onDelete }) {
-  const [modal,   setModal]   = useState(false);
-  const [editM,   setEditM]   = useState(null);
-  const [mf,      setMf]      = useState({});
-  const [confirm, setConfirm] = useState(null);
+  const [modal, setModal] = useState(false);
+  const [editM, setEditM] = useState(null);
+  const [mf,    setMf]    = useState({});
+  const [conf,  setConf]  = useState(null);
 
-  const openAdd = () => {
-    setEditM(null);
-    setMf({ name:"", role:ROLES[1], pw:"", canViewFinance:false, canManageMembers:false });
-    setModal(true);
-  };
-  const openEdit = (m) => { setEditM(m); setMf({...m}); setModal(true); };
-
+  const openAdd  = () => { setEditM(null); setMf({name:"",role:ROLES[1],pw:"",canViewFinance:false,canManageMembers:false}); setModal(true); };
+  const openEdit = m => { setEditM(m); setMf({...m}); setModal(true); };
   const save = () => {
-    if (!mf.name?.trim() || !mf.pw?.trim()) return;
-    const member = {
-      ...mf,
-      id: editM ? editM.id : "m" + Date.now(),
-      order: editM ? (editM.order||0) : accounts.length,
-    };
-    onSave(member);
+    if(!mf.name?.trim()||!mf.pw?.trim()) return;
+    onSave({...mf, id:editM?editM.id:"m"+Date.now(), order:editM?(editM.order||0):accounts.length});
     setModal(false);
   };
 
@@ -1218,116 +1041,66 @@ function MemberManagement({ accounts, onSave, onDelete }) {
         <div style={{fontWeight:700,fontSize:14}}>구성원 목록 ({accounts.length}명)</div>
         <Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>
       </div>
-
       <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
         <div style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-          <span/>
-          <span>이름</span>
-          <span>직책</span>
-          <span style={{textAlign:"center"}}>재무열람</span>
-          <span style={{textAlign:"center"}}>멤버관리</span>
-          <span>비밀번호</span>
-          <span/>
+          <span/><span>이름</span><span>직책</span><span style={{textAlign:"center"}}>재무열람</span><span style={{textAlign:"center"}}>멤버관리</span><span>비밀번호</span><span/>
         </div>
-        {accounts.length===0 && (
-          <div style={{padding:"30px",textAlign:"center",color:C.faint,fontSize:14}}>구성원이 없습니다</div>
-        )}
+        {accounts.length===0 && <div style={{padding:"30px",textAlign:"center",color:C.faint}}>구성원이 없습니다</div>}
         {accounts.map((m,i)=>(
           <div key={m.id} style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
             <Avatar name={m.name} size={28}/>
-            <div>
-              <div style={{fontWeight:700,fontSize:13}}>{m.name}</div>
-            </div>
+            <div style={{fontWeight:700,fontSize:13}}>{m.name}</div>
             <span style={{fontSize:12,padding:"2px 8px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{m.role}</span>
-            <div style={{textAlign:"center"}}>
-              {m.canViewFinance
-                ? <span style={{fontSize:13,color:C.green,fontWeight:700}}>✅</span>
-                : <span style={{fontSize:13,color:C.faint}}>—</span>}
-            </div>
-            <div style={{textAlign:"center"}}>
-              {m.canManageMembers
-                ? <span style={{fontSize:13,color:C.blue,fontWeight:700}}>✅</span>
-                : <span style={{fontSize:13,color:C.faint}}>—</span>}
-            </div>
+            <div style={{textAlign:"center"}}>{m.canViewFinance?<span style={{color:C.green}}>✅</span>:<span style={{color:C.faint}}>—</span>}</div>
+            <div style={{textAlign:"center"}}>{m.canManageMembers?<span style={{color:C.blue}}>✅</span>:<span style={{color:C.faint}}>—</span>}</div>
             <span style={{fontSize:12,color:C.faint,fontFamily:"monospace"}}>{m.pw}</span>
             <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-              <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub,padding:"2px 4px"}}>✏️</button>
-              <button onClick={()=>setConfirm(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.faint,padding:"2px 4px"}}>🗑️</button>
+              <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14}}>✏️</button>
+              <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14}}>🗑️</button>
             </div>
           </div>
         ))}
       </div>
-
       <div style={{marginTop:12,padding:"10px 14px",background:C.amberLight,borderRadius:8,fontSize:12,color:C.amber}}>
-        ⚠️ 비밀번호는 구성원이 앱에 로그인할 때 사용합니다. 간단하지만 유추하기 어렵게 설정하세요.
+        ⚠️ 비밀번호는 구성원이 앱에 로그인할 때 사용합니다.
       </div>
 
-      {/* 추가/수정 모달 */}
       {modal && (
-        <Modal title={editM ? "구성원 수정" : "구성원 추가"} onClose={()=>setModal(false)}>
+        <Modal title={editM?"구성원 수정":"구성원 추가"} onClose={()=>setModal(false)}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="이름 *">
-              <input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="ex. 홍길동"/>
-            </Field>
-            <Field label="직책 *" half>
-              <select style={inp} value={mf.role||ROLES[1]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>
-                {ROLES.map(r=><option key={r}>{r}</option>)}
-              </select>
-            </Field>
-            <Field label="비밀번호 *" half>
-              <input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/>
-            </Field>
-            <Field label="연락처" half>
-              <input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
-            </Field>
-            <Field label="이메일" half>
-              <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
-            </Field>
+            <Field label="이름 *"><input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="홍길동"/></Field>
+            <Field label="직책 *" half><select style={inp} value={mf.role||ROLES[1]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>{ROLES.map(r=><option key={r}>{r}</option>)}</select></Field>
+            <Field label="비밀번호 *" half><input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/></Field>
+            <Field label="연락처" half><input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
+            <Field label="이메일" half><input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/></Field>
           </div>
-
           <div style={{marginTop:8,padding:"12px 14px",background:C.slateLight,borderRadius:10}}>
             <div style={{fontWeight:700,fontSize:12,color:C.sub,marginBottom:10}}>권한 설정</div>
             <div style={{display:"flex",gap:20}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-                <input type="checkbox" checked={!!mf.canViewFinance}
-                  onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))}
-                  style={{accentColor:C.green,width:16,height:16}}/>
-                <div>
-                  <div style={{fontWeight:600}}>💰 재무 열람</div>
-                  <div style={{fontSize:11,color:C.faint}}>재무 대시보드, 결산서 접근</div>
-                </div>
+                <input type="checkbox" checked={!!mf.canViewFinance} onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))} style={{accentColor:C.green,width:16,height:16}}/>
+                <div><div style={{fontWeight:600}}>💰 재무 열람</div><div style={{fontSize:11,color:C.faint}}>재무 대시보드, 결산서</div></div>
               </label>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-                <input type="checkbox" checked={!!mf.canManageMembers}
-                  onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))}
-                  style={{accentColor:C.blue,width:16,height:16}}/>
-                <div>
-                  <div style={{fontWeight:600}}>👥 구성원 관리</div>
-                  <div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div>
-                </div>
+                <input type="checkbox" checked={!!mf.canManageMembers} onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))} style={{accentColor:C.blue,width:16,height:16}}/>
+                <div><div style={{fontWeight:600}}>👥 구성원 관리</div><div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div></div>
               </label>
             </div>
           </div>
-
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
-            {editM && <Btn danger sm onClick={()=>{setConfirm(editM);setModal(false);}}>삭제</Btn>}
+            {editM && <Btn danger sm onClick={()=>{setConf(editM);setModal(false);}}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(false)}>취소</Btn>
             <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()}>저장</Btn>
           </div>
         </Modal>
       )}
-
-      {/* 삭제 확인 */}
-      {confirm && (
-        <Modal title="구성원 삭제" onClose={()=>setConfirm(null)}>
-          <div style={{fontSize:14,color:C.text,marginBottom:20}}>
-            <b>{confirm.name}</b> ({confirm.role}) 구성원을 삭제하시겠습니까?<br/>
-            <span style={{fontSize:12,color:C.faint}}>삭제 후에는 해당 계정으로 로그인할 수 없습니다.</span>
-          </div>
+      {conf && (
+        <Modal title="구성원 삭제" onClose={()=>setConf(null)}>
+          <div style={{fontSize:14,marginBottom:20}}><b>{conf.name}</b> ({conf.role})을 삭제하시겠습니까?</div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-            <Btn onClick={()=>setConfirm(null)}>취소</Btn>
-            <Btn danger onClick={()=>{onDelete(confirm.id);setConfirm(null);}}>삭제</Btn>
+            <Btn onClick={()=>setConf(null)}>취소</Btn>
+            <Btn danger onClick={()=>{onDelete(conf.id);setConf(null);}}>삭제</Btn>
           </div>
         </Modal>
       )}
@@ -1335,127 +1108,60 @@ function MemberManagement({ accounts, onSave, onDelete }) {
   );
 }
 
-
 // ═══════════════════════════════════════════════════════════
 // 회사 설정 페이지
 // ═══════════════════════════════════════════════════════════
 function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMember }) {
   const c = company;
-  const set = (k, v) => onChange({ ...c, [k]: v });
-
+  const set = (k,v) => onChange({...c,[k]:v});
   return (
     <div>
       <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>회사 설정</h2>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-
-        {/* 기본 정보 */}
         <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
-            🏢 기본 정보
-          </div>
-          <Field label="회사명 *">
-            <input style={inp} value={c.name||""} onChange={e=>set("name",e.target.value)} placeholder="ex. NAMUC"/>
-          </Field>
-          <Field label="대표자명">
-            <input style={inp} value={c.ceo||""} onChange={e=>set("ceo",e.target.value)} placeholder="ex. 홍길동"/>
-          </Field>
-          <Field label="사업자등록번호">
-            <input style={inp} value={c.bizNo||""} onChange={e=>set("bizNo",e.target.value)} placeholder="ex. 123-45-67890"/>
-          </Field>
-          <Field label="주소">
-            <input style={inp} value={c.address||""} onChange={e=>set("address",e.target.value)} placeholder="ex. 서울시 마포구 ..."/>
-          </Field>
-          <Field label="전화번호">
-            <input style={inp} value={c.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="ex. 02-1234-5678"/>
-          </Field>
-          <Field label="이메일">
-            <input style={inp} value={c.email||""} onChange={e=>set("email",e.target.value)} placeholder="ex. hello@namuc.kr"/>
-          </Field>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:16}}>🏢 기본 정보</div>
+          <Field label="회사명 *"><input style={inp} value={c.name||""} onChange={e=>set("name",e.target.value)} placeholder="ex. NAMUc"/></Field>
+          <Field label="대표자명"><input style={inp} value={c.ceo||""} onChange={e=>set("ceo",e.target.value)} placeholder="홍길동"/></Field>
+          <Field label="사업자등록번호"><input style={inp} value={c.bizNo||""} onChange={e=>set("bizNo",e.target.value)} placeholder="123-45-67890"/></Field>
+          <Field label="주소"><input style={inp} value={c.address||""} onChange={e=>set("address",e.target.value)}/></Field>
+          <Field label="전화번호"><input style={inp} value={c.phone||""} onChange={e=>set("phone",e.target.value)}/></Field>
+          <Field label="이메일"><input style={inp} value={c.email||""} onChange={e=>set("email",e.target.value)}/></Field>
         </div>
-
-        {/* 로고 & 견적 설정 */}
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          {/* 로고 */}
           <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
-              🖼️ 회사 로고
-            </div>
-            <Field label="로고 이미지 URL">
-              <input style={inp} value={c.logoUrl||""} onChange={e=>set("logoUrl",e.target.value)}
-                placeholder="https://... (구글드라이브, imgur 등)"/>
-            </Field>
-            {c.logoUrl ? (
-              <div style={{marginTop:8,padding:12,background:C.slateLight,borderRadius:10,textAlign:"center"}}>
-                <img src={c.logoUrl} alt="로고 미리보기"
-                  style={{maxHeight:60,maxWidth:"100%",objectFit:"contain"}}
-                  onError={e=>{e.target.style.display="none";}}/>
-                <div style={{fontSize:11,color:C.faint,marginTop:6}}>미리보기</div>
-              </div>
-            ) : (
-              <div style={{marginTop:8,padding:"16px 12px",background:C.slateLight,borderRadius:10,textAlign:"center",color:C.faint,fontSize:12}}>
-                URL 입력 시 미리보기가 표시됩니다
-              </div>
-            )}
+            <div style={{fontWeight:700,fontSize:14,marginBottom:16}}>🖼️ 회사 로고</div>
+            <Field label="로고 이미지 URL"><input style={inp} value={c.logoUrl||""} onChange={e=>set("logoUrl",e.target.value)} placeholder="https://i.imgur.com/..."/></Field>
+            {c.logoUrl
+              ? <div style={{marginTop:8,padding:12,background:C.slateLight,borderRadius:10,textAlign:"center"}}><img src={c.logoUrl} alt="로고" style={{maxHeight:60,maxWidth:"100%",objectFit:"contain"}} onError={e=>e.target.style.display="none"}/><div style={{fontSize:11,color:C.faint,marginTop:4}}>미리보기</div></div>
+              : <div style={{marginTop:8,padding:"16px",background:C.slateLight,borderRadius:10,textAlign:"center",color:C.faint,fontSize:12}}>URL 입력 시 미리보기</div>
+            }
             <div style={{marginTop:10,padding:"10px 12px",background:C.blueLight,borderRadius:8,fontSize:12,color:C.blue}}>
-              💡 <b>로고 URL 얻는 법:</b><br/>
-              구글 드라이브에 이미지 업로드 → 공유 → "링크가 있는 모든 사용자"로 설정 →
-              파일 ID를 복사해서 아래 형식으로 입력:<br/>
-              <code style={{fontSize:11}}>https://drive.google.com/uc?id=파일ID</code>
+              💡 imgur.com에 업로드 후 이미지 주소를 복사해서 입력하세요.
             </div>
           </div>
-
-          {/* 계좌 정보 */}
           <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
-              🏦 계좌 정보 (견적서 하단 표시)
-            </div>
-            <Field label="은행명">
-              <input style={inp} value={c.bankName||""} onChange={e=>set("bankName",e.target.value)} placeholder="ex. 국민은행"/>
-            </Field>
-            <Field label="계좌번호">
-              <input style={inp} value={c.bankAccount||""} onChange={e=>set("bankAccount",e.target.value)} placeholder="ex. 123-456-7890"/>
-            </Field>
-            <Field label="예금주">
-              <input style={inp} value={c.bankHolder||""} onChange={e=>set("bankHolder",e.target.value)} placeholder="ex. (주)나믁"/>
-            </Field>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:16}}>🏦 계좌 정보</div>
+            <Field label="은행명"><input style={inp} value={c.bankName||""} onChange={e=>set("bankName",e.target.value)} placeholder="국민은행"/></Field>
+            <Field label="계좌번호"><input style={inp} value={c.bankAccount||""} onChange={e=>set("bankAccount",e.target.value)}/></Field>
+            <Field label="예금주"><input style={inp} value={c.bankHolder||""} onChange={e=>set("bankHolder",e.target.value)}/></Field>
           </div>
         </div>
-
-        {/* 견적서 설정 (전체 너비) */}
         <div style={{gridColumn:"1 / -1",background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px"}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
-            📄 견적서 기본 설정
-          </div>
-          <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-            <Field label="견적 유효기간 (일)" half>
-              <input style={inp} type="number" value={c.validDays||30}
-                onChange={e=>set("validDays",Number(e.target.value)||30)}/>
-            </Field>
-            <Field label="특이사항 / 비고 기본 문구">
-              <textarea style={{...inp,minHeight:80,resize:"vertical"}}
-                value={c.quoteNote||""} onChange={e=>set("quoteNote",e.target.value)}
-                placeholder="견적서 하단에 표시될 기본 안내문구를 입력하세요"/>
-            </Field>
-          </div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:16}}>📄 견적서 기본 설정</div>
+          <Field label="견적 유효기간 (일)"><input style={inp} type="number" value={c.validDays||30} onChange={e=>set("validDays",Number(e.target.value)||30)}/></Field>
+          <Field label="특이사항/비고 기본 문구"><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={c.quoteNote||""} onChange={e=>set("quoteNote",e.target.value)}/></Field>
         </div>
       </div>
-
-      {/* 미리보기 안내 */}
       <div style={{marginTop:16,padding:"13px 18px",background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,fontSize:13,color:C.green}}>
         ✅ 설정 내용은 자동 저장됩니다. 견적서 탭에서 <b>📄 견적서 PDF 출력</b> 버튼을 누르면 변경된 정보가 바로 반영됩니다.
       </div>
 
-      {/* 구성원 관리 */}
       <div style={{marginTop:28}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
           <div style={{fontWeight:800,fontSize:16}}>👥 구성원 관리</div>
           <span style={{fontSize:12,padding:"2px 8px",background:C.amberLight,color:C.amber,borderRadius:99,fontWeight:600}}>대표 · 경영지원 전용</span>
         </div>
-        <MemberManagement
-          accounts={accounts}
-          onSave={onSaveMember}
-          onDelete={onDeleteMember}
-        />
+        <MemberManagement accounts={accounts} onSave={onSaveMember} onDelete={onDeleteMember}/>
       </div>
     </div>
   );
@@ -1551,54 +1257,33 @@ export default function App() {
   const [user,         setUser]         = useState(null);
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
   const [selId,        setSelId]        = useState("p1");
-  const [fbReady,      setFbReady]      = useState(false);
-  const [mainTab,      setMainTab]      = useState("tasks");
-  const [docTab,       setDocTab]       = useState("quote");
-  const [viewMode,     setViewMode]     = useState("list");
-  const [taskModal,    setTaskModal]    = useState(null);
-  const [tf,           setTf]           = useState({});
-
-  const [addProjModal, setAddProjModal] = useState(false);
-  const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
+  const [mainTab,      setMainTab]      = useState("tasks");
+  const [addProjModal, setAddProjModal] = useState(false);
+  const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
 
-  // Firebase 실시간 구독 (모든 useState 이후에 위치)
   useEffect(() => {
     if (!isConfigured) return;
-    // 프로젝트 구독
-    const unsubProjects = subscribeProjects((fbProjects) => {
-      if (fbProjects.length > 0) {
-        setProjects(fbProjects);
-        setSelId(prev => fbProjects.find(p => p.id === prev) ? prev : fbProjects[0].id);
-      }
-      setFbReady(true);
-    });
-    // 회사 설정 구독
-    const unsubCompany = subscribeCompany((data) => {
-      setCompany(prev => ({ ...DEFAULT_COMPANY, ...data }));
-    });
-    // 구성원 구독
-    const unsubMembers = subscribeMembers((members) => {
-      if (members.length > 0) setAccounts(members);
-    });
-    return () => { unsubProjects(); unsubCompany(); unsubMembers(); };
+    const u1 = subscribeProjects(fb => { if(fb.length>0){setProjects(fb);setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);} });
+    const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
+    const u3 = subscribeMembers(m => { if(m.length>0) setAccounts(m); });
+    return () => { u1(); u2(); u3(); };
   }, []);
+  const [docTab,       setDocTab]       = useState("quote");   // quote | budget | settlement
+  const [viewMode,     setViewMode]     = useState("list");    // list | kanban
+  const [taskModal,    setTaskModal]    = useState(null);
+  const [tf,           setTf]           = useState({});
 
   if (!user) return <LoginScreen onLogin={setUser} accounts={accounts}/>;
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
-  const patchProj = fn => {
-    setProjects(ps => {
-      const updated = ps.map(p => p.id === selId ? fn(p) : p);
-      // Firebase에 변경사항 저장
-      const changedProject = updated.find(p => p.id === selId);
-      if (changedProject && isConfigured) {
-        saveProject(changedProject).catch(console.error);
-      }
-      return updated;
-    });
-  };
+  const patchProj = fn => setProjects(ps=>{
+    const updated=ps.map(p=>p.id===selId?fn(p):p);
+    const changed=updated.find(p=>p.id===selId);
+    if(changed&&isConfigured) saveProject(changed).catch(console.error);
+    return updated;
+  });
 
   const updateTasks = tasks => patchProj(p=>({...p,tasks}));
   const updateQuote = q     => patchProj(p=>({...p,quote:q}));
@@ -1619,7 +1304,7 @@ export default function App() {
     setProjects(ps=>[...ps,np]);
     setSelId(id);
     setAddProjModal(false);
-    if (isConfigured) saveProject(np).catch(console.error);
+    if(isConfigured) saveProject(np).catch(console.error);
     setPf({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
   };
 
@@ -1648,16 +1333,9 @@ export default function App() {
       {/* 헤더 */}
       <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
         <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8}}>
-          {company.logoUrl
-            ? <img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>
-            : "🎬"
-          }
+          {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>:"🎬"}
           {company.name||"CutFlow"}
         </div>
-        {isConfigured
-          ? <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.greenLight,color:C.green,fontWeight:600}}>☁️ 클라우드 연결됨</span>
-          : <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:C.amberLight,color:C.amber,fontWeight:600}}>⚠️ 로컬 모드 (Firebase 미설정)</span>
-        }
         {/* 프로젝트 선택 */}
         <div style={{display:"flex",gap:6,flex:1,overflowX:"auto"}}>
           {projects.map(p=>(
@@ -1693,19 +1371,10 @@ export default function App() {
         ) : mainTab==="settings" ? (
           <CompanySettings
             company={company}
-            onChange={(updated) => {
-              setCompany(updated);
-              if (isConfigured) saveCompany(updated).catch(console.error);
-            }}
+            onChange={u=>{setCompany(u);if(isConfigured)saveCompany(u).catch(console.error);}}
             accounts={accounts}
-            onSaveMember={(m) => {
-              setAccounts(prev => prev.find(a=>a.id===m.id) ? prev.map(a=>a.id===m.id?m:a) : [...prev,m]);
-              if (isConfigured) saveMember(m).catch(console.error);
-            }}
-            onDeleteMember={(id) => {
-              setAccounts(prev => prev.filter(a=>a.id!==id));
-              if (isConfigured) deleteMember(id).catch(console.error);
-            }}
+            onSaveMember={m=>{setAccounts(p=>p.find(a=>a.id===m.id)?p.map(a=>a.id===m.id?m:a):[...p,m]);if(isConfigured)saveMember(m).catch(console.error);}}
+            onDeleteMember={id=>{setAccounts(p=>p.filter(a=>a.id!==id));if(isConfigured)deleteMember(id).catch(console.error);}}
           />
         ) : (
           <>
@@ -1783,7 +1452,7 @@ export default function App() {
             )}
 
             {/* ── 견적서 ── */}
-            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
+            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj}/>}
 
             {/* ── 실행예산서 ── */}
             {docTab==="budget"&&<BudgetEditor project={proj} onSave={updateBudget}/>}
