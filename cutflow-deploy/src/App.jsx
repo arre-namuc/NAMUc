@@ -69,7 +69,10 @@ const newId = () => Math.random().toString(36).slice(2,8);
 
 const QUOTE_TEMPLATE = [
   { category:"기획/제작관리", groups:[
-    { group:"대본 구성", items:[
+    { group:"제작관리", items:[
+      { name:"EPD (Executive PD)",           unit:"건", qty:1, unitPrice:0 },
+      { name:"총괄감독",                     unit:"건", qty:1, unitPrice:0 },
+      { name:"AE (대행사 담당)",             unit:"건", qty:1, unitPrice:0 },
       { name:"작가 (대본 작성)",             unit:"건", qty:1, unitPrice:0 },
       { name:"프로듀싱, 프로덕션 매니징",    unit:"건", qty:1, unitPrice:0 },
       { name:"P.P.M 경비",                   unit:"식", qty:1, unitPrice:0 },
@@ -80,6 +83,8 @@ const QUOTE_TEMPLATE = [
       { name:"기획 및 구성료 (구성안 작성)", unit:"건", qty:1, unitPrice:0 },
       { name:"프로듀싱, 프로덕션 매니징",    unit:"건", qty:1, unitPrice:0 },
       { name:"연출료, 조연출료, 콘티 visualizing (종합 연출료)", unit:"건", qty:1, unitPrice:0 },
+      { name:"조감독 (1st)",                 unit:"일", qty:1, unitPrice:0 },
+      { name:"조감독 (2nd)",                 unit:"일", qty:0, unitPrice:0 },
     ]},
     { group:"캐스팅/로케이션", items:[
       { name:"캐스팅비",       unit:"명", qty:1, unitPrice:0 },
@@ -132,22 +137,23 @@ const QUOTE_TEMPLATE = [
   ]},
   { category:"포스트프로덕션", groups:[
     { group:"편집/DI", items:[
-      { name:"Editing, 2D",        unit:"건", qty:1, unitPrice:0 },
-      { name:"색보정 (D.I.)",      unit:"건", qty:1, unitPrice:0 },
-      { name:"편집 조연출료",      unit:"건", qty:1, unitPrice:0 },
+      { name:"편집 (Editing)",      unit:"건", qty:1, unitPrice:0 },
+      { name:"DI (색보정)",         unit:"건", qty:1, unitPrice:0 },
+      { name:"편집 조연출료",       unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"CG/VFX", items:[
-      { name:"Rendering",          unit:"건", qty:1, unitPrice:0 },
-      { name:"2D Animation",       unit:"건", qty:1, unitPrice:0 },
-      { name:"3D Modeling/Animation/Lighting", unit:"건", qty:1, unitPrice:0 },
-      { name:"FLAME Compositing",  unit:"건", qty:1, unitPrice:0 },
-      { name:"CG 및 합성 연출료",  unit:"건", qty:1, unitPrice:0 },
+      { name:"2D Animation",        unit:"건", qty:1, unitPrice:0 },
+      { name:"3D Modeling/Animation/Lighting/Rendering", unit:"건", qty:1, unitPrice:0 },
+      { name:"FLAME Compositing",   unit:"건", qty:1, unitPrice:0 },
+      { name:"Rendering",           unit:"건", qty:1, unitPrice:0 },
+      { name:"CG 및 합성 연출료",   unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"사운드", items:[
+      { name:"녹음실 사용료",       unit:"시간", qty:0, unitPrice:0 },
       { name:"Sound Design / Mixing / Mastering", unit:"건", qty:1, unitPrice:0 },
-      { name:"작곡 / Jingle",      unit:"건", qty:1, unitPrice:0 },
-      { name:"녹음료",             unit:"건", qty:1, unitPrice:0 },
-      { name:"성우료",             unit:"건", qty:1, unitPrice:0 },
+      { name:"작곡 / Jingle",       unit:"건", qty:1, unitPrice:0 },
+      { name:"녹음료",              unit:"건", qty:1, unitPrice:0 },
+      { name:"성우료",              unit:"명", qty:0, unitPrice:0 },
       { name:"음악 라이선스 (BGM)", unit:"건", qty:1, unitPrice:0 },
     ]},
   ]},
@@ -189,6 +195,9 @@ const QUOTE_TEMPLATE_B = [
   ]},
   { category:"프로덕션비", groups:[
     { group:"제작관리", items:[
+      { name:"EPD (Executive PD)",           unit:"건", qty:1, unitPrice:0 },
+      { name:"총괄감독",                     unit:"건", qty:1, unitPrice:0 },
+      { name:"AE (대행사 담당)",             unit:"건", qty:1, unitPrice:0 },
       { name:"Executive Producer",           unit:"건", qty:1, unitPrice:0 },
       { name:"Production Producer",          unit:"건", qty:1, unitPrice:0 },
       { name:"Production Assistant",         unit:"건", qty:1, unitPrice:0 },
@@ -328,16 +337,18 @@ const QUOTE_TEMPLATE_B = [
   ]},
   { category:"포스트프로덕션", groups:[
     { group:"편집", items:[
-      { name:"편집료",                       unit:"건", qty:1, unitPrice:0 },
-      { name:"D.I 및 파일컨버팅",            unit:"건", qty:0, unitPrice:0 },
+      { name:"편집료 (Editing)",             unit:"건", qty:1, unitPrice:0 },
+      { name:"DI (색보정 및 파일컨버팅)",    unit:"건", qty:1, unitPrice:0 },
       { name:"추가 작업비",                  unit:"건", qty:0, unitPrice:0 },
     ]},
     { group:"CG/VFX", items:[
       { name:"2D Artwork / Animation",       unit:"건", qty:1, unitPrice:0 },
       { name:"3D Modeling / Texture / Animation / Lighting / Rigging", unit:"건", qty:0, unitPrice:0 },
       { name:"FLAME Compositing / Clearing (컷다운 포함)", unit:"건", qty:0, unitPrice:0 },
+      { name:"Rendering",                    unit:"건", qty:0, unitPrice:0 },
     ]},
     { group:"사운드", items:[
+      { name:"녹음실 사용료",                unit:"시간", qty:0, unitPrice:0 },
       { name:"Sound Design / Mixing / Mastering", unit:"건", qty:1, unitPrice:0 },
       { name:"작곡 / Jingle / Logo Song",    unit:"건", qty:0, unitPrice:0 },
       { name:"성우료",                       unit:"명", qty:0, unitPrice:0 },
@@ -1470,6 +1481,88 @@ function MemberManagement({ accounts, onSave, onDelete }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// CRM 페이지
+// ═══════════════════════════════════════════════════════════
+function CRMPage({ projects }) {
+  const [search, setSearch] = useState("");
+  const [selProj, setSelProj] = useState(null);
+
+  // 프로젝트에서 클라이언트/대행사 정보 집계
+  const clients = {};
+  for (const p of projects) {
+    const key = p.client;
+    if (!clients[key]) clients[key] = { name:p.client, agency:p.agency||"", projects:[], contacts:[] };
+    clients[key].projects.push(p);
+    if (p.contactName) {
+      const exists = clients[key].contacts.find(c=>c.name===p.contactName);
+      if (!exists) clients[key].contacts.push({ name:p.contactName, phone:p.contactPhone||"", email:p.contactEmail||"", agency:p.agency||"" });
+    }
+  }
+  const list = Object.values(clients).filter(c =>
+    !search || c.name.includes(search) || c.agency.includes(search) ||
+    c.contacts.some(ct=>ct.name.includes(search)||ct.phone.includes(search))
+  );
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:800,margin:0}}>👥 CRM — 거래처 관리</h2>
+        <input style={{...inp,width:220}} placeholder="🔍 거래처·대행사·담당자 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
+      </div>
+
+      {list.length===0 && <div style={{textAlign:"center",padding:60,color:C.faint}}>검색 결과가 없습니다</div>}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+        {list.map(cl=>(
+          <div key={cl.name} onClick={()=>setSelProj(selProj===cl.name?null:cl.name)}
+            style={{background:C.white,border:`1px solid ${selProj===cl.name?C.blue:C.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .15s",boxShadow:selProj===cl.name?"0 0 0 2px "+C.blue+"30":"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:15}}>{cl.name}</div>
+                {cl.agency&&<div style={{fontSize:12,color:C.sub,marginTop:2}}>📌 {cl.agency}</div>}
+              </div>
+              <span style={{fontSize:11,padding:"2px 8px",background:C.blueLight,color:C.blue,borderRadius:99,fontWeight:600}}>{cl.projects.length}건</span>
+            </div>
+
+            {cl.contacts.length>0 && (
+              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>담당자</div>
+                {cl.contacts.map((ct,i)=>(
+                  <div key={i} style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6,padding:"6px 8px",background:C.slateLight,borderRadius:8}}>
+                    <span style={{fontWeight:700,fontSize:12,width:"100%"}}>{ct.name} {ct.agency&&<span style={{fontWeight:400,color:C.faint}}>({ct.agency})</span>}</span>
+                    {ct.phone&&<a href={`tel:${ct.phone}`} style={{fontSize:11,color:C.blue,textDecoration:"none"}}>📞 {ct.phone}</a>}
+                    {ct.email&&<a href={`mailto:${ct.email}`} style={{fontSize:11,color:C.blue,textDecoration:"none",marginLeft:8}}>✉️ {ct.email}</a>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selProj===cl.name && (
+              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>진행 프로젝트</div>
+                {cl.projects.map(p=>(
+                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
+                    <div>
+                      <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",marginRight:6}}/>
+                      <span style={{fontWeight:600}}>{p.name}</span>
+                    </div>
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      <span style={{fontSize:11,padding:"1px 6px",background:C.slateLight,borderRadius:99,color:C.sub}}>{p.stage}</span>
+                      {p.due&&<span style={{fontSize:11,color:C.faint}}>{p.due}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // 회사 설정 페이지
 // ═══════════════════════════════════════════════════════════
 function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMember, formats, onAddFormat, onDeleteFormat }) {
@@ -1702,7 +1795,7 @@ export default function App() {
   const openEditProj = () => {
     const p = projects.find(x=>x.id===selId);
     if(!p) return;
-    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"15초",due:p.due||"",startDate:p.startDate||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[],quoteFmt:p.quoteFmt||"A"});
+    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"15초",due:p.due||"",startDate:p.startDate||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[],quoteFmt:p.quoteFmt||"A",agency:p.agency||"",contactName:p.contactName||"",contactPhone:p.contactPhone||"",contactEmail:p.contactEmail||""});
     setEditProjModal(true);
   };
 
@@ -1764,7 +1857,7 @@ export default function App() {
         </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -1783,6 +1876,8 @@ export default function App() {
       <div style={{maxWidth:1400,margin:"0 auto",padding:"24px 24px 48px"}}>
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
+        ) : mainTab==="crm" ? (
+          <CRMPage projects={projects}/>
         ) : mainTab==="settings" ? (
           <CompanySettings
             company={company}
@@ -1935,10 +2030,13 @@ export default function App() {
                 </select>
               </div></Field>
             <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
-            <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
             <Field label="납품일" half><input style={inp} type="date" value={pf.due} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
             <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))}/></Field>
             <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))}/></Field>
+            <Field label="대행사" half><input style={inp} value={pf.agency||""} onChange={e=>setPf(v=>({...v,agency:e.target.value}))} placeholder="대행사명"/></Field>
+            <Field label="담당자명" half><input style={inp} value={pf.contactName||""} onChange={e=>setPf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동 AE"/></Field>
+            <Field label="담당자 연락처" half><input style={inp} value={pf.contactPhone||""} onChange={e=>setPf(v=>({...v,contactPhone:e.target.value}))} placeholder="010-0000-0000"/></Field>
+            <Field label="담당자 이메일" half><input style={inp} value={pf.contactEmail||""} onChange={e=>setPf(v=>({...v,contactEmail:e.target.value}))} placeholder="name@agency.com"/></Field>
           </div>
           <div style={{marginBottom:12}}>
             <div style={{fontSize:12,color:C.sub,marginBottom:6}}>컬러 태그</div>
