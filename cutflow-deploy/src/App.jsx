@@ -58,7 +58,7 @@ const STAGES = {
   "납품완료":     { color:C.green,  bg:C.greenLight,  icon:"✅" },
 };
 const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","촬영","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
-const FORMATS_DEFAULT = ["15초","30초","60초","웹 무제한","숏폼","다큐멘터리형"];
+const FORMATS_DEFAULT = ["TVC","디지털 광고","유튜브 콘텐츠","숏폼","BTL","브랜드 필름"];
 const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
 const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
 
@@ -1946,7 +1946,7 @@ export default function App() {
   const [mainTab,      setMainTab]      = useState("tasks");
   const [addProjModal,  setAddProjModal]  = useState(false);
   const [editProjModal, setEditProjModal] = useState(false);
-  const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"15초",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
+  const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"TVC",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
 
   useEffect(() => {
     if (!isConfigured) return;
@@ -1996,13 +1996,13 @@ export default function App() {
     setSelId(id);
     setAddProjModal(false);
     if(isConfigured) saveProject(np).catch(console.error);
-    setPf({name:"",client:"",format:formats?.[0]||"15초",due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0]});
   };
 
   const openEditProj = () => {
     const p = projects.find(x=>x.id===selId);
     if(!p) return;
-    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"15초",due:p.due||"",startDate:p.startDate||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[],quoteFmt:p.quoteFmt||"A",agency:p.agency||"",contactName:p.contactName||"",contactPhone:p.contactPhone||"",contactEmail:p.contactEmail||""});
+    setPf({name:p.name,client:p.client,format:p.format||formats?.[0]||"TVC",due:p.due||"",startDate:p.startDate||"",director:p.director||"",pd:p.pd||"",color:p.color||P_COLORS[0],allowedFinanceMembers:p.allowedFinanceMembers||[],quoteFmt:p.quoteFmt||"A",agency:p.agency||"",contactName:p.contactName||"",contactPhone:p.contactPhone||"",contactEmail:p.contactEmail||"",epd:p.epd||"",assistant:p.assistant||""});
     setEditProjModal(true);
   };
 
@@ -2010,7 +2010,7 @@ export default function App() {
     if(!pf.name.trim()||!pf.client.trim()) return;
     patchProj(p=>({...p,...pf}));
     setEditProjModal(false);
-    setPf({name:"",client:"",format:formats?.[0]||"15초",due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0]});
   };
 
   const deleteProjectById = (id) => {
@@ -2244,6 +2244,8 @@ export default function App() {
             <Field label="납품일" half><input style={inp} type="date" value={pf.due} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
             <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))}/></Field>
             <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))}/></Field>
+            <Field label="EPD" half><input style={inp} value={pf.epd||""} onChange={e=>setPf(v=>({...v,epd:e.target.value}))} placeholder="EPD 이름"/></Field>
+            <Field label="조감독" half><input style={inp} value={pf.assistant||""} onChange={e=>setPf(v=>({...v,assistant:e.target.value}))} placeholder="조감독 이름"/></Field>
             <Field label="대행사" half><input style={inp} value={pf.agency||""} onChange={e=>setPf(v=>({...v,agency:e.target.value}))} placeholder="대행사명"/></Field>
             <Field label="담당자명" half><input style={inp} value={pf.contactName||""} onChange={e=>setPf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동 AE"/></Field>
             <Field label="담당자 연락처" half><input style={inp} value={pf.contactPhone||""} onChange={e=>setPf(v=>({...v,contactPhone:e.target.value}))} placeholder="010-0000-0000"/></Field>
@@ -2305,6 +2307,8 @@ export default function App() {
             <Field label="납품일" half><input style={inp} type="date" value={pf.due||""} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
             <Field label="감독" half><input style={inp} value={pf.director} onChange={e=>setPf(v=>({...v,director:e.target.value}))} placeholder="이름"/></Field>
             <Field label="PD" half><input style={inp} value={pf.pd} onChange={e=>setPf(v=>({...v,pd:e.target.value}))} placeholder="이름"/></Field>
+            <Field label="EPD" half><input style={inp} value={pf.epd||""} onChange={e=>setPf(v=>({...v,epd:e.target.value}))} placeholder="이름"/></Field>
+            <Field label="조감독" half><input style={inp} value={pf.assistant||""} onChange={e=>setPf(v=>({...v,assistant:e.target.value}))} placeholder="이름"/></Field>
           </div>
           <Field label="프로젝트 색상">
             <div style={{display:"flex",gap:8,marginTop:2}}>
