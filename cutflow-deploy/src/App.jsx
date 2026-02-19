@@ -1886,6 +1886,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const [tf, setTf]           = useState({title:"",note:"",done:false});
   const [drag, setDrag]       = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [mouseDownCell, setMouseDownCell] = useState(null); // 드래그 시작 후보
   const [startH, setStartH]   = useState(10); // 표시 시작 시각
   const [endH,   setEndH]     = useState(19); // 표시 종료 시각 (exclusive)
   const TODO_HOURS = makeHourSlots(startH, endH);
@@ -1917,16 +1918,44 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
   const onDragStart = (memberId, hour, e) => {
     if(!canEdit(memberId)) return;
     e.preventDefault();
-    setDragging(true);
-    setDrag({memberId, startHour:hour, endHour:hour});
+    setMouseDownCell({memberId, hour});
   };
   const onDragEnter = (memberId, hour) => {
-    if(!dragging || !drag || drag.memberId!==memberId) return;
+    if(!drag || drag.memberId!==memberId) return;
+    if(!dragging && mouseDownCell) {
+      // 처음으로 다른 셀에 진입 = 드래그 시작 확정
+      setDragging(true);
+      setDrag(d=>({...d, endHour:hour}));
+      return;
+    }
+    if(!dragging) return;
     const hours = TODO_HOURS.map(h=>h.key);
     const si = hours.indexOf(drag.startHour);
     const ei = hours.indexOf(hour);
     setDrag(d=>({...d, endHour: hour, startHour: si<=ei ? d.startHour : hour}));
   };
+  // mouseDownCell이 바뀌면 drag 초기화
+  React.useEffect(()=>{
+    if(mouseDownCell) setDrag({memberId:mouseDownCell.memberId, startHour:mouseDownCell.hour, endHour:mouseDownCell.hour});
+    else setDrag(null);
+  }, [mouseDownCell]);
+
+  // document mouseup - 어디서 마우스를 떼도 드래그 종료
+  React.useEffect(()=>{
+    const up = () => {
+      if(mouseDownCell && !dragging) {
+        // 드래그 없이 mouseup = 단순 클릭, openModal은 onClick이 처리
+        setMouseDownCell(null);
+        setDrag(null);
+      } else if(dragging) {
+        // 드래그 중 마우스 뗌
+        onDragEnd();
+      }
+    };
+    document.addEventListener('mouseup', up);
+    return () => document.removeEventListener('mouseup', up);
+  }, [dragging, mouseDownCell, drag]);
+
   const onDragEnd = () => {
     if(!dragging || !drag) { setDragging(false); setDrag(null); return; }
     const hours = TODO_HOURS.map(h=>h.key);
@@ -2058,7 +2087,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
       </div>
 
       {/* 타임테이블 */}
-      <div style={{overflowX:"auto"}} onMouseUp={()=>{ if(dragging) onDragEnd(); }} onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
+      <div style={{overflowX:"auto"}} onMouseUp={()=>{ setMouseDownCell(null); }} onMouseLeave={()=>{ if(dragging){setDragging(false);setDrag(null);} }}>
         <div style={{minWidth: 80 + accounts.length * COL_W}}>
           {/* 헤더 - 구성원 */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
@@ -2086,7 +2115,7 @@ function DailyTodo({ accounts, user, dailyTodos, setDailyTodos, projects }) {
                 const editable = canEdit(acc.id);
                 return (
                   <div key={acc.id}
-                    onClick={()=>{ if(!dragging){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } }}
+                    onClick={()=>{ if(!dragging&&!mouseDownCell){ if(covering) openEdit(acc.id, covering.startKey, covering.todo, {stopPropagation:()=>{}}); else openModal(acc.id, key); } setMouseDownCell(null); }}
                     onMouseDown={e=>onDragStart(acc.id, key, e)}
                     onMouseEnter={()=>onDragEnter(acc.id, key)}
                     onMouseUp={()=>{ if(dragging) onDragEnd(); }}
