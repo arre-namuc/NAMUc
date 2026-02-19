@@ -1845,6 +1845,197 @@ function StaffList({ project, onChange, accounts }) {
 
 
 // ═══════════════════════════════════════════════════════════
+// 데일리 TODO
+// ═══════════════════════════════════════════════════════════
+const HOURS = Array.from({length:16}, (_,i)=>{
+  const h = 9 + Math.floor(i/2);
+  const m = i%2===0?"00":"30";
+  const label = h<12?`오전 ${h}:${m}`:h===12?`오후 12:${m}`:`오후 ${h-12}:${m}`;
+  return { key:`${String(h).padStart(2,"0")}:${m}`, label };
+}); // 09:00 ~ 16:30 (오전9시~오후5시)
+
+// 오전9시~오전12시 = 09:00~12:00 → 7슬롯 (09:00,09:30,...,11:30)
+const TODO_HOURS = Array.from({length:7}, (_,i)=>{
+  const h = 9 + Math.floor(i/2);
+  const m = i%2===0?"00":"30";
+  const label = `오전 ${h}:${m}`;
+  return { key:`${String(h).padStart(2,"0")}:${m}`, label };
+});
+
+function DailyTodo({ accounts, user, dailyTodos, setDailyTodos }) {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  const [selDate, setSelDate] = useState(todayKey);
+  const [modal, setModal]     = useState(null); // {memberId, hour}
+  const [tf, setTf]           = useState({title:"",note:"",done:false});
+
+  // dailyTodos 구조: { "2026-02-20": { "m1": { "09:00": [{id,title,note,done}] } } }
+  const todosOf = (memberId, hour) =>
+    ((dailyTodos[selDate]||{})[memberId]||{})[hour] || [];
+
+  const canEdit = (memberId) =>
+    user.id === memberId || user.role === "PD" || user.canManageMembers;
+
+  const openModal = (memberId, hour) => {
+    if(!canEdit(memberId)) return;
+    setTf({title:"",note:"",done:false});
+    setModal({mode:"add", memberId, hour});
+  };
+  const openEdit = (memberId, hour, todo, e) => {
+    e.stopPropagation();
+    if(!canEdit(memberId)) return;
+    setTf({...todo});
+    setModal({mode:"edit", memberId, hour, id:todo.id});
+  };
+
+  const save = () => {
+    if(!tf.title?.trim()) return;
+    const {memberId, hour} = modal;
+    const entry = {...tf, id: modal.id||"td"+Date.now()};
+    setDailyTodos(prev => {
+      const day   = {...(prev[selDate]||{})};
+      const mem   = {...(day[memberId]||{})};
+      const slot  = [...(mem[hour]||[])];
+      if(modal.mode==="edit") {
+        const idx = slot.findIndex(t=>t.id===modal.id);
+        if(idx!==-1) slot[idx] = entry; else slot.push(entry);
+      } else slot.push(entry);
+      mem[hour] = slot; day[memberId] = mem;
+      return {...prev, [selDate]:day};
+    });
+    setModal(null);
+  };
+
+  const del = () => {
+    const {memberId, hour} = modal;
+    setDailyTodos(prev => {
+      const day  = {...(prev[selDate]||{})};
+      const mem  = {...(day[memberId]||{})};
+      mem[hour]  = (mem[hour]||[]).filter(t=>t.id!==modal.id);
+      day[memberId] = mem;
+      return {...prev, [selDate]:day};
+    });
+    setModal(null);
+  };
+
+  const toggleDone = (memberId, hour, todoId, e) => {
+    e.stopPropagation();
+    if(!canEdit(memberId)) return;
+    setDailyTodos(prev => {
+      const day  = {...(prev[selDate]||{})};
+      const mem  = {...(day[memberId]||{})};
+      mem[hour]  = (mem[hour]||[]).map(t=>t.id===todoId?{...t,done:!t.done}:t);
+      day[memberId] = mem;
+      return {...prev, [selDate]:day};
+    });
+  };
+
+  // 날짜 이동
+  const moveDate = (d) => {
+    const dt = new Date(selDate); dt.setDate(dt.getDate()+d);
+    setSelDate(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`);
+  };
+  const dateLabel = () => {
+    const dt = new Date(selDate);
+    const days = ["일","월","화","수","목","금","토"];
+    return `${dt.getFullYear()}년 ${dt.getMonth()+1}월 ${dt.getDate()}일 (${days[dt.getDay()]})`;
+  };
+
+  const COL_W = 140;
+  const ROW_H = 72;
+
+  return (
+    <div>
+      {/* 날짜 선택 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>moveDate(-1)} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>‹</button>
+          <span style={{fontWeight:800,fontSize:17}}>{dateLabel()}</span>
+          <button onClick={()=>moveDate(1)} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>›</button>
+          <button onClick={()=>setSelDate(todayKey)} style={{border:`1px solid ${C.border}`,background:selDate===todayKey?C.blue:C.white,color:selDate===todayKey?"#fff":C.sub,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>오늘</button>
+        </div>
+        <input type="date" value={selDate} onChange={e=>setSelDate(e.target.value)}
+          style={{...inp,width:160,fontSize:13}}/>
+      </div>
+
+      {/* 타임테이블 */}
+      <div style={{overflowX:"auto"}}>
+        <div style={{minWidth: 80 + accounts.length * COL_W}}>
+          {/* 헤더 - 구성원 */}
+          <div style={{display:"flex",position:"sticky",top:0,zIndex:10}}>
+            <div style={{width:80,flexShrink:0,background:C.bg,borderBottom:`2px solid ${C.border}`,borderRight:`1px solid ${C.border}`}}/>
+            {accounts.map(acc=>(
+              <div key={acc.id} style={{width:COL_W,flexShrink:0,padding:"10px 8px",textAlign:"center",background:"#1e40af",borderBottom:`2px solid ${C.border}`,borderRight:`1px solid ${C.border}22`}}>
+                <Avatar name={acc.name} size={28}/>
+                <div style={{fontSize:12,fontWeight:700,color:"#fff",marginTop:4}}>{acc.name}</div>
+                <div style={{fontSize:10,color:"#93c5fd"}}>{acc.role}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 시간 슬롯 행 */}
+          {TODO_HOURS.map(({key, label})=>(
+            <div key={key} style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
+              {/* 시간 라벨 */}
+              <div style={{width:80,flexShrink:0,padding:"6px 10px",fontSize:12,fontWeight:600,color:C.sub,background:C.slateLight,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",height:ROW_H,boxSizing:"border-box"}}>
+                {label}
+              </div>
+              {/* 구성원별 셀 */}
+              {accounts.map(acc=>{
+                const todos = todosOf(acc.id, key);
+                const editable = canEdit(acc.id);
+                return (
+                  <div key={acc.id} onClick={()=>openModal(acc.id, key)}
+                    style={{width:COL_W,flexShrink:0,height:ROW_H,padding:"4px 6px",borderRight:`1px solid ${C.border}22`,background:editable?"transparent":"#fafafa",cursor:editable?"pointer":"default",boxSizing:"border-box",position:"relative",overflowY:"hidden"}}>
+                    {todos.map(todo=>(
+                      <div key={todo.id} onClick={e=>openEdit(acc.id,key,todo,e)}
+                        style={{display:"flex",alignItems:"center",gap:4,padding:"3px 6px",borderRadius:6,background:todo.done?"#f0fdf4":"#eff6ff",border:`1px solid ${todo.done?"#86efac":"#bfdbfe"}`,marginBottom:3,cursor:editable?"pointer":"default"}}>
+                        <input type="checkbox" checked={!!todo.done} onClick={e=>toggleDone(acc.id,key,todo.id,e)} readOnly
+                          style={{accentColor:C.green,cursor:editable?"pointer":"default",flexShrink:0}}/>
+                        <span style={{fontSize:11,fontWeight:600,color:todo.done?C.faint:C.dark,textDecoration:todo.done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{todo.title}</span>
+                      </div>
+                    ))}
+                    {editable && todos.length===0 && (
+                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity .15s"}}
+                        onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                        onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+                        <span style={{fontSize:18,color:C.border}}>＋</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 추가/수정 모달 */}
+      {modal && (
+        <Modal title={modal.mode==="add"?"할 일 추가":"할 일 수정"} onClose={()=>setModal(null)}>
+          <div style={{fontSize:12,color:C.sub,marginBottom:12,padding:"6px 10px",background:C.slateLight,borderRadius:8}}>
+            📅 {selDate} &nbsp;·&nbsp; 🕐 {modal.hour} &nbsp;·&nbsp; 👤 {accounts.find(a=>a.id===modal.memberId)?.name}
+          </div>
+          <Field label="할 일 *"><input style={inp} autoFocus value={tf.title||""} onChange={e=>setTf(v=>({...v,title:e.target.value}))} placeholder="할 일을 입력하세요" onKeyDown={e=>e.key==="Enter"&&save()}/></Field>
+          <Field label="메모"><input style={inp} value={tf.note||""} onChange={e=>setTf(v=>({...v,note:e.target.value}))} placeholder="상세 내용 (선택)"/></Field>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:8}}>
+            <input type="checkbox" checked={!!tf.done} onChange={e=>setTf(v=>({...v,done:e.target.checked}))} style={{accentColor:C.green}}/>
+            완료 처리
+          </label>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+            {modal.mode==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setModal(null)}>취소</Btn>
+            <Btn primary onClick={save} disabled={!tf.title?.trim()}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 // 종합 캘린더
 // ═══════════════════════════════════════════════════════════
 function MasterCalendar({ projects, user, onCalName }) {
@@ -2278,6 +2469,7 @@ function App() {
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
   const [selId,        setSelId]        = useState("p1");
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
+  const [dailyTodos,   setDailyTodos]   = useState({});
   const [formats,      setFormats]      = useState(()=>{
     try { return JSON.parse(localStorage.getItem("cf_formats")||"null") || FORMATS_DEFAULT; }
     catch(e) { return FORMATS_DEFAULT; }
@@ -2405,7 +2597,7 @@ return (
         </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"태스크"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -2426,6 +2618,8 @@ return (
           <FinanceDash projects={projects}/>
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
+        ) : mainTab==="daily-todo" ? (
+          <DailyTodo accounts={accounts} user={user} dailyTodos={dailyTodos} setDailyTodos={setDailyTodos}/>
         ) : mainTab==="master-calendar" ? (
           <MasterCalendar projects={projects} user={user} onCalName={(id,v)=>setProjects(ps=>ps.map(p=>p.id===id?{...p,calName:v}:p))}/>
         ) : mainTab==="settings" ? (
