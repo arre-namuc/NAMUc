@@ -1670,12 +1670,30 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const [ff, setFf] = useState({});
   const [detail, setDetail] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [lightbox, setLightbox] = useState(null);
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
+  // PD 관점 상태 (긴급도)
+  const PD_ST = [
+    {id:"urgent",   label:"긴급",  color:"#ef4444", bg:"#fef2f2", icon:"🔴"},
+    {id:"relaxed",  label:"여유",  color:"#16a34a", bg:"#f0fdf4", icon:"🟢"},
+    {id:"gathering",label:"취합중",color:"#f59e0b", bg:"#fffbeb", icon:"🟡"},
+  ];
+  // 담당자 관점 상태 (진행상태)
+  const TASK_ST = [
+    {id:"review",   label:"검토",   color:"#6366f1", bg:"#eef2ff", icon:"🔍"},
+    {id:"inprogress",label:"진행중", color:"#0891b2", bg:"#ecfeff", icon:"⚙️"},
+    {id:"hold",     label:"보류",   color:"#94a3b8", bg:"#f8fafc", icon:"⏸"},
+    {id:"done",     label:"완료",   color:"#16a34a", bg:"#f0fdf4", icon:"✅"},
+  ];
+
+  const isPD = user.role==="PD"||user.role==="대표"||user.role==="EPD";
+  const isAssignee = (fb) => (fb.assignees||[]).includes(user.name);
+
   const openAdd = () => {
-    setFf({receivedDate:today(), dueDate:"", title:"", content:"", assignees:[], status:"urgent", fileUrl:"", detail:"", images:[]});
+    setFf({receivedDate:today(), dueDate:"", title:"", content:"", assignees:[], pdStatus:"urgent", taskStatus:"review", fileUrl:"", detail:"", images:[]});
     setModal("add");
   };
   const openEdit = fb => { setFf({...fb, assignees:fb.assignees||[], images:fb.images||[]}); setModal("edit"); };
@@ -1685,13 +1703,11 @@ function FeedbackTab({project, patchProj, user, accounts}) {
     return {...v, assignees: cur.includes(name) ? cur.filter(n=>n!==name) : [...cur, name]};
   });
 
-  const [uploadError, setUploadError] = useState("");
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     setUploading(true);
     setUploadError("");
-    // input 초기화 (같은 파일 재선택 가능하게)
     e.target.value = "";
     try {
       const fbId = ff.id || "fb"+Date.now();
@@ -1718,63 +1734,77 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   };
   const del = () => { patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)})); setModal(null); };
 
-  const sorted = [...feedbacks].sort((a,b)=>(b.receivedDate||b.date||"").localeCompare(a.receivedDate||a.date||""));
+  // 담당자가 자신의 taskStatus만 빠르게 변경
+  const quickUpdateTaskStatus = (fb, statusId) => {
+    const entry = {...fb, taskStatus: statusId};
+    const list = feedbacks.map(f=>f.id===fb.id?entry:f);
+    patchProj(p=>({...p, feedbacks:list}));
+    if(detail?.id===fb.id) setDetail(entry);
+  };
 
-  // 상태 정의 - 긴급/여유/취합중
-  const FB_ST = [
-    {id:"urgent",  label:"긴급",  color:"#ef4444", bg:"#fef2f2", icon:"🔴"},
-    {id:"relaxed", label:"여유",  color:"#16a34a", bg:"#f0fdf4", icon:"🟢"},
-    {id:"gathering",label:"취합중",color:"#f59e0b", bg:"#fffbeb", icon:"🟡"},
-  ];
+  const sorted = [...feedbacks].sort((a,b)=>(b.receivedDate||b.date||"").localeCompare(a.receivedDate||a.date||""));
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      {/* 헤더 요약 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
         <div>
           <h3 style={{margin:0,fontSize:16,fontWeight:800}}>💬 클라이언트 피드백 히스토리</h3>
-          <div style={{display:"flex",gap:8,marginTop:6}}>
-            {FB_ST.map(s=>{
-              const cnt = feedbacks.filter(f=>(f.status||"urgent")===s.id).length;
-              return <span key={s.id} style={{fontSize:11,padding:"2px 10px",borderRadius:99,
-                background:s.bg,color:s.color,border:`1px solid ${s.color}44`,fontWeight:700}}>
-                {s.icon} {s.label} {cnt}건
-              </span>;
-            })}
+          <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:5,alignItems:"center"}}>
+              <span style={{fontSize:11,color:C.sub,fontWeight:600}}>PD</span>
+              {PD_ST.map(s=>{
+                const cnt = feedbacks.filter(f=>(f.pdStatus||"urgent")===s.id).length;
+                return cnt>0 && <span key={s.id} style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:s.bg,color:s.color,border:`1px solid ${s.color}44`,fontWeight:700}}>{s.icon} {s.label} {cnt}</span>;
+              })}
+            </div>
+            <div style={{display:"flex",gap:5,alignItems:"center"}}>
+              <span style={{fontSize:11,color:C.sub,fontWeight:600}}>담당</span>
+              {TASK_ST.map(s=>{
+                const cnt = feedbacks.filter(f=>(f.taskStatus||"review")===s.id).length;
+                return cnt>0 && <span key={s.id} style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:s.bg,color:s.color,border:`1px solid ${s.color}44`,fontWeight:700}}>{s.icon} {s.label} {cnt}</span>;
+              })}
+            </div>
           </div>
         </div>
         <Btn primary onClick={openAdd}>+ 피드백 추가</Btn>
       </div>
 
       {feedbacks.length===0 ? (
-        <div style={{padding:"48px 0",textAlign:"center",color:C.faint,fontSize:13,
-          border:`1px dashed ${C.border}`,borderRadius:12}}>
-          아직 등록된 피드백이 없습니다
-        </div>
+        <div style={{padding:"48px 0",textAlign:"center",color:C.faint,fontSize:13,border:`1px dashed ${C.border}`,borderRadius:12}}>아직 등록된 피드백이 없습니다</div>
       ) : (
         <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 100px 90px 50px 80px",
+          <div style={{display:"grid",gridTemplateColumns:"86px 86px 1fr 100px 90px 90px 50px 80px",
             background:C.slateLight,padding:"9px 16px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-            <span>수신일</span><span>마감일</span><span>제목</span><span>담당자</span><span>상태</span><span style={{textAlign:"center"}}>첨부</span><span/>
+            <span>수신일</span><span>마감일</span><span>제목</span><span>담당자</span>
+            <span style={{color:"#ef4444"}}>PD 상태</span>
+            <span style={{color:"#6366f1"}}>진행상태</span>
+            <span style={{textAlign:"center"}}>첨부</span><span/>
           </div>
           {sorted.map((fb,i)=>{
-            const st = FB_ST.find(s=>s.id===fb.status)||FB_ST[0];
-            const isOver = fb.dueDate && fb.dueDate < today() && fb.status!=="relaxed";
+            const pdSt  = PD_ST.find(s=>s.id===(fb.pdStatus||"urgent"))||PD_ST[0];
+            const tskSt = TASK_ST.find(s=>s.id===(fb.taskStatus||"review"))||TASK_ST[0];
+            const isOver = fb.dueDate && fb.dueDate < today() && fb.taskStatus!=="done";
             const imgCount = (fb.images||[]).length;
             const assignees = fb.assignees||[];
             return (
               <div key={fb.id}
-                style={{display:"grid",gridTemplateColumns:"90px 90px 1fr 100px 90px 50px 80px",
-                  padding:"11px 16px",gap:8,borderTop:i>0?`1px solid ${C.border}`:"none",
-                  borderLeft:`3px solid ${st.color}`,
-                  background:i%2===0?"#fff":"#fafafa",alignItems:"center",transition:"background .1s"}}
-                onMouseEnter={e=>e.currentTarget.style.background=st.bg}
-                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
+                style={{display:"grid",gridTemplateColumns:"86px 86px 1fr 100px 90px 90px 50px 80px",
+                  padding:"10px 16px",gap:8,
+                  borderTop:i>0?`1px solid ${C.border}`:"none",
+                  borderLeft:`3px solid ${pdSt.color}`,
+                  background:tskSt.id==="done"?"#f8fffe":i%2===0?"#fff":"#fafafa",
+                  alignItems:"center",transition:"background .1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background=pdSt.bg}
+                onMouseLeave={e=>e.currentTarget.style.background=tskSt.id==="done"?"#f8fffe":i%2===0?"#fff":"#fafafa"}>
                 <span style={{fontSize:12,color:C.sub}}>{fb.receivedDate||fb.date||"-"}</span>
                 <span style={{fontSize:12,color:isOver?"#ef4444":C.sub,fontWeight:isOver?700:400}}>
                   {fb.dueDate||"-"}{isOver&&" ⚠️"}
                 </span>
                 <div style={{minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:600,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  <div style={{fontSize:13,fontWeight:600,color:tskSt.id==="done"?"#94a3b8":C.dark,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                    textDecoration:tskSt.id==="done"?"line-through":"none"}}>
                     {fb.title||"(제목없음)"}
                   </div>
                 </div>
@@ -1783,17 +1813,36 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                     ? assignees.map(a=><span key={a} style={{fontSize:10,padding:"1px 6px",borderRadius:99,background:"#eff6ff",color:"#2563eb",fontWeight:600,whiteSpace:"nowrap"}}>{a}</span>)
                     : <span style={{fontSize:12,color:C.faint}}>—</span>}
                 </div>
+                {/* PD 상태 */}
                 <span>
-                  <span style={{fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:99,
-                    background:st.bg,color:st.color,border:`1.5px solid ${st.color}66`,whiteSpace:"nowrap"}}>
-                    {st.icon} {st.label}
+                  <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:99,
+                    background:pdSt.bg,color:pdSt.color,border:`1.5px solid ${pdSt.color}55`,whiteSpace:"nowrap"}}>
+                    {pdSt.icon} {pdSt.label}
                   </span>
                 </span>
+                {/* 담당자 진행상태 - 담당자면 클릭해서 바로 변경 */}
+                <div>
+                  {isAssignee(fb)||isPD ? (
+                    <select value={fb.taskStatus||"review"}
+                      onChange={e=>{e.stopPropagation();quickUpdateTaskStatus(fb,e.target.value);}}
+                      onClick={e=>e.stopPropagation()}
+                      style={{fontSize:10,padding:"2px 4px",borderRadius:6,
+                        border:`1.5px solid ${tskSt.color}66`,
+                        background:tskSt.bg,color:tskSt.color,
+                        fontWeight:700,cursor:"pointer",outline:"none",width:"100%"}}>
+                      {TASK_ST.map(s=><option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                    </select>
+                  ) : (
+                    <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:99,
+                      background:tskSt.bg,color:tskSt.color,border:`1.5px solid ${tskSt.color}55`,whiteSpace:"nowrap"}}>
+                      {tskSt.icon} {tskSt.label}
+                    </span>
+                  )}
+                </div>
                 <div style={{textAlign:"center",display:"flex",gap:3,justifyContent:"center",alignItems:"center"}}>
                   {fb.fileUrl&&<a href={fb.fileUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:15,textDecoration:"none"}}>📎</a>}
                   {imgCount>0&&<span onClick={()=>setLightbox({images:fb.images,idx:0})}
-                    style={{fontSize:11,cursor:"pointer",background:"#eff6ff",color:"#2563eb",
-                      borderRadius:99,padding:"1px 6px",fontWeight:700}}>🖼{imgCount}</span>}
+                    style={{fontSize:11,cursor:"pointer",background:"#eff6ff",color:"#2563eb",borderRadius:99,padding:"1px 6px",fontWeight:700}}>🖼{imgCount}</span>}
                   {!fb.fileUrl&&imgCount===0&&<span style={{color:C.border}}>—</span>}
                 </div>
                 <div style={{display:"flex",gap:4}}>
@@ -1829,6 +1878,12 @@ function FeedbackTab({project, patchProj, user, accounts}) {
       {/* 세부내용 모달 */}
       {detail&&(
         <Modal title={detail.title||"피드백 상세"} onClose={()=>setDetail(null)}>
+          <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+            {/* PD 상태 */}
+            {(()=>{const s=PD_ST.find(x=>x.id===(detail.pdStatus||"urgent"))||PD_ST[0];return <span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:s.bg,color:s.color,border:`1.5px solid ${s.color}55`}}>PD · {s.icon} {s.label}</span>;})()}
+            {/* 담당 상태 */}
+            {(()=>{const s=TASK_ST.find(x=>x.id===(detail.taskStatus||"review"))||TASK_ST[0];return <span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:s.bg,color:s.color,border:`1.5px solid ${s.color}55`}}>담당 · {s.icon} {s.label}</span>;})()}
+          </div>
           <div style={{background:"#f8fafc",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
             <div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:12}}>
               <div><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:3}}>수신일</div><div style={{fontSize:13,fontWeight:600}}>{detail.receivedDate||detail.date||"-"}</div></div>
@@ -1839,9 +1894,6 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                     ? (detail.assignees||[]).map(a=><span key={a} style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:"#eff6ff",color:"#2563eb",fontWeight:600}}>{a}</span>)
                     : <span style={{fontSize:12,color:C.faint}}>—</span>}
                 </div>
-              </div>
-              <div><div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:3}}>상태</div>
-                {(()=>{const st=FB_ST.find(s=>s.id===detail.status)||FB_ST[0];return <span style={{fontSize:12,fontWeight:800,padding:"3px 10px",borderRadius:99,background:st.bg,color:st.color,border:`1.5px solid ${st.color}66`}}>{st.icon} {st.label}</span>;})()}
               </div>
             </div>
             <div style={{fontSize:11,color:C.sub,fontWeight:600,marginBottom:6}}>피드백 내용</div>
@@ -1873,20 +1925,45 @@ function FeedbackTab({project, patchProj, user, accounts}) {
           <Field label="세부내용">
             <textarea style={{...inp,resize:"vertical",minHeight:50}} value={ff.detail||""} onChange={e=>setFf(v=>({...v,detail:e.target.value}))} placeholder="추가 메모, 참고사항..."/>
           </Field>
-          <Field label="담당자 (복수 선택 가능)">
+          <Field label="담당자 (복수 선택)">
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {accounts.map(a=>{
-                const sel = (ff.assignees||[]).includes(a.name);
+                const sel=(ff.assignees||[]).includes(a.name);
                 return <button key={a.id} onClick={()=>toggleAssignee(a.name)}
                   style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:99,cursor:"pointer",fontSize:12,
-                    border:`1.5px solid ${sel?"#2563eb":C.border}`,
-                    background:sel?"#eff6ff":"#fff",color:sel?"#2563eb":C.sub,fontWeight:sel?700:400}}>
-                  <Avatar name={a.name} size={16}/>{a.name}
-                  {sel&&<span style={{fontSize:10}}>✓</span>}
+                    border:`1.5px solid ${sel?"#2563eb":C.border}`,background:sel?"#eff6ff":"#fff",
+                    color:sel?"#2563eb":C.sub,fontWeight:sel?700:400}}>
+                  <Avatar name={a.name} size={16}/>{a.name}{sel&&<span style={{fontSize:10}}>✓</span>}
                 </button>;
               })}
             </div>
           </Field>
+          <div style={{display:"flex",gap:12}}>
+            <Field label="🔴 PD 상태 (긴급도)" half>
+              <div style={{display:"flex",gap:6}}>
+                {PD_ST.map(s=>(
+                  <button key={s.id} onClick={()=>setFf(v=>({...v,pdStatus:s.id}))}
+                    style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:ff.pdStatus===s.id?800:400,
+                      border:`2px solid ${ff.pdStatus===s.id?s.color:C.border}`,
+                      background:ff.pdStatus===s.id?s.bg:"#fff",color:ff.pdStatus===s.id?s.color:C.sub}}>
+                    {s.icon}<br/>{s.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="🔍 담당자 상태 (진행상태)" half>
+              <div style={{display:"flex",gap:6}}>
+                {TASK_ST.map(s=>(
+                  <button key={s.id} onClick={()=>setFf(v=>({...v,taskStatus:s.id}))}
+                    style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:ff.taskStatus===s.id?800:400,
+                      border:`2px solid ${ff.taskStatus===s.id?s.color:C.border}`,
+                      background:ff.taskStatus===s.id?s.bg:"#fff",color:ff.taskStatus===s.id?s.color:C.sub}}>
+                    {s.icon}<br/>{s.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
           <Field label="첨부파일 링크">
             <input style={inp} value={ff.fileUrl||""} onChange={e=>setFf(v=>({...v,fileUrl:e.target.value}))} placeholder="https://drive.google.com/..."/>
           </Field>
@@ -1898,18 +1975,6 @@ function FeedbackTab({project, patchProj, user, accounts}) {
             </label>
             {uploadError&&<div style={{marginTop:6,fontSize:12,color:"#ef4444",padding:"6px 10px",background:"#fef2f2",borderRadius:6}}>{uploadError}</div>}
             {(ff.images||[]).length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>{ff.images.map((img,i)=><div key={i} style={{position:"relative"}}><img src={img.url} alt={img.name} onClick={()=>setLightbox({images:ff.images,idx:i})} style={{width:72,height:72,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`1px solid ${C.border}`}}/><button onClick={()=>removeImage(i)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:99,border:"none",background:"#ef4444",color:"#fff",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button></div>)}</div>}
-          </Field>
-          <Field label="상태">
-            <div style={{display:"flex",gap:8}}>
-              {FB_ST.map(s=>(
-                <button key={s.id} onClick={()=>setFf(v=>({...v,status:s.id}))}
-                  style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:ff.status===s.id?800:400,
-                    border:`2px solid ${ff.status===s.id?s.color:C.border}`,
-                    background:ff.status===s.id?s.bg:"#fff",color:ff.status===s.id?s.color:C.sub}}>
-                  {s.icon} {s.label}
-                </button>
-              ))}
-            </div>
           </Field>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:12}}>
             {modal==="edit"&&<Btn danger sm onClick={del}>삭제</Btn>}
