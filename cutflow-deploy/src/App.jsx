@@ -992,27 +992,25 @@ export default function App() {
   const [user,         setUser]         = useState(null);
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
   const [selId,        setSelId]        = useState("p1");
-  const [fbReady,      setFbReady]      = useState(false);  // Firebase 로드 완료 여부
+  const [fbReady,      setFbReady]      = useState(false);
+  const [mainTab,      setMainTab]      = useState("tasks");
+  const [docTab,       setDocTab]       = useState("quote");
+  const [viewMode,     setViewMode]     = useState("list");
+  const [taskModal,    setTaskModal]    = useState(null);
+  const [tf,           setTf]           = useState({});
 
-  // Firebase 실시간 구독
+  // Firebase 실시간 구독 (모든 useState 이후에 위치)
   useEffect(() => {
     if (!isConfigured) return;
     const unsub = subscribeProjects((fbProjects) => {
       if (fbProjects.length > 0) {
         setProjects(fbProjects);
-        if (!fbProjects.find(p => p.id === selId)) {
-          setSelId(fbProjects[0].id);
-        }
+        setSelId(prev => fbProjects.find(p => p.id === prev) ? prev : fbProjects[0].id);
       }
       setFbReady(true);
     });
     return () => unsub();
   }, []);
-  const [mainTab,      setMainTab]      = useState("tasks");   // tasks | finance
-  const [docTab,       setDocTab]       = useState("quote");   // quote | budget | settlement
-  const [viewMode,     setViewMode]     = useState("list");    // list | kanban
-  const [taskModal,    setTaskModal]    = useState(null);
-  const [tf,           setTf]           = useState({});
   const [addProjModal, setAddProjModal] = useState(false);
   const [pf,           setPf]           = useState({name:"",client:"",format:FORMATS[0],due:"",director:"",pd:"",color:P_COLORS[0]});
 
