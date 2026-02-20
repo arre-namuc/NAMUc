@@ -4050,8 +4050,8 @@ function App() {
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
 
-  // 재무 접근 권한: 대표/경영지원 역할이거나 canViewFinance 플래그가 있는 경우만 허용
-  const FINANCE_ROLES = ["대표", "경영지원"];
+  // 재무 접근 권한: 대표/경영지원/PD/EPD 역할이거나 canViewFinance 플래그가 있는 경우만 허용
+  const FINANCE_ROLES = ["대표", "경영지원", "PD", "EPD"];
   const canAccessFinance = FINANCE_ROLES.includes(user.role) || user.canViewFinance;
 
   const patchProj = fn => setProjects(ps=>{
