@@ -3996,7 +3996,7 @@ function App() {
     const u3 = subscribeMembers(m => { if(m.length>0) setAccounts(m); });
     return () => { u1(); u2(); u3(); };
   }, []);
-  const [docTab,       setDocTab]       = useState("quote");   // quote | budget | settlement
+  const [docTab,       setDocTab]       = useState("tasks");   // tasks | feedback | calendar | ...
   const [viewMode,     setViewMode]     = useState("list");    // list | kanban
   const [taskModal,    setTaskModal]    = useState(null);
   const [tf,           setTf]           = useState({});
