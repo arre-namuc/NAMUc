@@ -2204,118 +2204,111 @@ function StaffList({ project, onChange, accounts }) {
 // ═══════════════════════════════════════════════════════════
 // 피드백 히스토리
 // ═══════════════════════════════════════════════════════════
-// ── 댓글 입력 독립 컴포넌트 (멘션 + 전송) ─────────────────────────────
+// ── 댓글 입력 컴포넌트 (버튼 방식 멘션) ──────────────────────────────
 function CommentInput({ accounts, user, onSubmit }) {
   const [text, setText] = useState("");
-  const [sugg, setSugg] = useState([]);
-  const [idx, setIdx] = useState(-1);
+  const [showMention, setShowMention] = useState(false);
   const taRef = useRef(null);
-  const composing = useRef(false);
 
-  const selectMention = (name) => {
+  const insertMention = (name) => {
     const ta = taRef.current;
-    const val = ta.value;
-    const at = val.lastIndexOf("@");
-    const newVal = val.slice(0, at) + "@" + name + " ";
-    setText(newVal);
-    setSugg([]);
-    setIdx(-1);
-    ta.focus();
+    const pos = ta.selectionStart ?? text.length;
+    const newText = text.slice(0, pos) + "@" + name + " " + text.slice(pos);
+    setText(newText);
+    setShowMention(false);
+    setTimeout(() => {
+      ta.focus();
+      ta.setSelectionRange(pos + name.length + 2, pos + name.length + 2);
+    }, 0);
   };
 
   const submit = () => {
     if (!text.trim()) return;
     onSubmit(text.trim());
     setText("");
-    setSugg([]);
-    setIdx(-1);
   };
 
+  const others = accounts.filter(a => a.name !== user.name);
+
   return (
-    <div style={{marginTop:8}}>
-      {sugg.length > 0 && (
-        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,
-          boxShadow:"0 4px 16px rgba(0,0,0,.1)",marginBottom:4,overflow:"hidden"}}>
-          {sugg.map((a, i) => (
-            <div key={a.id}
-              onMouseDown={e => { e.preventDefault(); selectMention(a.name); }}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",cursor:"pointer",
-                background: i === idx ? "#eff6ff" : "#fff",
-                borderBottom: i < sugg.length - 1 ? "1px solid #f1f5f9" : "none"}}>
-              <div style={{width:22,height:22,borderRadius:"50%",background:"#2563eb",
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:10,fontWeight:700,color:"#fff",flexShrink:0}}>
-                {a.name[0]}
-              </div>
-              <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{a.name}</span>
-              <span style={{fontSize:11,color:"#94a3b8"}}>{a.role}</span>
-              {i === idx && <span style={{marginLeft:"auto",fontSize:10,color:"#2563eb"}}>↵ 선택</span>}
-            </div>
-          ))}
-          <div style={{padding:"3px 12px",fontSize:10,color:"#94a3b8",background:"#f8fafc",borderTop:"1px solid #f1f5f9"}}>
-            ↑↓ 이동 · Enter 선택 · Esc 닫기
+    <div style={{position:"relative"}}>
+      {/* 멘션 팝업 */}
+      {showMention && (
+        <div style={{position:"absolute",bottom:"100%",left:0,marginBottom:4,zIndex:200,
+          background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,
+          boxShadow:"0 8px 24px rgba(0,0,0,.12)",minWidth:180,overflow:"hidden"}}>
+          <div style={{padding:"6px 12px",fontSize:11,color:"#64748b",background:"#f8fafc",borderBottom:"1px solid #f1f5f9",fontWeight:600}}>
+            멘션할 팀원 선택
           </div>
+          {others.length === 0
+            ? <div style={{padding:"12px",fontSize:12,color:"#94a3b8",textAlign:"center"}}>다른 팀원이 없습니다</div>
+            : others.map(a => (
+              <div key={a.id} onClick={() => insertMention(a.name)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                  cursor:"pointer",borderBottom:"1px solid #f8fafc"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                onMouseLeave={e=>e.currentTarget.style.background=""}>
+                <div style={{width:24,height:24,borderRadius:"50%",background:"#2563eb",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:11,fontWeight:700,color:"#fff",flexShrink:0}}>
+                  {a.name[0]}
+                </div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{a.name}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{a.role}</div>
+                </div>
+              </div>
+            ))
+          }
         </div>
       )}
+
       <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-        <textarea
-          ref={taRef}
-          value={text}
-          rows={2}
-          onCompositionStart={() => { composing.current = true; }}
-          onCompositionEnd={e => { composing.current = false; setText(e.target.value); }}
-          onChange={e => {
-            if (composing.current) return;
-            const val = e.target.value;
-            setText(val);
-            const cur = e.target.selectionStart || val.length;
-            const before = val.slice(0, cur);
-            const at = before.lastIndexOf("@");
-            if (at !== -1 && (at === 0 || before[at-1] === " " || before[at-1] === "\n")) {
-              const frag = before.slice(at + 1);
-              if (!frag.includes(" ") && !frag.includes("\n")) {
-                const results = accounts.filter(a =>
-                  a.name.toLowerCase().startsWith(frag.toLowerCase()) && a.name !== user.name
-                );
-                setSugg(results.slice(0, 5));
-                setIdx(-1);
-                return;
-              }
-            }
-            setSugg([]);
-            setIdx(-1);
-          }}
-          onKeyDown={e => {
-            if (composing.current) return;
-            if (sugg.length > 0) {
-              if (e.key === "ArrowDown") { e.preventDefault(); setIdx(p => Math.min(p+1, sugg.length-1)); return; }
-              if (e.key === "ArrowUp")   { e.preventDefault(); setIdx(p => Math.max(p-1, 0)); return; }
-              if (e.key === "Escape")    { e.preventDefault(); setSugg([]); setIdx(-1); return; }
-              if (e.key === "Enter")     { e.preventDefault(); selectMention(sugg[idx >= 0 ? idx : 0].name); return; }
-            }
-            if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); submit(); }
-          }}
-          placeholder="댓글 입력  (@이름 멘션 · Shift+Enter 전송)"
-          style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid #e2e8f0",
-            fontSize:13,resize:"none",lineHeight:1.6,fontFamily:"inherit",outline:"none",
-            background:"#fff",color:"#1e293b"}}
-        />
+        <div style={{flex:1,position:"relative"}}>
+          <textarea
+            ref={taRef}
+            value={text}
+            rows={2}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); submit(); }
+            }}
+            onFocus={() => setShowMention(false)}
+            placeholder="댓글 입력  (Shift+Enter 전송 · Enter 줄바꿈)"
+            style={{width:"100%",padding:"8px 12px",borderRadius:8,
+              border:"1px solid #e2e8f0",fontSize:13,resize:"none",
+              lineHeight:1.6,fontFamily:"inherit",outline:"none",
+              background:"#fff",color:"#1e293b",boxSizing:"border-box"}}
+          />
+          {/* @ 멘션 버튼 */}
+          {others.length > 0 && (
+            <button
+              onMouseDown={e => { e.preventDefault(); setShowMention(v => !v); }}
+              style={{position:"absolute",right:8,top:6,padding:"2px 7px",borderRadius:5,
+                border:"1px solid #e2e8f0",background:showMention?"#eff6ff":"#f8fafc",
+                color:showMention?"#2563eb":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              @
+            </button>
+          )}
+        </div>
         <button
-          onMouseDown={e => { e.preventDefault(); submit(); }}
+          onClick={submit}
           disabled={!text.trim()}
           style={{padding:"0 16px",height:52,borderRadius:8,border:"none",
-            background: text.trim() ? "#2563eb" : "#e2e8f0",
-            color: text.trim() ? "#fff" : "#94a3b8",
-            fontSize:13,fontWeight:700,cursor:text.trim()?"pointer":"default",whiteSpace:"nowrap"}}>
+            background:text.trim()?"#2563eb":"#e2e8f0",
+            color:text.trim()?"#fff":"#94a3b8",
+            fontSize:13,fontWeight:700,cursor:text.trim()?"pointer":"default",
+            whiteSpace:"nowrap",flexShrink:0}}>
           전송
         </button>
       </div>
-      <div style={{fontSize:11,color:"#94a3b8",marginTop:4,paddingLeft:2}}>
-        Shift+Enter 전송 · Enter 줄바꿈 · @이름 멘션
+      <div style={{fontSize:10,color:"#94a3b8",marginTop:3,paddingLeft:1}}>
+        Shift+Enter 전송 · Enter 줄바꿈 · @ 버튼으로 멘션
       </div>
     </div>
   );
 }
+
 
 function FeedbackTab({project, patchProj, user, accounts}) {
   const feedbacks = project.feedbacks || [];
