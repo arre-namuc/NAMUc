@@ -838,6 +838,203 @@ function LoginScreen({ onLogin, accounts }) {
 // ═══════════════════════════════════════════════════════════
 // 칸반 컬럼
 // ═══════════════════════════════════════════════════════════
+function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
+  const today = todayStr();
+
+  // 태스크를 4가지 버킷으로 분류
+  const myTasks     = tasks.filter(t => t.assignee === user.name && t.stage !== "납품완료");
+  const waitingFor  = tasks.filter(t => t.assignee !== user.name && t.stage !== "납품완료" && (t.requestedBy === user.name || (t.watchers||[]).includes(user.name)));
+  const blockedTasks= tasks.filter(t => t.blocked);
+  const overdue     = tasks.filter(t => t.due && t.due < today && t.stage !== "납품완료");
+
+  // 전체 멤버별 태스크 현황
+  const memberMap = {};
+  tasks.filter(t=>t.stage!=="납품완료").forEach(t=>{
+    if(!memberMap[t.assignee]) memberMap[t.assignee] = {name:t.assignee, tasks:[]};
+    memberMap[t.assignee].tasks.push(t);
+  });
+
+  // 스테이지 진행 흐름
+  const stageFlow = Object.keys(STAGES);
+  const stageCount = s => tasks.filter(t=>t.stage===s).length;
+  const currentStage = stageFlow.reduce((cur, s) => tasks.filter(t=>t.stage===s && t.stage!=="납품완료").length > 0 ? s : cur, "브리프");
+
+  const PriorityDot = ({p}) => {
+    const colors = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
+    return <span style={{width:8,height:8,borderRadius:"50%",background:colors[p]||"#94a3b8",display:"inline-block",flexShrink:0}}/>;
+  };
+
+  const TaskCard = ({t, showAssignee=false}) => {
+    const isOver = t.due && t.due < today;
+    const stage  = STAGES[t.stage] || {};
+    return (
+      <div onClick={()=>onEdit(t)}
+        style={{padding:"10px 12px",background:"#fff",borderRadius:10,
+          border:`1px solid ${t.blocked?"#fca5a5":isOver?"#fcd34d":"#e2e8f0"}`,
+          cursor:"pointer",transition:"all .15s",
+          boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}
+        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,.1)"}
+        onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,.05)"}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:4}}>
+          <PriorityDot p={t.priority}/>
+          <div style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b",lineHeight:1.3}}>{t.title}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+            background:stage.bg||"#f1f5f9",color:stage.color||"#64748b",fontWeight:600}}>
+            {t.stage}
+          </span>
+          {showAssignee && (
+            <span style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#64748b"}}>
+              <Avatar name={t.assignee} size={14}/>
+              {t.assignee}
+            </span>
+          )}
+          {t.due && (
+            <span style={{fontSize:10,color:isOver?"#ef4444":"#94a3b8",marginLeft:"auto"}}>
+              {isOver?"⚠ ":""}{t.due}
+            </span>
+          )}
+          {t.blocked && <span style={{fontSize:10,color:"#ef4444",fontWeight:700}}>🚫 블로킹</span>}
+        </div>
+      </div>
+    );
+  };
+
+  const Section = ({icon, title, color, bg, tasks, empty, showAssignee=false}) => (
+    <div style={{background:bg,borderRadius:14,padding:"16px",border:`1.5px solid ${color}20`}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <span style={{fontSize:18}}>{icon}</span>
+        <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{title}</span>
+        <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:color,
+          background:`${color}15`,padding:"2px 10px",borderRadius:99}}>
+          {tasks.length}건
+        </span>
+      </div>
+      {tasks.length===0
+        ? <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"16px 0"}}>{empty}</div>
+        : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {tasks.map(t=><TaskCard key={t.id} t={t} showAssignee={showAssignee}/>)}
+          </div>
+      }
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+
+      {/* 프로젝트 진행 흐름 바 */}
+      <div style={{background:"#f8fafc",borderRadius:14,padding:"16px 20px",border:"1px solid #e2e8f0"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:12}}>프로젝트 진행 흐름</div>
+        <div style={{display:"flex",alignItems:"center",gap:0}}>
+          {stageFlow.map((s,i)=>{
+            const cfg = STAGES[s];
+            const cnt = stageCount(s);
+            const isCur = s === currentStage && s !== "납품완료";
+            const isDone = s === "납품완료";
+            return (
+              <div key={s} style={{display:"flex",alignItems:"center",flex:1}}>
+                <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div style={{width:"100%",height:6,background:isCur?"#2563eb":isDone?"#16a34a":cnt>0?"#93c5fd":"#e2e8f0",borderRadius:99,transition:"all .3s",
+                    boxShadow:isCur?"0 0 8px #2563eb60":""}}/>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:11}}>{cfg.icon}</span>
+                    <span style={{fontSize:10,fontWeight:isCur?700:500,color:isCur?"#2563eb":cnt>0?"#475569":"#cbd5e1"}}>
+                      {s}
+                    </span>
+                    {cnt>0&&<span style={{fontSize:9,background:isCur?"#2563eb":cfg.bg,color:isCur?"#fff":cfg.color,padding:"1px 5px",borderRadius:99,fontWeight:700}}>{cnt}</span>}
+                  </div>
+                </div>
+                {i < stageFlow.length-1 && (
+                  <div style={{width:20,height:6,display:"flex",alignItems:"center",justifyContent:"center",color:"#cbd5e1",fontSize:10,flexShrink:0}}>›</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 4개 섹션 그리드 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <Section
+          icon="🙋" title={`내 할 일 (${user.name})`}
+          color="#2563eb" bg="#eff6ff"
+          tasks={myTasks}
+          empty="지금 처리해야 할 태스크가 없어요"
+        />
+        <Section
+          icon="⏳" title="내가 넘긴 것 · 대기 중"
+          color="#7c3aed" bg="#f5f3ff"
+          tasks={waitingFor}
+          showAssignee={true}
+          empty="다른 팀원에게 넘긴 태스크가 없어요"
+        />
+        <Section
+          icon="🚨" title="기한 초과"
+          color="#ef4444" bg="#fff1f2"
+          tasks={overdue}
+          showAssignee={true}
+          empty="기한 초과 태스크 없음 👍"
+        />
+        <Section
+          icon="🚫" title="블로킹 (막힌 것)"
+          color="#f59e0b" bg="#fffbeb"
+          tasks={blockedTasks}
+          showAssignee={true}
+          empty="막힌 태스크가 없어요"
+        />
+      </div>
+
+      {/* 팀원별 현황 */}
+      <div>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>👥 팀원별 진행 현황</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+          {Object.values(memberMap).map(m=>{
+            const urgent = m.tasks.filter(t=>t.priority==="긴급").length;
+            const over   = m.tasks.filter(t=>t.due&&t.due<today).length;
+            return (
+              <div key={m.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <Avatar name={m.name} size={28}/>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{m.name}</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>{m.tasks.length}개 태스크</div>
+                  </div>
+                  <div style={{marginLeft:"auto",display:"flex",gap:4}}>
+                    {urgent>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#fee2e2",color:"#ef4444",fontWeight:700}}>긴급 {urgent}</span>}
+                    {over>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#fef3c7",color:"#d97706",fontWeight:700}}>초과 {over}</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {m.tasks.slice(0,3).map(t=>(
+                    <div key={t.id} onClick={()=>onEdit(t)}
+                      style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                        padding:"5px 8px",borderRadius:7,background:"#f8fafc"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                      onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+                      <PriorityDot p={t.priority}/>
+                      <span style={{fontSize:11,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#334155"}}>{t.title}</span>
+                      <span style={{fontSize:9,color:STAGES[t.stage]?.color||"#94a3b8",flexShrink:0}}>{t.stage}</span>
+                    </div>
+                  ))}
+                  {m.tasks.length>3&&<div style={{fontSize:10,color:"#94a3b8",textAlign:"center",paddingTop:2}}>+{m.tasks.length-3}개 더</div>}
+                </div>
+              </div>
+            );
+          })}
+          {Object.keys(memberMap).length===0&&(
+            <div style={{gridColumn:"1/-1",textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>
+              태스크를 추가하면 팀원별 현황이 표시됩니다
+            </div>
+          )}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+
 function KanbanCol({ stage, tasks, onEdit }) {
   const cfg = STAGES[stage];
   return (
@@ -4214,7 +4411,7 @@ function App() {
     return () => { u1(); u2(); u3(); };
   }, []);
   const [docTab,       setDocTab]       = useState("tasks");   // tasks | feedback | calendar | ...
-  const [viewMode,     setViewMode]     = useState("list");    // list | kanban
+  const [viewMode,     setViewMode]     = useState("flow");    // list | kanban | flow
   const [taskModal,    setTaskModal]    = useState(null);
   const [tf,           setTf]           = useState({});
 
@@ -4567,13 +4764,16 @@ return (
                     {stageKeys.map(s=><option key={s}>{s}</option>)}
                   </select>
                   <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                    <button onClick={()=>setViewMode("flow")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="flow"?C.blue:C.border}`,background:viewMode==="flow"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="flow"?C.blue:C.sub}}>🔀 협업흐름</button>
                     <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
                     <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
                     <Btn primary sm onClick={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
                   </div>
                 </div>
 
-                {viewMode==="kanban"?(
+                {viewMode==="flow"?(
+                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskModal({...t})} onAdd={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
+                ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
                     {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskModal({...t})}/>)}
                   </div>
