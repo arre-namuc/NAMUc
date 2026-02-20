@@ -2206,11 +2206,11 @@ function StaffList({ project, onChange, accounts }) {
 // ═══════════════════════════════════════════════════════════
 // ── 댓글 입력 독립 컴포넌트 (멘션 + 전송) ─────────────────────────────
 function CommentInput({ accounts, user, onSubmit }) {
-  const [text, setText] = React.useState("");
-  const [sugg, setSugg] = React.useState([]);
-  const [idx, setIdx] = React.useState(-1);
-  const taRef = React.useRef(null);
-  const composing = React.useRef(false);
+  const [text, setText] = useState("");
+  const [sugg, setSugg] = useState([]);
+  const [idx, setIdx] = useState(-1);
+  const taRef = useRef(null);
+  const composing = useRef(false);
 
   const selectMention = (name) => {
     const ta = taRef.current;
