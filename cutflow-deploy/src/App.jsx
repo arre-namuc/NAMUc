@@ -1079,6 +1079,7 @@ function BudgetEditor({ project, onSave }) {
   const [editV,   setEditV]   = useState(null);
   const [vf,      setVf]      = useState({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:"",group:"",number:"",note:"",files:[]});
   const [preview, setPreview] = useState(null);
+  const [lightboxImg, setLightboxImg] = useState(null); // 이미지 확대 보기
   const [analyzing,setAnalyzing]=useState(false);
 
   // 견적서의 카테고리/그룹 목록
@@ -1317,15 +1318,62 @@ function BudgetEditor({ project, onSave }) {
         <Modal title={`첨부파일 — ${preview.name}`} onClose={()=>setPreview(null)} wide>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {(preview.files||[]).map((f,i)=>(
-              <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:280}}>
-                {f.type.startsWith("image/")?
-                  <img src={f.b64url} alt={f.name} style={{maxWidth:"100%",display:"block"}}/>:
+              <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",
+                maxWidth:320,position:"relative",background:C.slateLight}}>
+                {f.type.startsWith("image/") ? (
+                  <>
+                    <img src={f.b64url} alt={f.name}
+                      style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}}
+                      onClick={()=>setLightboxImg(f.b64url)}
+                    />
+                    <button
+                      onClick={()=>setLightboxImg(f.b64url)}
+                      style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,
+                        border:"none",background:"rgba(0,0,0,.45)",color:"#fff",
+                        cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",
+                        justifyContent:"center",backdropFilter:"blur(4px)"}}>
+                      🔍
+                    </button>
+                    <div style={{padding:"6px 10px",fontSize:11,color:C.sub,
+                      borderTop:`1px solid ${C.border}`,background:C.white}}>
+                      {f.name}
+                    </div>
+                  </>
+                ) : (
                   <div style={{padding:16,textAlign:"center",color:C.sub,fontSize:13}}>📄 {f.name}</div>
-                }
+                )}
               </div>
             ))}
           </div>
         </Modal>
+      )}
+
+      {/* 라이트박스 - 이미지 확대 */}
+      {lightboxImg && (
+        <div onClick={()=>setLightboxImg(null)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,
+            display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",
+            backdropFilter:"blur(6px)"}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh"}}>
+            <img src={lightboxImg} alt="확대 보기"
+              style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,
+                boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}
+            />
+            <button onClick={()=>setLightboxImg(null)}
+              style={{position:"absolute",top:-14,right:-14,width:32,height:32,
+                borderRadius:"50%",border:"none",background:"#fff",
+                color:"#1e293b",cursor:"pointer",fontSize:18,fontWeight:700,
+                boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",
+                alignItems:"center",justifyContent:"center",lineHeight:1}}>
+              ×
+            </button>
+            <div style={{textAlign:"center",color:"rgba(255,255,255,.6)",
+              fontSize:12,marginTop:10}}>
+              클릭하거나 × 버튼으로 닫기
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
