@@ -1549,6 +1549,59 @@ function MonthCalendar({ project, onChange, user }) {
     a.download = `${project.name}_schedule.ics`; a.click();
   };
 
+  // 구글 캘린더 자동 연동
+  const syncToGoogleCalendar = async () => {
+    const CLIENT_ID = "22645531970-dnaf8ci2bo4jppkhtjfvlndqsfoha9a4.apps.googleusercontent.com";
+    const SCOPE = "https://www.googleapis.com/auth/calendar.events";
+
+    // 1. Google Identity Services 로드
+    if (!window.google?.accounts?.oauth2) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://accounts.google.com/gsi/client";
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    // 2. Access Token 요청
+    const token = await new Promise((resolve, reject) => {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPE,
+        callback: (resp) => {
+          if (resp.error) reject(new Error(resp.error));
+          else resolve(resp.access_token);
+        },
+      });
+      client.requestAccessToken();
+    });
+
+    // 3. 일정 업로드
+    const eventsToSync = allEvents.filter(e => !e.isFeedback);
+    let success = 0, fail = 0;
+
+    for (const ev of eventsToSync) {
+      const body = {
+        summary: ev.title,
+        description: ev.note || "",
+        start: { date: ev.start },
+        end:   { date: ev.end || ev.start },
+        colorId: "1",
+      };
+      try {
+        const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) success++; else fail++;
+      } catch { fail++; }
+    }
+
+    alert(`구글 캘린더 연동 완료!\n✅ 성공: ${success}건${fail > 0 ? "\n❌ 실패: " + fail + "건" : ""}`);
+  };
+
   const exportCalPPT = async () => {
     // pptxgenjs를 CDN에서 동적 로드
     if (!window.PptxGenJS) {
@@ -1898,7 +1951,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
           {!canEdit&&<span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
           {allEvents.length>0&&<button onClick={exportCalPPT} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #7c3aed`,background:"#f5f3ff",color:"#7c3aed",cursor:"pointer",fontSize:12,fontWeight:600}}>📊 PPT로 내보내기</button>}
           {allEvents.length>0&&<button onClick={exportCalPDF} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #dc2626`,background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>📄 PDF로 내보내기</button>}
-          {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
+          {allEvents.filter(e=>!e.isFeedback).length>0&&(
+            <button onClick={syncToGoogleCalendar} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>
+              🔄 구글 캘린더 연동
+            </button>
+          )}
+          {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 .ics 내보내기</button>}
           {canEdit&&<Btn primary sm onClick={()=>{setEf({title:"",start:todayStr,end:todayStr,color:"#2563eb",note:""});setModal({mode:"add"});}}>+ 일정 추가</Btn>}
         </div>
       </div>
