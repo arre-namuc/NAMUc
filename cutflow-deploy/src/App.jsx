@@ -4050,9 +4050,12 @@ function App() {
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
 
-  // 재무 접근 권한: 대표/경영지원/PD/EPD 역할이거나 canViewFinance 플래그가 있는 경우만 허용
-  const FINANCE_ROLES = ["대표", "경영지원", "PD", "EPD"];
-  const canAccessFinance = FINANCE_ROLES.includes(user.role) || user.canViewFinance;
+  // 경영관리 탭: 대표/경영지원만 접근 가능
+  const canAccessFinance = ["대표", "경영지원"].includes(user.role);
+  // 프로젝트 견적서/예산서/결산서: 프로젝트별 허용 멤버 체크
+  const financeAllowed = (proj?.allowedFinanceMembers||[]);
+  const canAccessProjFinance = ["대표", "경영지원"].includes(user.role) ||
+    financeAllowed.includes(String(user.id));
 
   const patchProj = fn => setProjects(ps=>{
     const updated=ps.map(p=>p.id===selId?fn(p):p);
@@ -4325,9 +4328,9 @@ return (
                 {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
                 {id:"figjam",icon:"🎨",label:"FigJam"},
-                {id:"quote",icon:"💵",label:"견적서",locked:!canAccessFinance},
-                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessFinance},
-                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessFinance},
+                {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
+                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessProjFinance},
+                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessProjFinance},
               ]}
               active={docTab} onChange={setDocTab}
             />
@@ -4491,7 +4494,7 @@ return (
           {user.canManageMembers && (
           <div style={{background:C.slateLight,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 경영관리 문서 접근 허용 멤버</div>
-            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>미선택 시 '경영관리 열람' 권한자 전체 접근 가능</div>
+            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>체크된 멤버만 이 프로젝트의 견적서·예산서·결산서 열람/편집 가능 (대표·경영지원은 항상 접근 가능)</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {accounts.map(a=>{
                 const allowed = pf.allowedFinanceMembers||[];
