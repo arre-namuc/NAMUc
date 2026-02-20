@@ -3905,18 +3905,83 @@ return (
           {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>:"🎬"}
           {company.name||"CutFlow"}
         </div>
-        {/* 프로젝트 선택 */}
-        <div style={{display:"flex",gap:6,flex:1,overflowX:"auto"}}>
-          {projects.map(p=>(
-            <button key={p.id} onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
-              {p.name}
-            </button>
-          ))}
-          <button onClick={()=>setAddProjModal(true)} style={{padding:"5px 12px",borderRadius:8,border:`2px dashed ${C.border}`,background:"none",cursor:"pointer",fontSize:12,color:C.faint,whiteSpace:"nowrap"}}>
-            + 새 프로젝트
-          </button>
-        </div>
-        <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정" style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:13,color:C.sub,whiteSpace:"nowrap",flexShrink:0,marginLeft:4}}>
+        {/* 프로젝트 선택 드롭다운 */}
+        {(()=>{
+          const [open, setOpen] = React.useState(false);
+          const ref = React.useRef(null);
+          React.useEffect(()=>{
+            const handler = e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
+            document.addEventListener("mousedown", handler);
+            return ()=>document.removeEventListener("mousedown", handler);
+          },[]);
+          return (
+            <div ref={ref} style={{position:"relative",flex:1,minWidth:0}}>
+              {/* 선택된 프로젝트 표시 버튼 */}
+              <button onClick={()=>setOpen(v=>!v)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",
+                  borderRadius:8,border:`1.5px solid ${open?C.blue:C.border}`,
+                  background:open?"#eff6ff":C.white,cursor:"pointer",
+                  minWidth:0,maxWidth:320,width:"100%",transition:"all .15s",
+                  boxShadow:open?"0 0 0 3px #2563eb18":"none"}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:proj?.color||C.blue,flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:700,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,textAlign:"left"}}>
+                  {proj?.name||"프로젝트 선택"}
+                </span>
+                {proj?.status&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,background:proj.color+"22",color:proj.color,fontWeight:700,flexShrink:0}}>{proj.status}</span>}
+                <span style={{fontSize:10,color:C.faint,flexShrink:0,transition:"transform .2s",transform:open?"rotate(180deg)":"none"}}>▼</span>
+              </button>
+
+              {/* 드롭다운 목록 */}
+              {open&&(
+                <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:300,
+                  background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
+                  boxShadow:"0 8px 32px rgba(0,0,0,.12)",minWidth:260,maxWidth:360,overflow:"hidden"}}>
+                  <div style={{padding:"8px 12px",fontSize:11,fontWeight:700,color:C.faint,background:C.bg,borderBottom:`1px solid ${C.border}`,letterSpacing:.5}}>
+                    프로젝트 ({projects.length})
+                  </div>
+                  <div style={{maxHeight:320,overflowY:"auto"}}>
+                    {projects.map(p=>{
+                      const sel = p.id===selId;
+                      const tasks = (p.tasks||[]);
+                      const done = tasks.filter(t=>t.status==="done").length;
+                      return (
+                        <div key={p.id} onClick={()=>{setSelId(p.id);setOpen(false);}}
+                          style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                            cursor:"pointer",background:sel?"#eff6ff":C.white,
+                            borderBottom:`1px solid ${C.border}`,transition:"background .1s"}}
+                          onMouseEnter={e=>{if(!sel)e.currentTarget.style.background="#f8fafc"}}
+                          onMouseLeave={e=>{if(!sel)e.currentTarget.style.background=sel?"#eff6ff":C.white}}>
+                          <span style={{width:10,height:10,borderRadius:"50%",background:p.color,flexShrink:0}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:sel?700:500,color:sel?C.blue:C.dark,
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {p.name}
+                            </div>
+                            <div style={{fontSize:10,color:C.faint,marginTop:1}}>
+                              {p.client&&`${p.client} · `}{tasks.length>0?`태스크 ${done}/${tasks.length}`:"태스크 없음"}
+                              {p.due&&` · 납품 ${p.due}`}
+                            </div>
+                          </div>
+                          {sel&&<span style={{color:C.blue,fontSize:14,fontWeight:800}}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{padding:"8px 12px",borderTop:`1px solid ${C.border}`,background:C.bg}}>
+                    <button onClick={()=>{setAddProjModal(true);setOpen(false);}}
+                      style={{width:"100%",padding:"7px",borderRadius:8,border:`1.5px dashed ${C.border}`,
+                        background:"none",cursor:"pointer",fontSize:12,color:C.faint,fontWeight:600}}>
+                      + 새 프로젝트
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+        <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정"
+          style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,
+            background:C.white,cursor:"pointer",fontSize:13,color:C.sub,whiteSpace:"nowrap",flexShrink:0}}>
           ✏️
         </button>
         {/* 메인탭 */}
