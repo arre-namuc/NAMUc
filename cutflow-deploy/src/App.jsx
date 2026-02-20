@@ -2620,16 +2620,22 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                   onChange={e=>{
                     const val = e.target.value;
                     setCommentText(val);
-                    const atIdx = val.lastIndexOf("@");
-                    if(atIdx!==-1 && (atIdx===0||val[atIdx-1]===" "||val[atIdx-1]==="\n")) {
-                      const query = val.slice(atIdx+1).split(/[\s\n]/)[0].toLowerCase();
-                      const suggestions = accounts.filter(a=>a.name.toLowerCase().includes(query)&&a.name!==user.name);
-                      setMentionSuggest(suggestions.slice(0,5));
-                      setMentionIdx(-1);
-                    } else {
-                      setMentionSuggest([]);
-                      setMentionIdx(-1);
+                    // 커서 위치 기준으로 @멘션 감지 (이미 완성된 @이름 뒤에서는 무시)
+                    const cursor = e.target.selectionStart ?? val.length;
+                    const textBeforeCursor = val.slice(0, cursor);
+                    const atIdx = textBeforeCursor.lastIndexOf("@");
+                    if(atIdx!==-1 && (atIdx===0||textBeforeCursor[atIdx-1]===" "||textBeforeCursor[atIdx-1]==="\n")) {
+                      const fragment = textBeforeCursor.slice(atIdx+1);
+                      // 공백/줄바꿈이 없어야 아직 입력 중인 멘션
+                      if(!/[\s\n]/.test(fragment)) {
+                        const suggestions = accounts.filter(a=>a.name.toLowerCase().includes(fragment.toLowerCase())&&a.name!==user.name);
+                        setMentionSuggest(suggestions.slice(0,5));
+                        setMentionIdx(-1);
+                        return;
+                      }
                     }
+                    setMentionSuggest([]);
+                    setMentionIdx(-1);
                   }}
                   onCompositionStart={()=>{ composingRef.current=true; }}
                   onCompositionEnd={e=>{ composingRef.current=false; setCommentText(e.target.value); }}
