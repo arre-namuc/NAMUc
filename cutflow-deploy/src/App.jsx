@@ -3843,6 +3843,143 @@ function ProjectSelector({ projects, selId, setSelId, proj, setAddProjModal }) {
 }
 
 
+function FigJamTab({ project, onChange }) {
+  const urls = project.figjaUrls || [];
+  const [input, setInput] = useState("");
+  const [active, setActive] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [editLabel, setEditLabel] = useState("");
+
+  const toEmbedUrl = (url) => {
+    // https://www.figma.com/board/XXXXX/... → embed URL
+    try {
+      const u = new URL(url);
+      // FigJam: figma.com/board/... 또는 figma.com/file/...
+      const embedBase = "https://embed.figma.com/board";
+      const pathParts = u.pathname.split("/").filter(Boolean);
+      // pathParts: ["board","KEY","title"] or ["file","KEY","title"]
+      const type = pathParts[0]; // board or file
+      const key  = pathParts[1];
+      if (!key) return null;
+      const base = type === "board"
+        ? `https://embed.figma.com/board/${key}/embed`
+        : `https://embed.figma.com/design/${key}/embed`;
+      return base + "?embed_host=cutflow&footer=false";
+    } catch { return null; }
+  };
+
+  const addUrl = () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    const embed = toEmbedUrl(trimmed);
+    if (!embed) { alert("유효한 피그마잼 URL을 입력해주세요.\n예: https://www.figma.com/board/..."); return; }
+    const newItem = { id: Date.now().toString(), url: trimmed, embed, label: "FigJam " + (urls.length + 1) };
+    const updated = [...urls, newItem];
+    onChange(p => ({ ...p, figjaUrls: updated }));
+    setInput("");
+    setActive(updated.length - 1);
+  };
+
+  const removeUrl = (idx) => {
+    const updated = urls.filter((_, i) => i !== idx);
+    onChange(p => ({ ...p, figjaUrls: updated }));
+    setActive(Math.max(0, Math.min(active, updated.length - 1)));
+  };
+
+  const updateLabel = (idx, label) => {
+    const updated = urls.map((u, i) => i === idx ? { ...u, label } : u);
+    onChange(p => ({ ...p, figjaUrls: updated }));
+    setEditing(false);
+  };
+
+  const cur = urls[active];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:0,height:"calc(100vh - 180px)",minHeight:500}}>
+      {/* 상단 탭 + 추가 */}
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",flexWrap:"wrap",borderBottom:"1px solid #e2e8f0",marginBottom:0}}>
+        <div style={{display:"flex",gap:4,flex:1,flexWrap:"wrap"}}>
+          {urls.map((u, i) => (
+            <div key={u.id} style={{display:"flex",alignItems:"center",gap:0,
+              background:i===active?"#eff6ff":"#f8fafc",
+              border:`1.5px solid ${i===active?"#2563eb":"#e2e8f0"}`,
+              borderRadius:8,overflow:"hidden"}}>
+              {editing===i
+                ? <input autoFocus value={editLabel}
+                    onChange={e=>setEditLabel(e.target.value)}
+                    onBlur={()=>updateLabel(i, editLabel||u.label)}
+                    onKeyDown={e=>{ if(e.key==="Enter") updateLabel(i,editLabel||u.label); if(e.key==="Escape") setEditing(false); }}
+                    style={{border:"none",outline:"none",background:"transparent",fontSize:12,fontWeight:600,color:"#2563eb",width:90,padding:"5px 8px"}}/>
+                : <button onClick={()=>setActive(i)}
+                    onDoubleClick={()=>{setEditing(i);setEditLabel(u.label);}}
+                    style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 10px",
+                      fontSize:12,fontWeight:i===active?700:500,color:i===active?"#2563eb":"#64748b",
+                      whiteSpace:"nowrap"}}>
+                    🎨 {u.label}
+                  </button>
+              }
+              <button onClick={()=>removeUrl(i)}
+                style={{border:"none",background:"transparent",cursor:"pointer",
+                  padding:"5px 6px",color:"#94a3b8",fontSize:12,lineHeight:1}}>×</button>
+            </div>
+          ))}
+        </div>
+        {/* URL 추가 입력 */}
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <input
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addUrl()}
+            placeholder="피그마잼 URL 붙여넣기..."
+            style={{padding:"6px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+              fontSize:12,width:240,outline:"none",color:"#1e293b"}}
+          />
+          <button onClick={addUrl}
+            style={{padding:"6px 14px",borderRadius:8,border:"none",
+              background:"#2563eb",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+            + 추가
+          </button>
+        </div>
+      </div>
+
+      {/* iframe 영역 */}
+      {urls.length === 0 ? (
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+          gap:16,color:"#94a3b8",background:"#f8fafc",borderRadius:12,border:"2px dashed #e2e8f0",marginTop:12}}>
+          <div style={{fontSize:48}}>🎨</div>
+          <div style={{fontSize:16,fontWeight:700,color:"#475569"}}>피그마잼 연동</div>
+          <div style={{fontSize:13,textAlign:"center",lineHeight:1.7,color:"#94a3b8"}}>
+            피그마잼 URL을 위에 입력하면<br/>바로 미리보기 · 편집이 가능합니다
+          </div>
+          <div style={{fontSize:11,color:"#cbd5e1",background:"#f1f5f9",padding:"8px 16px",borderRadius:8}}>
+            figma.com/board/... 또는 figma.com/file/... 형식
+          </div>
+        </div>
+      ) : cur ? (
+        <div style={{flex:1,position:"relative",marginTop:8,borderRadius:12,overflow:"hidden",
+          border:"1px solid #e2e8f0",boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+          <iframe
+            key={cur.id}
+            src={cur.embed}
+            style={{width:"100%",height:"100%",border:"none",display:"block"}}
+            allow="clipboard-read; clipboard-write"
+            allowFullScreen
+          />
+          {/* 원본 열기 버튼 */}
+          <a href={cur.url} target="_blank" rel="noopener noreferrer"
+            style={{position:"absolute",top:10,right:10,padding:"5px 12px",borderRadius:8,
+              background:"rgba(255,255,255,.92)",border:"1px solid #e2e8f0",
+              fontSize:11,fontWeight:700,color:"#2563eb",textDecoration:"none",
+              boxShadow:"0 2px 8px rgba(0,0,0,.08)",backdropFilter:"blur(4px)"}}>
+            ↗ 피그마에서 열기
+          </a>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
 function App() {
   const [user,         setUser]         = useState(null);
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
@@ -4197,6 +4334,7 @@ return (
                 {id:"feedback",icon:"💬",label:"피드백"},
                 {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
+                {id:"figjam",icon:"🎨",label:"FigJam"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessFinance},
                 {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessFinance},
                 {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessFinance},
@@ -4271,6 +4409,9 @@ return (
 
             {/* ── 결산서 ── */}
             {docTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement}/>}
+
+            {/* ── FigJam ── */}
+            {docTab==="figjam"&&<FigJamTab project={proj} onChange={patchProj}/>}
           </>
         )}
       </div>
