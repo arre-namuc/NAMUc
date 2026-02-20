@@ -4050,10 +4050,9 @@ function App() {
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
 
-  // 재무 문서 접근 권한: canViewFinance 있거나, 프로젝트 허용 멤버에 포함되거나, 허용 멤버 미지정시 전체 허용
-  const canAccessFinance = user.canViewFinance ||
-    !proj?.allowedFinanceMembers?.length ||
-    (proj?.allowedFinanceMembers||[]).includes(String(user.id));
+  // 재무 접근 권한: 대표/경영지원 역할이거나 canViewFinance 플래그가 있는 경우만 허용
+  const FINANCE_ROLES = ["대표", "경영지원"];
+  const canAccessFinance = FINANCE_ROLES.includes(user.role) || user.canViewFinance;
 
   const patchProj = fn => setProjects(ps=>{
     const updated=ps.map(p=>p.id===selId?fn(p):p);
