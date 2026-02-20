@@ -1343,7 +1343,7 @@ function SettlementView({ project, onConfirm }) {
       ) : (
         <div style={{background:C.amberLight,border:`1px solid ${C.amber}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:20}}>⚠️</span>
-          <div><div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div><div style={{fontSize:13,color:C.sub}}>프로젝트 완료 후 확정하면 재무 대시보드에 반영됩니다.</div></div>
+          <div><div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div><div style={{fontSize:13,color:C.sub}}>프로젝트 완료 후 확정하면 경영관리 대시보드에 반영됩니다.</div></div>
           <Btn primary onClick={onConfirm} style={{marginLeft:"auto"}}>결산 확정하기</Btn>
         </div>
       )}
@@ -1409,7 +1409,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
       </div>
       <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
         <div style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-          <span/><span>이름</span><span>직책</span><span style={{textAlign:"center"}}>재무열람</span><span style={{textAlign:"center"}}>멤버관리</span><span>비밀번호</span><span/>
+          <span/><span>이름</span><span>직책</span><span style={{textAlign:"center"}}>경영관리열람</span><span style={{textAlign:"center"}}>멤버관리</span><span>비밀번호</span><span/>
         </div>
         {accounts.length===0 && <div style={{padding:"30px",textAlign:"center",color:C.faint}}>구성원이 없습니다</div>}
         {accounts.map((m,i)=>(
@@ -1445,7 +1445,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
             <div style={{display:"flex",gap:20}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
                 <input type="checkbox" checked={!!mf.canViewFinance} onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))} style={{accentColor:C.green,width:16,height:16}}/>
-                <div><div style={{fontWeight:600}}>💰 재무 열람</div><div style={{fontSize:11,color:C.faint}}>재무 대시보드, 결산서</div></div>
+                <div><div style={{fontWeight:600}}>💰 경영관리 열람</div><div style={{fontSize:11,color:C.faint}}>경영관리 대시보드, 결산서</div></div>
               </label>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
                 <input type="checkbox" checked={!!mf.canManageMembers} onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))} style={{accentColor:C.blue,width:16,height:16}}/>
@@ -3595,7 +3595,7 @@ function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMe
 
 
 // ═══════════════════════════════════════════════════════════
-// 재무 대시보드
+// 경영관리 대시보드
 // ═══════════════════════════════════════════════════════════
 function FinanceDash({ projects }) {
   const active  = projects.filter(p=>!p.settled);
@@ -3629,7 +3629,7 @@ function FinanceDash({ projects }) {
 
   return (
     <div style={{padding:"0 4px"}}>
-      <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>재무 대시보드</h2>
+      <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>경영관리 대시보드</h2>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
         {[
@@ -4149,7 +4149,7 @@ return (
         </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -4490,8 +4490,8 @@ return (
           </Field>
           {user.canManageMembers && (
           <div style={{background:C.slateLight,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 재무 문서 접근 허용 멤버</div>
-            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>미선택 시 '재무 열람' 권한자 전체 접근 가능</div>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 경영관리 문서 접근 허용 멤버</div>
+            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>미선택 시 '경영관리 열람' 권한자 전체 접근 가능</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {accounts.map(a=>{
                 const allowed = pf.allowedFinanceMembers||[];
