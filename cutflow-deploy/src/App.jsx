@@ -2594,13 +2594,17 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                       <div key={a.id}
                         onMouseDown={e=>{
                           e.preventDefault();
-                          const cur = commentText;
-                          const atIdx = cur.lastIndexOf("@");
-                          setCommentText(cur.slice(0,atIdx)+"@"+a.name+" ");
-                          mentionOpenRef.current = false;
+                          const ta = commentRef.current;
+                          const val = ta.value;
+                          const atIdx = val.lastIndexOf("@");
+                          const newVal = val.slice(0,atIdx)+"@"+a.name+" ";
+                          // textarea 값을 DOM에 직접 세팅 후 React 이벤트 트리거
+                          Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,"value").set.call(ta, newVal);
+                          ta.dispatchEvent(new Event("input",{bubbles:true}));
+                          setCommentText(newVal);
                           setMentionSuggest([]);
                           setMentionIdx(-1);
-                          setTimeout(()=>commentRef.current?.focus(),0);
+                          ta.focus();
                         }}
                         style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
                           cursor:"pointer",background:i===mentionIdx?"#eff6ff":"#fff",
@@ -2622,58 +2626,48 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                   onChange={e=>{
                     const val = e.target.value;
                     setCommentText(val);
+                    if(composingRef.current) return;
                     const cursor = e.target.selectionStart ?? val.length;
-                    const textBeforeCursor = val.slice(0, cursor);
-                    const atIdx = textBeforeCursor.lastIndexOf("@");
-                    let opened = false;
-                    if(atIdx!==-1 && (atIdx===0||textBeforeCursor[atIdx-1]===" "||textBeforeCursor[atIdx-1]==="\n")) {
-                      const fragment = textBeforeCursor.slice(atIdx+1);
-                      if(!/[\s\n]/.test(fragment)) {
-                        const suggestions = accounts.filter(a=>a.name.toLowerCase().includes(fragment.toLowerCase())&&a.name!==user.name);
-                        if(suggestions.length>0) {
-                          setMentionSuggest(suggestions.slice(0,5));
-                          setMentionIdx(-1);
-                          opened = true;
-                        }
+                    const before = val.slice(0, cursor);
+                    const atIdx = before.lastIndexOf("@");
+                    if(atIdx!==-1 && (atIdx===0||before[atIdx-1]===" "||before[atIdx-1]==="\n")) {
+                      const frag = before.slice(atIdx+1);
+                      if(!/[\s\n]/.test(frag)) {
+                        const sugg = accounts.filter(a=>a.name.toLowerCase().includes(frag.toLowerCase())&&a.name!==user.name);
+                        if(sugg.length>0){ setMentionSuggest(sugg.slice(0,5)); setMentionIdx(-1); return; }
                       }
                     }
-                    if(!opened) {
-                      setMentionSuggest([]);
-                      setMentionIdx(-1);
-                    }
-                    mentionOpenRef.current = opened;
+                    setMentionSuggest([]); setMentionIdx(-1);
                   }}
                   onCompositionStart={()=>{ composingRef.current=true; }}
                   onCompositionEnd={e=>{ composingRef.current=false; setCommentText(e.target.value); }}
                   onKeyDown={e=>{
                     if(composingRef.current) return;
-                    if(mentionOpenRef.current) {
-                      if(e.key==="ArrowDown"){ e.preventDefault(); setMentionIdx(i=>Math.min(i+1,mentionSuggest.length-1)); return; }
-                      if(e.key==="ArrowUp"){ e.preventDefault(); setMentionIdx(i=>Math.max(i-1,0)); return; }
-                      if(e.key==="Enter"){
+                    // 멘션 드롭다운 열려있을 때
+                    if(mentionSuggest.length>0) {
+                      if(e.key==="ArrowDown"||e.key==="ArrowUp"||e.key==="Enter"||e.key==="Escape") {
                         e.preventDefault();
-                        const target = mentionSuggest[mentionIdx>=0?mentionIdx:0];
-                        if(target){
-                          const cur = commentText;
-                          const atIdx = cur.lastIndexOf("@");
-                          setCommentText(cur.slice(0,atIdx)+"@"+target.name+" ");
+                        if(e.key==="ArrowDown") setMentionIdx(i=>Math.min(i+1,mentionSuggest.length-1));
+                        if(e.key==="ArrowUp")   setMentionIdx(i=>Math.max(i-1,0));
+                        if(e.key==="Escape")    { setMentionSuggest([]); setMentionIdx(-1); }
+                        if(e.key==="Enter") {
+                          const idx2 = mentionIdx>=0 ? mentionIdx : 0;
+                          const target = mentionSuggest[idx2];
+                          if(target) {
+                            const val = commentRef.current.value;
+                            const atIdx = val.lastIndexOf("@");
+                            const newVal = val.slice(0,atIdx)+"@"+target.name+" ";
+                            setCommentText(newVal);
+                          }
+                          setMentionSuggest([]); setMentionIdx(-1);
                         }
-                        mentionOpenRef.current = false;
-                        setMentionSuggest([]);
-                        setMentionIdx(-1);
-                        return;
-                      }
-                      if(e.key==="Escape"){
-                        e.preventDefault();
-                        mentionOpenRef.current = false;
-                        setMentionSuggest([]);
-                        setMentionIdx(-1);
                         return;
                       }
                     }
-                    if(e.key==="Enter"&&e.shiftKey){ e.preventDefault(); addComment(detail); }
+                    // 전송: Shift+Enter
+                    if(e.key==="Enter"&&e.shiftKey) { e.preventDefault(); addComment(detail); }
                   }}
-                  placeholder={"댓글 입력 (@이름 멘션  |  Shift+Enter 전송  |  Enter 줄바꿈)"}
+                  placeholder={"댓글 입력  (@이름 멘션 · Shift+Enter 전송 · Enter 줄바꿈)"}
                   style={{...inp,resize:"none",minHeight:52,paddingRight:76,lineHeight:1.6}}/>
                 <button
                   onMouseDown={e=>{e.preventDefault(); addComment(detail);}}
@@ -2687,6 +2681,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
               </div>
             </div>
           </div>
+
 
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
             <Btn onClick={()=>{setDetail(null);openEdit(detail);}}>✏️ 수정</Btn>
