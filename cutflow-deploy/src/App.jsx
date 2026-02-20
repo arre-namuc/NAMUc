@@ -1282,7 +1282,6 @@ function SettlementView({ project, onConfirm, onSave }) {
   const [preview,     setPreview]    = useState(null);
   const [lightboxImg, setLightboxImg]= useState(null);
   const [analyzing,   setAnalyzing]  = useState(false);
-  const [activeTab,   setActiveTab]  = useState("vouchers");
 
   const catOptions   = (q.items||[]).map(c=>c.category);
   const groupOptions = cat => { const c=(q.items||[]).find(c=>c.category===cat); return c?c.groups.map(g=>g.group):[]; };
@@ -1383,18 +1382,7 @@ function SettlementView({ project, onConfirm, onSave }) {
         ))}
       </div>
 
-      <div style={{display:"flex",gap:0,marginBottom:16,borderBottom:`2px solid ${C.border}`}}>
-        {[{id:"vouchers",label:"📎 증빙 목록"},{id:"compare",label:"📊 예산 vs 실행 비교"}].map(t=>(
-          <button key={t.id} onClick={()=>setActiveTab(t.id)}
-            style={{padding:"10px 24px",border:"none",background:"none",cursor:"pointer",
-              borderBottom:`3px solid ${activeTab===t.id?C.blue:"transparent"}`,marginBottom:-2,
-              fontWeight:activeTab===t.id?700:500,color:activeTab===t.id?C.blue:C.sub,fontSize:14}}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab==="vouchers"&&(
+      <div>
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontSize:13,color:C.sub}}>증빙자료 업로드 및 수기 입력 · AI 자동 분석 지원</div>
@@ -1433,9 +1421,10 @@ function SettlementView({ project, onConfirm, onSave }) {
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {activeTab==="compare"&&(
+      <div style={{marginTop:24}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.dark,marginBottom:12}}>📊 예산 vs 실행 비교</div>
         <div>
           {/* 대분류별 바 차트 */}
           <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
@@ -1514,7 +1503,7 @@ function SettlementView({ project, onConfirm, onSave }) {
             </div>
           )}
         </div>
-      )}
+      </div>
       {modal&&(
         <Modal title={editV?"증빙 수정":"증빙 추가"} onClose={()=>setModal(false)} wide>
           <div style={{display:"flex",gap:20}}>
