@@ -1319,7 +1319,8 @@ function BudgetEditor({ project, onSave }) {
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {(preview.files||[]).map((f,i)=>(
               <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",
-                maxWidth:320,position:"relative",background:C.slateLight}}>
+                maxWidth:f.type==="application/pdf"?"100%":320,width:f.type==="application/pdf"?"100%":"auto",
+                position:"relative",background:C.slateLight}}>
                 {f.type.startsWith("image/") ? (
                   <>
                     <img src={f.b64url} alt={f.name}
@@ -1337,6 +1338,23 @@ function BudgetEditor({ project, onSave }) {
                     <div style={{padding:"6px 10px",fontSize:11,color:C.sub,
                       borderTop:`1px solid ${C.border}`,background:C.white}}>
                       {f.name}
+                    </div>
+                  </>
+                ) : f.type === "application/pdf" ? (
+                  <>
+                    <iframe
+                      src={f.b64url}
+                      title={f.name}
+                      style={{width:"100%",height:400,border:"none",display:"block"}}
+                    />
+                    <div style={{padding:"6px 10px",fontSize:11,color:C.sub,
+                      borderTop:`1px solid ${C.border}`,background:C.white,
+                      display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <span>📄 {f.name}</span>
+                      <a href={f.b64url} download={f.name}
+                        style={{fontSize:11,color:C.blue,textDecoration:"none",fontWeight:600}}>
+                        ⬇ 다운로드
+                      </a>
                     </div>
                   </>
                 ) : (
