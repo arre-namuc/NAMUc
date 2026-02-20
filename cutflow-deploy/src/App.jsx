@@ -1088,10 +1088,20 @@ function BudgetEditor({ project, onSave }) {
     const c = (q.items||[]).find(c=>c.category===cat);
     return c ? c.groups.map(g=>g.group) : [];
   };
+  const itemOptions = (cat, grp) => {
+    const c = (q.items||[]).find(c=>c.category===cat);
+    if (!c) return [];
+    const g = c.groups.find(g=>g.group===grp);
+    return g ? g.items.map(it=>it.name||it.desc||"").filter(Boolean) : [];
+  };
 
   const openAdd = () => {
     setEditV(null);
-    setVf({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:catOptions[0]||"",group:groupOptions(catOptions[0]||"")[0]||"",number:"",note:"",files:[]});
+    const cat0 = catOptions[0]||"";
+    const grp0 = groupOptions(cat0)[0]||"";
+    setVf({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",
+      category:cat0,group:grp0,item:itemOptions(cat0,grp0)[0]||"",
+      number:"",note:"",files:[]});
     setModal(true);
   };
   const openEdit = (v) => {
@@ -1306,7 +1316,7 @@ function BudgetEditor({ project, onSave }) {
                     background:i%2===0?C.white:"#fafbfc"}}>
                     <div>
                       <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
-                      <div style={{fontSize:11,color:C.faint}}>{v.category}{v.group?` › ${v.group}`:""}</div>
+                      <div style={{fontSize:11,color:C.faint}}>{v.category}{v.group?` › ${v.group}`:""}{v.item?` › ${v.item}`:""}</div>
                     </div>
                     <span style={{fontSize:11,background:C.slateLight,color:C.slate,
                       padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
@@ -1369,13 +1379,25 @@ function BudgetEditor({ project, onSave }) {
                 </select>
               </Field>
               <Field label="대분류" half>
-                <select style={inp} value={vf.category} onChange={e=>setVf(v=>({...v,category:e.target.value,group:groupOptions(e.target.value)[0]||""}))}>
+                <select style={inp} value={vf.category} onChange={e=>{
+                  const cat=e.target.value, grp=groupOptions(cat)[0]||"";
+                  setVf(v=>({...v,category:cat,group:grp,item:itemOptions(cat,grp)[0]||""}));
+                }}>
                   {catOptions.map(c=><option key={c}>{c}</option>)}
                 </select>
               </Field>
               <Field label="중분류" half>
-                <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
+                <select style={inp} value={vf.group} onChange={e=>{
+                  const grp=e.target.value;
+                  setVf(v=>({...v,group:grp,item:itemOptions(v.category,grp)[0]||""}));
+                }}>
                   {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
+                </select>
+              </Field>
+              <Field label="소분류 (항목)" half>
+                <select style={inp} value={vf.item||""} onChange={e=>setVf(v=>({...v,item:e.target.value}))}>
+                  <option value="">— 직접입력 —</option>
+                  {itemOptions(vf.category,vf.group).map(it=><option key={it}>{it}</option>)}
                 </select>
               </Field>
               <Field label="메모 / 비고"><input style={inp} value={vf.note} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
