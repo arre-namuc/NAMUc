@@ -2213,16 +2213,10 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const [uploadError, setUploadError] = useState("");
   const [lightbox, setLightbox] = useState(null);
   const [commentText, setCommentText] = useState("");
-  const [, forceUpdate] = useState(0); // 멘션 드롭다운 리렌더용
+  const [mentionSuggest, setMentionSuggest] = useState([]);
+  const [mentionIdx, setMentionIdx] = useState(-1);
   const commentRef = useRef(null);
   const composingRef = useRef(false);
-  const mentionListRef = useRef([]); // 후보 목록 (ref로만 관리)
-  const mentionIdxRef = useRef(-1);  // 선택 인덱스 (ref로만 관리)
-  // 하위 호환용 (드롭다운 렌더에서 사용)
-  const mentionSuggest = mentionListRef.current;
-  const mentionIdx = mentionIdxRef.current;
-  const setMentionSuggest = (v) => { mentionListRef.current = typeof v==="function"?v(mentionListRef.current):v; forceUpdate(n=>n+1); };
-  const setMentionIdx = (v) => { mentionIdxRef.current = typeof v==="function"?v(mentionIdxRef.current):v; forceUpdate(n=>n+1); };
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
@@ -2587,109 +2581,105 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                 </div>
             }
             {/* 댓글 입력 */}
-            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-              <Avatar name={user.name} size={28}/>
-              <div style={{flex:1,position:"relative"}}>
-                {/* @멘션 자동완성 드롭다운 */}
-                {mentionListRef.current.length>0&&(
-                  <div style={{position:"absolute",bottom:"100%",left:0,marginBottom:4,
-                    background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,
-                    boxShadow:"0 4px 16px rgba(0,0,0,.12)",zIndex:100,minWidth:200,overflow:"hidden"}}>
-                    {mentionListRef.current.map((a,i)=>(
-                      <div key={a.id}
-                        onMouseDown={e=>{
-                          e.preventDefault();
-                          const val = commentRef.current.value;
-                          const atIdx = val.lastIndexOf("@");
-                          const newVal = val.slice(0,atIdx)+"@"+a.name+" ";
-                          mentionListRef.current = [];
-                          mentionIdxRef.current = -1;
-                          setCommentText(newVal);
-                          setTimeout(()=>commentRef.current?.focus(),0);
-                        }}
-                        style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
-                          cursor:"pointer",background:i===mentionIdxRef.current?"#eff6ff":"#fff",
-                          borderBottom:i<mentionListRef.current.length-1?`1px solid ${C.border}`:"none"}}>
-                        <Avatar name={a.name} size={22}/>
-                        <span style={{fontSize:13,fontWeight:600,color:C.dark}}>{a.name}</span>
-                        <span style={{fontSize:11,color:C.faint}}>{a.role}</span>
-                        {i===mentionIdxRef.current&&<span style={{marginLeft:"auto",fontSize:10,color:C.blue}}>↵</span>}
+            {(()=>{
+              // 멘션 입력을 완전히 독립된 로컬 컴포넌트처럼 처리
+              const doSelectMention = (name) => {
+                const ta = commentRef.current;
+                if(!ta) return;
+                const val = ta.value;
+                const atIdx = val.lastIndexOf("@");
+                const newVal = val.slice(0,atIdx)+"@"+name+" ";
+                setCommentText(newVal);
+                setMentionSuggest([]);
+                setMentionIdx(-1);
+                ta.focus();
+              };
+              return (
+                <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                  <Avatar name={user.name} size={28}/>
+                  <div style={{flex:1}}>
+                    {/* 멘션 드롭다운 - 텍스트박스 위에 별도 렌더 */}
+                    {mentionSuggest.length>0&&(
+                      <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,
+                        boxShadow:"0 4px 16px rgba(0,0,0,.12)",marginBottom:4,overflow:"hidden"}}>
+                        {mentionSuggest.map((a,i)=>(
+                          <div key={a.id}
+                            onMouseDown={e=>{e.preventDefault(); doSelectMention(a.name);}}
+                            style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                              cursor:"pointer",background:i===mentionIdx?"#eff6ff":"#fff",
+                              borderBottom:i<mentionSuggest.length-1?`1px solid ${C.border}`:"none"}}>
+                            <Avatar name={a.name} size={22}/>
+                            <span style={{fontSize:13,fontWeight:600}}>{a.name}</span>
+                            <span style={{fontSize:11,color:C.faint}}>{a.role}</span>
+                          </div>
+                        ))}
+                        <div style={{padding:"3px 12px",fontSize:10,color:C.faint,background:"#f8fafc",borderTop:`1px solid ${C.border}`}}>
+                          ↑↓ 이동 · Enter 선택
+                        </div>
                       </div>
-                    ))}
-                    <div style={{padding:"4px 12px",fontSize:10,color:C.faint,background:"#f8fafc",borderTop:`1px solid ${C.border}`}}>
-                      ↑↓ 이동 · Enter 선택 · Esc 닫기
+                    )}
+                    <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                      <textarea
+                        ref={commentRef}
+                        value={commentText}
+                        rows={2}
+                        onCompositionStart={()=>{ composingRef.current=true; }}
+                        onCompositionEnd={e=>{ composingRef.current=false; setCommentText(e.target.value); }}
+                        onChange={e=>{
+                          if(composingRef.current) return;
+                          const val = e.target.value;
+                          setCommentText(val);
+                          const cursor = e.target.selectionStart||val.length;
+                          const before = val.slice(0,cursor);
+                          const at = before.lastIndexOf("@");
+                          if(at!==-1&&(at===0||before[at-1]===" "||before[at-1]==="\n")){
+                            const frag = before.slice(at+1);
+                            if(frag.indexOf(" ")===-1&&frag.indexOf("\n")===-1){
+                              const sugg=accounts.filter(a=>a.name.toLowerCase().startsWith(frag.toLowerCase())&&a.name!==user.name);
+                              setMentionSuggest(sugg.slice(0,5));
+                              setMentionIdx(-1);
+                              return;
+                            }
+                          }
+                          setMentionSuggest([]);
+                          setMentionIdx(-1);
+                        }}
+                        onKeyDown={e=>{
+                          if(composingRef.current) return;
+                          // 멘션 드롭다운 키 처리
+                          if(e.key==="ArrowDown"&&mentionSuggest.length>0){e.preventDefault();setMentionIdx(p=>Math.min(p+1,mentionSuggest.length-1));return;}
+                          if(e.key==="ArrowUp"&&mentionSuggest.length>0){e.preventDefault();setMentionIdx(p=>Math.max(p-1,0));return;}
+                          if(e.key==="Escape"&&mentionSuggest.length>0){e.preventDefault();setMentionSuggest([]);return;}
+                          if(e.key==="Enter"&&mentionSuggest.length>0){
+                            e.preventDefault();
+                            doSelectMention(mentionSuggest[mentionIdx>=0?mentionIdx:0].name);
+                            return;
+                          }
+                          // Shift+Enter = 전송
+                          if(e.key==="Enter"&&e.shiftKey&&mentionSuggest.length===0){
+                            e.preventDefault();
+                            addComment(detail);
+                          }
+                        }}
+                        placeholder="댓글 입력  (@이름 멘션 · Shift+Enter 전송)"
+                        style={{...inp,flex:1,resize:"none",lineHeight:1.6,minHeight:52}}
+                      />
+                      <button
+                        onMouseDown={e=>{e.preventDefault(); addComment(detail);}}
+                        disabled={!commentText.trim()}
+                        style={{padding:"8px 14px",borderRadius:8,border:"none",
+                          background:commentText.trim()?"#2563eb":"#e2e8f0",
+                          color:commentText.trim()?"#fff":"#94a3b8",
+                          fontSize:12,fontWeight:700,cursor:commentText.trim()?"pointer":"default",
+                          whiteSpace:"nowrap",alignSelf:"flex-end",height:52}}>
+                        전송<br/><span style={{fontSize:9,opacity:0.7}}>⇧↵</span>
+                      </button>
                     </div>
                   </div>
-                )}
-                <textarea
-                  ref={commentRef}
-                  value={commentText}
-                  onChange={e=>{
-                    const val = e.target.value;
-                    setCommentText(val);
-                    if(composingRef.current) return;
-                    const cursor = e.target.selectionStart ?? val.length;
-                    const before = val.slice(0, cursor);
-                    const atIdx = before.lastIndexOf("@");
-                    if(atIdx!==-1 && (atIdx===0||before[atIdx-1]===" "||before[atIdx-1]==="\n")) {
-                      const frag = before.slice(atIdx+1);
-                      if(!/[\s\n]/.test(frag)) {
-                        const sugg = accounts.filter(a=>a.name.toLowerCase().includes(frag.toLowerCase())&&a.name!==user.name);
-                        mentionListRef.current = sugg.slice(0,5);
-                        mentionIdxRef.current = -1;
-                        forceUpdate(n=>n+1);
-                        return;
-                      }
-                    }
-                    mentionListRef.current = [];
-                    mentionIdxRef.current = -1;
-                    forceUpdate(n=>n+1);
-                  }}
-                  onCompositionStart={()=>{ composingRef.current=true; }}
-                  onCompositionEnd={e=>{ composingRef.current=false; setCommentText(e.target.value); }}
-                  onKeyDown={e=>{
-                    if(composingRef.current) return;
-                    const hasMention = mentionListRef.current.length>0;
-                    if(hasMention) {
-                      if(e.key==="ArrowDown"){ e.preventDefault(); mentionIdxRef.current=Math.min(mentionIdxRef.current+1,mentionListRef.current.length-1); forceUpdate(n=>n+1); return; }
-                      if(e.key==="ArrowUp"){   e.preventDefault(); mentionIdxRef.current=Math.max(mentionIdxRef.current-1,0); forceUpdate(n=>n+1); return; }
-                      if(e.key==="Escape"){    e.preventDefault(); mentionListRef.current=[]; mentionIdxRef.current=-1; forceUpdate(n=>n+1); return; }
-                      if(e.key==="Enter"){
-                        e.preventDefault();
-                        const idx2 = mentionIdxRef.current>=0 ? mentionIdxRef.current : 0;
-                        const target = mentionListRef.current[idx2];
-                        if(target){
-                          const val = commentRef.current.value;
-                          const atIdx = val.lastIndexOf("@");
-                          const newVal = val.slice(0,atIdx)+"@"+target.name+" ";
-                          mentionListRef.current = [];
-                          mentionIdxRef.current = -1;
-                          setCommentText(newVal);
-                        } else {
-                          mentionListRef.current = [];
-                          mentionIdxRef.current = -1;
-                          forceUpdate(n=>n+1);
-                        }
-                        return;
-                      }
-                    }
-                    if(e.key==="Enter"&&e.shiftKey){ e.preventDefault(); addComment(detail); }
-                  }}
-                  placeholder={"댓글 입력  (@이름 멘션 · Shift+Enter 전송 · Enter 줄바꿈)"}
-                  style={{...inp,resize:"none",minHeight:52,paddingRight:76,lineHeight:1.6}}/>
-                <button
-                  onMouseDown={e=>{e.preventDefault(); addComment(detail);}}
-                  disabled={!commentText.trim()}
-                  style={{position:"absolute",right:8,bottom:8,padding:"5px 10px",borderRadius:6,
-                    border:"none",background:commentText.trim()?"#2563eb":"#e2e8f0",
-                    color:commentText.trim()?"#fff":"#94a3b8",fontSize:11,fontWeight:700,
-                    cursor:commentText.trim()?"pointer":"default",whiteSpace:"nowrap",lineHeight:1.4}}>
-                  전송<br/><span style={{fontSize:9,opacity:0.8}}>⇧↵</span>
-                </button>
-              </div>
-            </div>
+                </div>
+              );
+            })()}
           </div>
-
 
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
             <Btn onClick={()=>{setDetail(null);openEdit(detail);}}>✏️ 수정</Btn>
