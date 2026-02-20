@@ -3851,20 +3851,11 @@ function FigJamTab({ project, onChange }) {
   const [editLabel, setEditLabel] = useState("");
 
   const toEmbedUrl = (url) => {
-    // https://www.figma.com/board/XXXXX/... → embed URL
+    // 피그마 공식 임베드: www.figma.com/embed?embed_host=XXX&url=ORIGINAL_URL
     try {
-      const u = new URL(url);
-      // FigJam: figma.com/board/... 또는 figma.com/file/...
-      const embedBase = "https://embed.figma.com/board";
-      const pathParts = u.pathname.split("/").filter(Boolean);
-      // pathParts: ["board","KEY","title"] or ["file","KEY","title"]
-      const type = pathParts[0]; // board or file
-      const key  = pathParts[1];
-      if (!key) return null;
-      const base = type === "board"
-        ? `https://embed.figma.com/board/${key}/embed`
-        : `https://embed.figma.com/design/${key}/embed`;
-      return base + "?embed_host=cutflow&footer=false";
+      new URL(url); // URL 유효성 검사
+      if (!url.includes("figma.com")) return null;
+      return "https://www.figma.com/embed?embed_host=cutflow-namucreative&url=" + encodeURIComponent(url);
     } catch { return null; }
   };
 
