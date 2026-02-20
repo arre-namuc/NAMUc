@@ -1124,9 +1124,11 @@ function BudgetEditor({ project, onSave }) {
       const isPdf = file.type==="application/pdf";
 
       const msgContent = isImg
-        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
+        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},
+           {type:"text",text:"이 영수증/증빙 이미지에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}"}]
         : isPdf
-        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
+        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},
+           {type:"text",text:"이 영수증/증빙 PDF에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}"}]
         : null;
 
       if (!msgContent) { setAnalyzing(false); return; }
@@ -1136,9 +1138,23 @@ function BudgetEditor({ project, onSave }) {
         headers:{"content-type":"application/json"},
         body:JSON.stringify({messages:[{role:"user",content:msgContent}]})
       });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("API 오류:", err);
+        setAnalyzing(false);
+        return;
+      }
+
       const data = await res.json();
-      const text = (data.content||[]).map(c=>c.text||"").join("");
-      const match = text.match(/\{[\s\S]*\}/);
+      console.log("AI 응답:", JSON.stringify(data));
+
+      const text = (data.content||[]).map(c=>c.text||"").join("").trim();
+      console.log("AI 텍스트:", text);
+
+      // JSON 파싱 - ```json 코드블록도 처리
+      const cleaned = text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
       if (match) {
         try {
           const parsed = JSON.parse(match[0]);
@@ -1149,9 +1165,12 @@ function BudgetEditor({ project, onSave }) {
             amount: parsed.amount ? String(parsed.amount).replace(/[^0-9]/g,"") : v.amount,
             date:   parsed.date   || v.date,
           }));
-        } catch(e) {}
+          console.log("파싱 성공:", parsed);
+        } catch(e) { console.error("JSON 파싱 실패:", e, match[0]); }
+      } else {
+        console.warn("JSON을 찾지 못함. 응답:", text);
       }
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error("analyzeFile 오류:", e); }
     setAnalyzing(false);
   };
 
