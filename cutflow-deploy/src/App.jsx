@@ -1549,6 +1549,164 @@ function MonthCalendar({ project, onChange, user }) {
     a.download = `${project.name}_schedule.ics`; a.click();
   };
 
+  const exportCalPPT = async () => {
+    // pptxgenjs를 CDN에서 동적 로드
+    if (!window.PptxGenJS) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    const PptxGenJS = window.PptxGenJS;
+    const pres = new PptxGenJS();
+    pres.layout = "LAYOUT_16x9";
+    pres.title = `${project.name} 일정표`;
+
+    const NAVY = "1E3A5F";
+    const BLUE = "2563EB";
+    const LIGHT = "EFF6FF";
+    const WHITE = "FFFFFF";
+    const GRAY = "64748B";
+    const BORDER = "CBD5E1";
+    const DAYS_KO = ["일","월","화","수","목","금","토"];
+    const fmtDate = s => s ? s.replace(/-/g,".") : "";
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+    // ── 표지 슬라이드 ──────────────────────────────────
+    const cover = pres.addSlide();
+    cover.background = { color: NAVY };
+    cover.addShape(pres.shapes.RECTANGLE, { x:0, y:0, w:0.35, h:5.625, fill:{ color: BLUE } });
+    cover.addShape(pres.shapes.RECTANGLE, { x:0.35, y:3.8, w:9.65, h:1.825, fill:{ color:"1E3A5F", transparency:0 } });
+    cover.addText(project.name, { x:0.7, y:1.2, w:8.8, h:1.4, fontSize:40, bold:true, color:WHITE, fontFace:"Calibri", align:"left" });
+    cover.addText("프로젝트 일정표", { x:0.7, y:2.5, w:8.8, h:0.5, fontSize:18, color:"BFDBFE", fontFace:"Calibri", align:"left" });
+    const infoLines = [];
+    if(project.client) infoLines.push(project.client);
+    if(project.format) infoLines.push(project.format);
+    if(project.due) infoLines.push(`납품일 ${fmtDate(project.due)}`);
+    infoLines.push(`출력일 ${today.getFullYear()}.${today.getMonth()+1}.${today.getDate()}`);
+    cover.addText(infoLines.join("  ·  "), { x:0.7, y:4.0, w:8.8, h:0.5, fontSize:13, color:"93C5FD", fontFace:"Calibri", align:"left" });
+
+    // ── 3개월 캘린더 슬라이드 ──────────────────────────
+    const monthsToRender = [0,1,2].map(offset => {
+      let m = baseMonth + offset, y = baseYear;
+      if(m > 11){ m -= 12; y++; }
+      return {year:y, month:m};
+    });
+
+    monthsToRender.forEach(({year, month}) => {
+      const slide = pres.addSlide();
+      slide.background = { color: "F8FAFC" };
+
+      // 헤더 바
+      slide.addShape(pres.shapes.RECTANGLE, { x:0, y:0, w:10, h:0.75, fill:{ color: NAVY } });
+      slide.addText(`${year}년 ${month+1}월`, { x:0.4, y:0, w:5, h:0.75, fontSize:20, bold:true, color:WHITE, fontFace:"Calibri", valign:"middle", margin:0 });
+      slide.addText(project.name, { x:5, y:0, w:4.7, h:0.75, fontSize:12, color:"93C5FD", fontFace:"Calibri", valign:"middle", align:"right", margin:0 });
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month+1, 0).getDate();
+      const cells = [];
+      for(let i=0;i<firstDay;i++) cells.push(null);
+      for(let d=1;d<=daysInMonth;d++) cells.push(d);
+      while(cells.length % 7 !== 0) cells.push(null);
+
+      const numWeeks = cells.length / 7;
+      const calTop = 0.95;
+      const calH = 4.5;
+      const cellW = 10/7;
+      const dayHdrH = 0.35;
+      const cellH = (calH - dayHdrH) / numWeeks;
+
+      // 요일 헤더
+      DAYS_KO.forEach((d,i) => {
+        const col = i === 0 ? "EF4444" : i === 6 ? BLUE : GRAY;
+        slide.addShape(pres.shapes.RECTANGLE, { x: i*cellW, y: calTop, w: cellW, h: dayHdrH, fill:{ color: "F1F5F9" }, line:{ color: BORDER, pt:0.5 } });
+        slide.addText(d, { x: i*cellW, y: calTop, w: cellW, h: dayHdrH, fontSize:11, bold:true, color: col, align:"center", valign:"middle", margin:0 });
+      });
+
+      // 날짜 셀
+      cells.forEach((d, idx) => {
+        const row = Math.floor(idx/7);
+        const col = idx%7;
+        const cx = col * cellW;
+        const cy = calTop + dayHdrH + row * cellH;
+
+        if(!d) {
+          slide.addShape(pres.shapes.RECTANGLE, { x:cx, y:cy, w:cellW, h:cellH, fill:{ color:"F8FAFC" }, line:{ color:BORDER, pt:0.5 } });
+          return;
+        }
+        const dateKey = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const isToday = dateKey === todayKey;
+        const dayEvs = allEvents.filter(e => e.start <= dateKey && dateKey <= (e.end||e.start));
+        const dow = col;
+
+        slide.addShape(pres.shapes.RECTANGLE, { x:cx, y:cy, w:cellW, h:cellH, fill:{ color: isToday ? LIGHT : WHITE }, line:{ color: isToday ? BLUE : BORDER, pt: isToday ? 1 : 0.5 } });
+
+        const numColor = dow===0 ? "EF4444" : dow===6 ? BLUE : isToday ? BLUE : "1E293B";
+        // 오늘 날짜 원형 배경
+        if(isToday) {
+          slide.addShape(pres.shapes.OVAL, { x: cx + cellW/2 - 0.12, y: cy + 0.04, w: 0.24, h: 0.24, fill:{ color: BLUE }, line:{ color: BLUE, pt:0 } });
+          slide.addText(String(d), { x:cx, y:cy+0.04, w:cellW, h:0.24, fontSize:10, bold:true, color:WHITE, align:"center", valign:"middle", margin:0 });
+        } else {
+          slide.addText(String(d), { x:cx, y:cy+0.06, w:cellW, h:0.22, fontSize:10, bold:false, color:numColor, align:"center", margin:0 });
+        }
+
+        // 이벤트 표시 (최대 3개)
+        dayEvs.slice(0,3).forEach((ev, ei) => {
+          const evY = cy + 0.3 + ei * (cellH < 0.9 ? 0.19 : 0.22);
+          if(evY + 0.18 > cy + cellH) return;
+          const evColor = ev.isFeedback ? "8B5CF6" : ev.color.replace("#","");
+          const evBg = ev.isFeedback ? "F5F3FF" : evColor + "22";
+          slide.addShape(pres.shapes.RECTANGLE, { x:cx+0.04, y:evY, w:cellW-0.08, h:0.18, fill:{ color: evBg }, line:{ color: evColor, pt:0.5 } });
+          slide.addText(ev.title, { x:cx+0.06, y:evY, w:cellW-0.12, h:0.18, fontSize:7, color:evColor, bold:true, valign:"middle", margin:0 });
+        });
+        if(dayEvs.length > 3) {
+          slide.addText(`+${dayEvs.length-3}`, { x:cx, y:cy+cellH-0.2, w:cellW, h:0.2, fontSize:7, color:GRAY, align:"center", margin:0 });
+        }
+      });
+    });
+
+    // ── 일정 목록 슬라이드 ────────────────────────────
+    const sortedEvs = [...allEvents].sort((a,b) => a.start.localeCompare(b.start));
+    if(sortedEvs.length > 0) {
+      const ROWS_PER_SLIDE = 14;
+      const chunks = [];
+      for(let i=0; i<sortedEvs.length; i+=ROWS_PER_SLIDE) chunks.push(sortedEvs.slice(i,i+ROWS_PER_SLIDE));
+
+      chunks.forEach((chunk, pi) => {
+        const ls = pres.addSlide();
+        ls.background = { color: "F8FAFC" };
+        ls.addShape(pres.shapes.RECTANGLE, { x:0, y:0, w:10, h:0.75, fill:{ color: NAVY } });
+        ls.addText(`📋 일정 목록${chunks.length>1 ? ` (${pi+1}/${chunks.length})` : ""}`, { x:0.4, y:0, w:7, h:0.75, fontSize:20, bold:true, color:WHITE, fontFace:"Calibri", valign:"middle", margin:0 });
+        ls.addText(project.name, { x:5, y:0, w:4.7, h:0.75, fontSize:12, color:"93C5FD", fontFace:"Calibri", valign:"middle", align:"right", margin:0 });
+
+        // 테이블 헤더
+        const tblTop = 0.9;
+        const rowH = 0.31;
+        const cols = [{label:"일정명",x:0.3,w:4.5},{label:"시작일",x:4.8,w:1.5},{label:"종료일",x:6.3,w:1.5},{label:"메모",x:7.8,w:1.9}];
+        cols.forEach(col => {
+          ls.addShape(pres.shapes.RECTANGLE, { x:col.x, y:tblTop, w:col.w, h:rowH, fill:{color:"1E40AF"}, line:{color:"1E40AF",pt:0} });
+          ls.addText(col.label, { x:col.x+0.06, y:tblTop, w:col.w-0.06, h:rowH, fontSize:11, bold:true, color:WHITE, valign:"middle", margin:0 });
+        });
+        // 행
+        chunk.forEach((ev, ri) => {
+          const ry = tblTop + rowH * (ri+1);
+          const bg = ri%2===0 ? WHITE : "F8FAFC";
+          ls.addShape(pres.shapes.RECTANGLE, { x:0.3, y:ry, w:9.4, h:rowH, fill:{color:bg}, line:{color:BORDER,pt:0.3} });
+          const evColor = (ev.isFeedback ? "8B5CF6" : ev.color.replace("#","")) || BLUE;
+          ls.addShape(pres.shapes.OVAL, { x:0.36, y:ry+rowH/2-0.07, w:0.14, h:0.14, fill:{color:evColor}, line:{color:evColor,pt:0} });
+          ls.addText(ev.title+(ev.isFeedback?" [피드백]":""), { x:0.55, y:ry, w:4.2, h:rowH, fontSize:10, color:"1E293B", bold:!!ev.isFeedback, valign:"middle", margin:0 });
+          ls.addText(fmtDate(ev.start), { x:4.8, y:ry, w:1.5, h:rowH, fontSize:10, color:GRAY, align:"center", valign:"middle", margin:0 });
+          ls.addText(fmtDate(ev.end||ev.start), { x:6.3, y:ry, w:1.5, h:rowH, fontSize:10, color:GRAY, align:"center", valign:"middle", margin:0 });
+          ls.addText(ev.note||"", { x:7.8, y:ry, w:1.9, h:rowH, fontSize:9, color:GRAY, valign:"middle", margin:0 });
+        });
+      });
+    }
+
+    await pres.writeFile({ fileName: `${project.name}_일정표.pptx` });
+  };
+
   const exportCalPDF = () => {
     const DAYS = ["일","월","화","수","목","금","토"];
     const fmtDate = s => s ? s.replace(/-/g,".") : "";
@@ -1738,6 +1896,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {!canEdit&&<span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
+          {allEvents.length>0&&<button onClick={exportCalPPT} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #7c3aed`,background:"#f5f3ff",color:"#7c3aed",cursor:"pointer",fontSize:12,fontWeight:600}}>📊 PPT로 내보내기</button>}
           {allEvents.length>0&&<button onClick={exportCalPDF} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #dc2626`,background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>📄 PDF로 내보내기</button>}
           {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
           {canEdit&&<Btn primary sm onClick={()=>{setEf({title:"",start:todayStr,end:todayStr,color:"#2563eb",note:""});setModal({mode:"add"});}}>+ 일정 추가</Btn>}
@@ -3780,24 +3939,39 @@ return (
         ) : (
           <>
             {/* 프로젝트 정보 바 */}
-            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 20px",marginBottom:20,display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",borderLeft:`4px solid ${proj.color}`}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:18}}>{proj.name}</div>
-                <div style={{fontSize:13,color:C.sub,marginTop:2}}>{proj.client}{proj.agency&&` · ${proj.agency}`} · {proj.format}</div>
-              </div>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12,color:C.sub,marginLeft:"auto"}}>
-                {proj.director&&<span>🎬 {proj.director}</span>}
-                {proj.epd&&<span>🎯 EPD {proj.epd}</span>}
-                {proj.assistant&&<span>🎥 조감독 {proj.assistant}</span>}
-                {proj.pd&&<span>📋 {proj.pd}</span>}
-                {proj.agency&&<span>🏢 {proj.agency}</span>}
-                {proj.contactName&&<span>👤 {proj.contactName}{proj.contactPhone&&<span style={{color:C.faint}}> · {proj.contactPhone}</span>}</span>}
-                {proj.startDate&&<span>🗓 시작 {proj.startDate}</span>}
-                {proj.due&&<span>📅 납품 {proj.due}</span>}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,marginBottom:20,overflow:"hidden",borderTop:`3px solid ${proj.color}`}}>
+              {/* 상단 타이틀 행 */}
+              <div style={{padding:"14px 20px 10px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:800,fontSize:18,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{proj.name}</div>
+                  <div style={{fontSize:12,color:C.sub,marginTop:3,display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {proj.client&&<span style={{background:C.slateLight,borderRadius:99,padding:"1px 8px"}}>{proj.client}</span>}
+                    {proj.agency&&<span style={{background:C.slateLight,borderRadius:99,padding:"1px 8px"}}>{proj.agency}</span>}
+                    {proj.format&&<span style={{background:C.blueLight,color:C.blue,borderRadius:99,padding:"1px 8px",fontWeight:600}}>{proj.format}</span>}
+                  </div>
+                </div>
                 <select value={proj.stage} onChange={e=>patchProj(p=>({...p,stage:e.target.value}))}
-                  style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700}}>
+                  style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:12,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700,flexShrink:0}}>
                   {stageKeys.map(s=><option key={s}>{s}</option>)}
                 </select>
+              </div>
+              {/* 하단 메타 정보 그리드 */}
+              <div style={{padding:"10px 20px",display:"flex",gap:0,flexWrap:"wrap"}}>
+                {[
+                  proj.director   && {icon:"🎬", label:"감독",   value: proj.director},
+                  proj.epd        && {icon:"🎯", label:"EPD",    value: proj.epd},
+                  proj.assistant  && {icon:"🎥", label:"조감독", value: proj.assistant},
+                  proj.pd         && {icon:"📋", label:"PD",     value: proj.pd},
+                  proj.contactName && {icon:"👤", label:"담당자", value: proj.contactName+(proj.contactPhone ? ` · ${proj.contactPhone}` : "")},
+                  proj.startDate  && {icon:"🗓", label:"시작",   value: proj.startDate},
+                  proj.due        && {icon:"📅", label:"납품",   value: proj.due},
+                ].filter(Boolean).map((item,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 14px 4px 0",fontSize:12,borderRight:`1px solid ${C.border}`,marginRight:14,marginBottom:4}}>
+                    <span style={{fontSize:14}}>{item.icon}</span>
+                    <span style={{color:C.faint,fontWeight:600,marginRight:2}}>{item.label}</span>
+                    <span style={{color:C.dark,fontWeight:500}}>{item.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
