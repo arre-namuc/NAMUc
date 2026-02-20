@@ -1332,12 +1332,25 @@ function SettlementView({ project, onConfirm, onSave }) {
     analyzeFile(file);
   };
 
-  const catMap={};
-  (b.vouchers||[]).forEach(v=>{catMap[v.category]=(catMap[v.category]||0)+(v.amount||0);});
-  const compareRows=(b2.items||[]).map(cat=>{
-    const bAmt=(cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),s),0);
-    const aAmt=catMap[cat.category]||0;
-    return {cat:cat.category,budget:bAmt,actual:aAmt,diff:bAmt-aAmt,rate:bAmt?Math.round(aAmt/bAmt*100):0};
+  // 결산서 비교: q.items 기준 대분류별 매출 vs 증빙 집행액
+  const voucherMap={};
+  (b.vouchers||[]).forEach(v=>{voucherMap[v.category]=(voucherMap[v.category]||0)+(v.amount||0);});
+
+  // 실행예산(budget2) 기준 대분류별 매입 합계
+  const budgetMap={};
+  (b2.items||[]).forEach(cat=>{
+    const amt=(cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
+    budgetMap[cat.category]=amt;
+  });
+
+  // q.items 기준으로 행 생성 (매출 | 실행예산 매입 | 실제집행 증빙)
+  const compareRows=(q.items||[]).map(cat=>{
+    const salesAmt = catAmt(cat);
+    const budAmt   = budgetMap[cat.category]||0;
+    const actualAmt= voucherMap[cat.category]||0;
+    const diff     = budAmt - actualAmt;
+    const rate     = budAmt ? Math.round(actualAmt/budAmt*100) : 0;
+    return {cat:cat.category, sales:salesAmt, budget:budAmt, actual:actualAmt, diff, rate};
   });
 
   return (
@@ -1423,29 +1436,85 @@ function SettlementView({ project, onConfirm, onSave }) {
       )}
 
       {activeTab==="compare"&&(
-        <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 120px 120px 110px 70px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-            <span>대분류</span><span style={{textAlign:"right"}}>실행예산</span><span style={{textAlign:"right"}}>실제집행</span><span style={{textAlign:"right"}}>차이</span><span style={{textAlign:"right"}}>달성률</span>
+        <div>
+          {/* 대분류별 바 차트 */}
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+            {compareRows.length===0
+              ? <div style={{padding:32,textAlign:"center",color:C.faint,fontSize:13,border:`2px dashed ${C.border}`,borderRadius:10}}>
+                  견적서 항목을 먼저 추가해주세요
+                </div>
+              : compareRows.map(r=>{
+                  const maxVal=Math.max(r.sales,r.budget,r.actual,1);
+                  return (
+                    <div key={r.cat} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                        <div style={{fontWeight:700,fontSize:14,color:C.dark}}>{r.cat}</div>
+                        <div style={{display:"flex",gap:14,fontSize:12,alignItems:"center"}}>
+                          <span style={{color:C.blue}}>매출 <strong>{fmtM(r.sales)}</strong></span>
+                          <span style={{color:C.purple}}>실행예산 <strong>{fmtM(r.budget)}</strong></span>
+                          <span style={{color:C.amber}}>실제집행 <strong>{fmtM(r.actual)}</strong></span>
+                          <span style={{padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:11,
+                            background:r.rate>100?"#fee2e2":r.rate>80?"#fef3c7":"#dcfce7",
+                            color:r.rate>100?C.red:r.rate>80?C.amber:C.green}}>
+                            집행률 {r.rate}%
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {[
+                          {label:"매출",    val:r.sales,  color:C.blue},
+                          {label:"실행예산",val:r.budget, color:C.purple},
+                          {label:"실제집행",val:r.actual, color:r.actual>r.budget?C.red:C.amber},
+                        ].map(bar=>(
+                          <div key={bar.label} style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{width:52,fontSize:11,color:C.faint,textAlign:"right",flexShrink:0}}>{bar.label}</div>
+                            <div style={{flex:1,height:10,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${Math.round(bar.val/maxVal*100)}%`,background:bar.color,borderRadius:99,transition:"width .4s"}}/>
+                            </div>
+                            <div style={{width:72,fontSize:12,fontWeight:600,color:bar.color,textAlign:"right",flexShrink:0}}>{fmtM(bar.val)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+            }
           </div>
-          {compareRows.length===0
-            ?<div style={{padding:32,textAlign:"center",color:C.faint,fontSize:13}}>실행예산서에 항목을 먼저 입력해주세요</div>
-            :compareRows.map((r,i)=>(
-              <div key={r.cat} style={{display:"grid",gridTemplateColumns:"1fr 120px 120px 110px 70px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-                <span style={{fontWeight:600,fontSize:13}}>{r.cat}</span>
-                <span style={{textAlign:"right",fontSize:13,color:C.purple,fontWeight:600}}>{fmt(r.budget)}</span>
-                <span style={{textAlign:"right",fontSize:13,color:C.amber}}>{fmt(r.actual)}</span>
-                <span style={{textAlign:"right",fontSize:13,fontWeight:700,color:r.diff>=0?C.green:C.red}}>{r.diff>=0?"+":""}{fmt(r.diff)}</span>
-                <span style={{textAlign:"right"}}>
-                  <span style={{fontSize:12,padding:"2px 6px",borderRadius:99,fontWeight:700,
-                    background:r.rate>100?C.redLight:r.rate>80?C.amberLight:C.greenLight,
-                    color:r.rate>100?C.red:r.rate>80?C.amber:C.green}}>{r.rate}%</span>
-                </span>
+
+          {/* 합계 테이블 */}
+          {compareRows.length>0&&(
+            <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 110px 80px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+                <span>대분류</span>
+                <span style={{textAlign:"right",color:C.blue}}>매출</span>
+                <span style={{textAlign:"right",color:C.purple}}>실행예산</span>
+                <span style={{textAlign:"right",color:C.amber}}>실제집행</span>
+                <span style={{textAlign:"right"}}>집행률</span>
               </div>
-            ))
-          }
+              {compareRows.map((r,i)=>(
+                <div key={r.cat} style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 110px 80px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+                  <span style={{fontWeight:600,fontSize:13}}>{r.cat}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.blue,fontWeight:600}}>{fmt(r.sales)}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.purple}}>{fmt(r.budget)}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:r.actual>r.budget?C.red:C.amber,fontWeight:600}}>{fmt(r.actual)}</span>
+                  <span style={{textAlign:"right"}}>
+                    <span style={{fontSize:12,padding:"2px 6px",borderRadius:99,fontWeight:700,
+                      background:r.rate>100?C.redLight:r.rate>80?C.amberLight:C.greenLight,
+                      color:r.rate>100?C.red:r.rate>80?C.amber:C.green}}>{r.rate}%</span>
+                  </span>
+                </div>
+              ))}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 110px 80px",padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:C.slateLight,fontWeight:700,fontSize:13}}>
+                <span>합계</span>
+                <span style={{textAlign:"right",color:C.blue}}>{fmt(compareRows.reduce((s,r)=>s+r.sales,0))}</span>
+                <span style={{textAlign:"right",color:C.purple}}>{fmt(compareRows.reduce((s,r)=>s+r.budget,0))}</span>
+                <span style={{textAlign:"right",color:C.amber}}>{fmt(compareRows.reduce((s,r)=>s+r.actual,0))}</span>
+                <span/>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
       {modal&&(
         <Modal title={editV?"증빙 수정":"증빙 추가"} onClose={()=>setModal(false)} wide>
           <div style={{display:"flex",gap:20}}>
