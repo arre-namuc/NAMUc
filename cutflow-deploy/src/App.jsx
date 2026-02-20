@@ -1131,10 +1131,10 @@ function BudgetEditor({ project, onSave }) {
 
       if (!msgContent) { setAnalyzing(false); return; }
 
-      const res = await fetch("https://api.anthropic.com/v1/messages",{
+      const res = await fetch("/api/analyze",{
         method:"POST",
         headers:{"content-type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:msgContent}]})
+        body:JSON.stringify({messages:[{role:"user",content:msgContent}]})
       });
       const data = await res.json();
       const text = (data.content||[]).map(c=>c.text||"").join("");
