@@ -2310,7 +2310,7 @@ function CommentInput({ accounts, user, onSubmit }) {
 }
 
 
-function FeedbackTab({project, patchProj, user, accounts}) {
+function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
   const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
   const [ff, setFf] = useState({});
@@ -4130,7 +4130,7 @@ return (
             )}
 
             {/* ── 피드백 ── */}
-            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts}/>}
+            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts} setNotifications={setNotifications}/>}
 
             {/* ── 캘린더 ── */}
             {docTab==="calendar"&&<MonthCalendar project={proj} onChange={patchProj} user={user}/>}
