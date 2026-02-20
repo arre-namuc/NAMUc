@@ -2207,33 +2207,36 @@ function StaffList({ project, onChange, accounts }) {
 // ── 댓글 입력 컴포넌트 (버튼 방식 멘션) ──────────────────────────────
 function CommentInput({ accounts, user, onSubmit }) {
   const [text, setText] = useState("");
-  const [sugg, setSugg] = useState([]);   // @자동완성 후보
-  const [selIdx, setSelIdx] = useState(-1); // 키보드 선택 인덱스
+  const [sugg, setSugg] = useState([]);
+  const [selIdx, setSelIdx] = useState(-1);
   const taRef = useRef(null);
   const composing = useRef(false);
+  const textRef = useRef(""); // 항상 최신 text를 동기적으로 참조
 
-  // 멘션 선택 (버튼 클릭 or 키보드 Enter)
+  // text state 변경 시 ref도 동기 업데이트
+  const updateText = (val) => { textRef.current = val; setText(val); };
+
+  // 멘션 선택 — textRef 사용으로 stale closure 방지
   const pickMention = (name) => {
-    // ta.value 대신 커서 위치 기반으로 @ 찾기
     const ta = taRef.current;
-    const cur = ta ? ta.selectionStart : text.length;
-    const before = text.slice(0, cur);
+    const val = textRef.current;
+    const cur = ta ? ta.selectionStart : val.length;
+    const before = val.slice(0, cur);
     const at = before.lastIndexOf("@");
-    const after = text.slice(cur);
     const newVal = at === -1
-      ? text + "@" + name + " "
-      : text.slice(0, at) + "@" + name + " " + after.replace(/^\S*/, ""); // 기존 입력 중 단어 교체
-    setText(newVal);
+      ? val + "@" + name + " "
+      : val.slice(0, at) + "@" + name + " ";
+    updateText(newVal);
     setSugg([]);
     setSelIdx(-1);
-    const newCur = (at === -1 ? text.length : at) + name.length + 2;
+    const newCur = newVal.length;
     setTimeout(() => { ta && ta.focus(); ta && ta.setSelectionRange(newCur, newCur); }, 0);
   };
 
   const submit = () => {
     if (!text.trim()) return;
     onSubmit(text.trim());
-    setText("");
+    updateText("");
     setSugg([]);
     setSelIdx(-1);
   };
@@ -2281,7 +2284,7 @@ function CommentInput({ accounts, user, onSubmit }) {
             onCompositionEnd={e => { composing.current = false; setText(e.target.value); }}
             onChange={e => {
               const val = e.target.value;
-              setText(val);
+              updateText(val);
               if (composing.current) return;
               // 커서 앞 텍스트에서 @ 감지
               const cur = e.target.selectionStart || val.length;
