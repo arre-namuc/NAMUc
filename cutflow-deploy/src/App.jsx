@@ -1551,7 +1551,7 @@ function MonthCalendar({ project, onChange, user }) {
 
   // 구글 캘린더 자동 연동
   const syncToGoogleCalendar = async () => {
-    const CLIENT_ID = "22645531970-dnaf8ci2bo4jppkhtjfvlndqsfoha9a4.apps.googleusercontent.com";
+    const CLIENT_ID = "22645531970-kje71cnuacg1oj8kmsolm6g85556a3vu.apps.googleusercontent.com";
     const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
     // 1. Google Identity Services 로드
