@@ -2214,14 +2214,20 @@ function CommentInput({ accounts, user, onSubmit }) {
 
   // 멘션 선택 (버튼 클릭 or 키보드 Enter)
   const pickMention = (name) => {
+    // ta.value 대신 커서 위치 기반으로 @ 찾기
     const ta = taRef.current;
-    const val = ta.value;
-    const at = val.lastIndexOf("@");
-    const newVal = at === -1 ? val + "@" + name + " " : val.slice(0, at) + "@" + name + " ";
+    const cur = ta ? ta.selectionStart : text.length;
+    const before = text.slice(0, cur);
+    const at = before.lastIndexOf("@");
+    const after = text.slice(cur);
+    const newVal = at === -1
+      ? text + "@" + name + " "
+      : text.slice(0, at) + "@" + name + " " + after.replace(/^\S*/, ""); // 기존 입력 중 단어 교체
     setText(newVal);
     setSugg([]);
     setSelIdx(-1);
-    setTimeout(() => { ta.focus(); ta.setSelectionRange(newVal.length, newVal.length); }, 0);
+    const newCur = (at === -1 ? text.length : at) + name.length + 2;
+    setTimeout(() => { ta && ta.focus(); ta && ta.setSelectionRange(newCur, newCur); }, 0);
   };
 
   const submit = () => {
@@ -2286,7 +2292,7 @@ function CommentInput({ accounts, user, onSubmit }) {
                 // 공백 없으면 아직 입력 중
                 if (!frag.includes(" ") && !frag.includes("\n")) {
                   const results = others.filter(a =>
-                    a.name.toLowerCase().startsWith(frag.toLowerCase())
+                    a.name.toLowerCase().includes(frag.toLowerCase())
                   );
                   setSugg(results.slice(0, 5));
                   setSelIdx(-1);
