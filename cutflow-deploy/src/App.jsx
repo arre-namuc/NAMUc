@@ -1184,81 +1184,158 @@ function BudgetEditor({ project, onSave }) {
 
   const spent = vTotal(b);
   const supply = qSupply(q);
+  const vat = qVat(q);
+  const profit = supply - spent;
+  const margin = supply ? Math.round(profit/supply*100) : 0;
+  const [activeTab, setActiveTab] = useState("sales"); // sales | purchase
 
-  // 예산 현황 by 대분류
-  const catSummary = (q.items||[]).map(cat=>{
+  // 매출: 견적서 항목별 요약
+  const salesRows = (q.items||[]).map(cat => {
     const planned = catAmt(cat);
     const actual  = (b.vouchers||[]).filter(v=>v.category===cat.category).reduce((s,v)=>s+(v.amount||0),0);
-    return {cat:cat.category, planned, actual, pct: planned?Math.round(actual/planned*100):0};
+    return { cat: cat.category, planned, actual, diff: planned - actual };
   });
+
+  // 매입: 증빙별 그룹
+  const purchaseRows = (b.vouchers||[]);
 
   return (
     <div>
       {/* 요약 카드 */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
         {[
-          {label:"견적 공급가액",val:supply,color:C.blue},
-          {label:"집행 합계",val:spent,color:C.amber},
-          {label:"잔여 예산",val:supply-spent,color:supply-spent>=0?C.green:C.red},
+          {label:"매출 (공급가액)",    val:supply,           color:C.blue,   sub:`VAT ${fmt(vat)}`},
+          {label:"매입 (집행 합계)",   val:spent,            color:C.amber,  sub:`${purchaseRows.length}건 증빙`},
+          {label:"잔여 예산",         val:supply-spent,     color:supply-spent>=0?C.green:C.red, sub:"매출 - 매입"},
+          {label:"이익률",            val:margin,           color:margin>=0?C.green:C.red, sub:`순이익 ${fmtM(profit)}`, isPercent:true},
         ].map(s=>(
           <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
             <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
-            <div style={{fontSize:18,fontWeight:800,color:s.color}}>{fmtM(s.val)}</div>
+            <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.isPercent ? s.val+"%" : fmtM(s.val)}</div>
+            <div style={{fontSize:11,color:C.faint,marginTop:3}}>{s.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* 대분류별 현황 */}
-      <div style={{marginBottom:20,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{padding:"10px 14px",background:C.slateLight,fontSize:12,fontWeight:700,color:C.sub}}>대분류별 집행 현황</div>
-        {catSummary.map(s=>(
-          <div key={s.cat} style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:120,fontSize:13,fontWeight:600}}>{s.cat}</div>
-            <div style={{flex:1}}>
-              <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${Math.min(s.pct,100)}%`,background:s.pct>100?C.red:s.pct>80?C.amber:C.blue,borderRadius:99,transition:"width .3s"}}/>
-              </div>
-            </div>
-            <div style={{width:80,textAlign:"right",fontSize:12,color:C.sub}}>{fmtM(s.actual)}</div>
-            <div style={{width:80,textAlign:"right",fontSize:12,color:C.faint}}>/ {fmtM(s.planned)}</div>
-            <div style={{width:48,textAlign:"right",fontSize:12,fontWeight:700,color:s.pct>100?C.red:C.slate}}>{s.pct}%</div>
-          </div>
+      {/* 탭 전환 */}
+      <div style={{display:"flex",gap:0,marginBottom:16,borderBottom:`2px solid ${C.border}`}}>
+        {[
+          {id:"sales",    label:"📈 매출",  sub:"견적서 기준"},
+          {id:"purchase", label:"📉 매입",  sub:"증빙 기준"},
+        ].map(t=>(
+          <button key={t.id} onClick={()=>setActiveTab(t.id)}
+            style={{padding:"10px 24px",border:"none",background:"none",cursor:"pointer",
+              borderBottom:`3px solid ${activeTab===t.id?C.blue:"transparent"}`,
+              marginBottom:-2,fontWeight:activeTab===t.id?700:500,
+              color:activeTab===t.id?C.blue:C.sub,fontSize:14,transition:"all .15s"}}>
+            {t.label}
+            <span style={{fontSize:10,color:C.faint,marginLeft:6}}>{t.sub}</span>
+          </button>
         ))}
       </div>
 
-      {/* 증빙 목록 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontWeight:700,fontSize:14}}>증빙 목록 ({(b.vouchers||[]).length}건)</div>
-        <Btn primary sm onClick={openAdd}>+ 증빙 추가</Btn>
-      </div>
-
-      {(b.vouchers||[]).length===0
-        ? <div style={{textAlign:"center",padding:40,color:C.faint,fontSize:14,border:`2px dashed ${C.border}`,borderRadius:12}}>증빙을 추가하세요</div>
-        : (
+      {/* ── 매출 탭 ── */}
+      {activeTab==="sales" && (
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:13,color:C.sub}}>견적서의 항목별 금액 (수정은 견적서 탭에서)</div>
+            <div style={{fontSize:13,fontWeight:700,color:C.blue}}>총 공급가액: {fmtM(supply)}</div>
+          </div>
           <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 110px 110px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-              <span>항목명</span><span>구분</span><span>업체명</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 130px 130px 110px",background:C.slateLight,
+              padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+              <span>대분류</span>
+              <span style={{textAlign:"right"}}>견적 금액</span>
+              <span style={{textAlign:"right"}}>매입 집행액</span>
+              <span style={{textAlign:"right"}}>잔여</span>
             </div>
-            {(b.vouchers||[]).map((v,i)=>(
-              <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 110px 110px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
-                  <div style={{fontSize:11,color:C.faint}}>{v.category} › {v.group}</div>
+            {salesRows.length===0
+              ? <div style={{padding:32,textAlign:"center",color:C.faint,fontSize:13}}>견적서에 항목을 추가해주세요</div>
+              : salesRows.map((r,i)=>(
+                <div key={r.cat} style={{display:"grid",gridTemplateColumns:"1fr 130px 130px 110px",
+                  padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",
+                  background:i%2===0?C.white:"#fafbfc"}}>
+                  <span style={{fontWeight:600,fontSize:13}}>{r.cat}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.blue,fontWeight:600}}>{fmt(r.planned)}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.amber}}>{fmt(r.actual)}</span>
+                  <span style={{textAlign:"right",fontSize:13,fontWeight:700,color:r.diff>=0?C.green:C.red}}>
+                    {r.diff>=0?"+":""}{fmt(r.diff)}
+                  </span>
                 </div>
-                <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
-                <span style={{fontSize:13,color:C.sub}}>{v.vendor}</span>
-                <span style={{textAlign:"right",fontWeight:700,fontSize:13}}>{fmt(v.amount)}</span>
-                <span style={{textAlign:"right",fontSize:12,color:C.faint}}>{v.date}</span>
-                <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-                  {(v.files||[]).length>0&&<button onClick={()=>setPreview(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.blue}}>📎</button>}
-                  <button onClick={()=>openEdit(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub}}>✏️</button>
+              ))
+            }
+            {salesRows.length>0 && (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 130px 130px 110px",
+                padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,
+                background:C.slateLight,fontWeight:700,fontSize:13}}>
+                <span>합계</span>
+                <span style={{textAlign:"right",color:C.blue}}>{fmt(supply)}</span>
+                <span style={{textAlign:"right",color:C.amber}}>{fmt(spent)}</span>
+                <span style={{textAlign:"right",color:supply-spent>=0?C.green:C.red}}>{supply-spent>=0?"+":""}{fmt(supply-spent)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 매입 탭 ── */}
+      {activeTab==="purchase" && (
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:13,color:C.sub}}>수기 입력 또는 증빙자료 업로드로 매입 항목 관리</div>
+            <Btn primary sm onClick={openAdd}>+ 매입 추가</Btn>
+          </div>
+          {purchaseRows.length===0
+            ? <div style={{textAlign:"center",padding:40,color:C.faint,fontSize:14,
+                border:`2px dashed ${C.border}`,borderRadius:12}}>
+                <div style={{fontSize:32,marginBottom:8}}>📋</div>
+                <div style={{fontWeight:600,marginBottom:4}}>매입 항목이 없습니다</div>
+                <div style={{fontSize:12}}>+ 매입 추가 버튼을 눌러 증빙을 등록하세요</div>
+              </div>
+            : (
+              <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",
+                  background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+                  <span>항목명</span><span>구분</span><span>업체명</span>
+                  <span style={{textAlign:"right"}}>금액</span>
+                  <span style={{textAlign:"right"}}>날짜</span><span/>
+                </div>
+                {purchaseRows.map((v,i)=>(
+                  <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",
+                    padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",
+                    background:i%2===0?C.white:"#fafbfc"}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
+                      <div style={{fontSize:11,color:C.faint}}>{v.category}{v.group?` › ${v.group}`:""}</div>
+                    </div>
+                    <span style={{fontSize:11,background:C.slateLight,color:C.slate,
+                      padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
+                    <span style={{fontSize:13,color:C.sub}}>{v.vendor}</span>
+                    <span style={{textAlign:"right",fontWeight:700,fontSize:13}}>{fmt(v.amount)}</span>
+                    <span style={{textAlign:"right",fontSize:12,color:C.faint}}>{v.date}</span>
+                    <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                      {(v.files||[]).length>0&&(
+                        <button onClick={()=>setPreview(v)}
+                          style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.blue}}
+                          title="첨부파일 보기">📎</button>
+                      )}
+                      <button onClick={()=>openEdit(v)}
+                        style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub}}>✏️</button>
+                    </div>
+                  </div>
+                ))}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",
+                  padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,
+                  background:C.slateLight,fontWeight:700,fontSize:13}}>
+                  <span>합계</span><span/><span/>
+                  <span style={{textAlign:"right",color:C.amber}}>{fmt(spent)}</span>
+                  <span/><span/>
                 </div>
               </div>
-            ))}
-          </div>
-        )
-      }
-
+            )
+          }
+        </div>
+      )}
       {/* 증빙 모달 */}
       {modal && (
         <Modal title={editV?"증빙 수정":"증빙 추가"} onClose={()=>setModal(false)} wide>
