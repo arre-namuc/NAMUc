@@ -1072,36 +1072,63 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
 // 실행예산서 에디터 (견적서 스타일 수기입력)
 // ═══════════════════════════════════════════════════════════
 function BudgetEditor({ project, onSave }) {
-  const bud  = project.budget2 || { items: [] };
-  const q    = project.quote;
-  const supply = qSupply(q);
+  const q   = project.quote;
+  // 매입 데이터: q.items 구조 그대로, 각 item에 purchasePrice 추가
+  const bud = project.budget2 || { items: [] };
 
-  const patch = fn => onSave({ ...project, budget2: fn(bud) });
-  const nid = () => "b" + Date.now() + Math.random().toString(36).slice(2,6);
+  // q.items 기반으로 매입 데이터 초기화 (견적서 항목과 동기화)
+  const syncedItems = (q.items || []).map(cat => {
+    const existing = (bud.items || []).find(b => b.category === cat.category);
+    return {
+      category: cat.category,
+      groups: (cat.groups || []).map(grp => {
+        const exGrp = existing ? (existing.groups || []).find(g => g.group === grp.group) : null;
+        return {
+          group: grp.group,
+          items: (grp.items || []).map(it => {
+            const exIt = exGrp ? (exGrp.items || []).find(i => i.id === it.id) : null;
+            return {
+              id: it.id,
+              name: it.name || it.desc || '',
+              qty: it.qty || 0,
+              unitPrice: it.unitPrice || 0,
+              purchasePrice: exIt ? (exIt.purchasePrice || 0) : 0,
+              purchaseNote: exIt ? (exIt.purchaseNote || '') : '',
+            };
+          }),
+        };
+      }),
+    };
+  });
 
-  const addCat    = ()      => patch(b=>({...b,items:[...(b.items||[]),{id:nid(),category:"새 대분류",groups:[]}]}));
-  const renameCat = (ci,v)  => patch(b=>({...b,items:b.items.map((c,i)=>i===ci?{...c,category:v}:c)}));
-  const removeCat = (ci)    => patch(b=>({...b,items:b.items.filter((_,i)=>i!==ci)}));
-  const addGrp    = (ci)    => patch(b=>({...b,items:b.items.map((c,i)=>i!==ci?c:{...c,groups:[...(c.groups||[]),{id:nid(),group:"새 중분류",items:[]}]})}));
-  const renameGrp = (ci,gi,v)=> patch(b=>({...b,items:b.items.map((c,i)=>i!==ci?c:{...c,groups:c.groups.map((g,j)=>j!==gi?g:{...g,group:v})})}));
-  const removeGrp = (ci,gi) => patch(b=>({...b,items:b.items.map((c,i)=>i!==ci?c:{...c,groups:c.groups.filter((_,j)=>j!==gi)})}));
-  const addItem   = (ci,gi) => patch(b=>({...b,items:b.items.map((c,i)=>i!==ci?c:{...c,groups:c.groups.map((g,j)=>j!==gi?g:{...g,items:[...(g.items||[]),{id:nid(),name:"새 항목",qty:1,unitPrice:0,note:""}]})})}));
-  const patchItem = (ci,gi,id,k,v)=> patch(b=>({...b,items:b.items.map((c,i)=>i!==ci?c:{...c,groups:c.groups.map((g,j)=>j!==gi?g:{...g,items:g.items.map(it=>it.id!==id?it:{...it,[k]:v})})})}));
-  const removeItem= (ci,gi,id)=> patch(b=>({...b,items:b.items.map((c,i)=>i!==ci?c:{...c,groups:c.groups.map((g,j)=>j!==gi?g:{...g,items:g.items.filter(it=>it.id!==id)})})}));
+  const patch = (ci, gi, id, val) => {
+    const updated = syncedItems.map((cat, i) => i !== ci ? cat : {
+      ...cat,
+      groups: cat.groups.map((grp, j) => j !== gi ? grp : {
+        ...grp,
+        items: grp.items.map(it => it.id !== id ? it : { ...it, ...val }),
+      }),
+    });
+    onSave({ ...project, budget2: { items: updated } });
+  };
 
-  const catAmt2 = cat => (cat.groups||[]).reduce((s,g)=>s+(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
-  const totalBudget = (bud.items||[]).reduce((s,c)=>s+catAmt2(c),0);
-  const profit = supply - totalBudget;
-  const margin = supply ? Math.round(profit/supply*100) : 0;
+  // 합계 계산
+  const salesTotal = (q.items || []).reduce((s, cat) => s + catAmt(cat), 0);
+  const purchaseTotal = syncedItems.reduce((s, cat) =>
+    s + (cat.groups || []).reduce((s2, grp) =>
+      s2 + (grp.items || []).reduce((s3, it) => s3 + (it.purchasePrice || 0), 0), 0), 0);
+  const profit = salesTotal - purchaseTotal;
+  const margin = salesTotal ? Math.round(profit / salesTotal * 100) : 0;
 
   return (
     <div>
+      {/* 요약 카드 */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
         {[
-          {label:"매출 (공급가액)", val:supply,      color:C.blue,  sub:"견적서 기준"},
-          {label:"실행예산 합계",   val:totalBudget, color:C.amber, sub:`${(bud.items||[]).length}개 대분류`},
-          {label:"예상 잔여",       val:profit,      color:profit>=0?C.green:C.red, sub:"매출 - 실행예산"},
-          {label:"예상 이익률",     val:margin,      color:margin>=0?C.green:C.red, sub:`순이익 ${fmtM(profit)}`, isPct:true},
+          {label:"매출 (공급가액)",  val:salesTotal,    color:C.blue,  sub:"견적서 기준"},
+          {label:"매입 (실행예산)",  val:purchaseTotal, color:C.amber, sub:"수기 입력 기준"},
+          {label:"예상 잔여",        val:profit,        color:profit>=0?C.green:C.red, sub:"매출 - 매입"},
+          {label:"예상 이익률",      val:margin,        color:margin>=0?C.green:C.red, sub:`순이익 ${fmtM(profit)}`, isPct:true},
         ].map(s=>(
           <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
             <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
@@ -1111,81 +1138,121 @@ function BudgetEditor({ project, onSave }) {
         ))}
       </div>
 
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontSize:13,fontWeight:700,color:C.dark}}>실행예산 항목</div>
-        <Btn primary sm onClick={addCat}>+ 대분류 추가</Btn>
+      {/* 헤더 */}
+      <div style={{display:"grid",gridTemplateColumns:"200px 1fr 16px 1fr",gap:0,marginBottom:0}}>
+        <div style={{padding:"8px 12px",background:C.slateLight,borderRadius:"8px 0 0 0",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.sub}}/>
+        <div style={{padding:"8px 12px",background:"#eff6ff",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.blue,textAlign:"center"}}>
+          📈 매출 (견적서 기준 · 읽기전용)
+        </div>
+        <div style={{background:C.slateLight,border:`1px solid ${C.border}`,borderLeft:"none",borderRight:"none"}}/>
+        <div style={{padding:"8px 12px",background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:"0 8px 0 0",fontSize:12,fontWeight:700,color:C.amber,textAlign:"center"}}>
+          📉 매입 (수기 입력)
+        </div>
       </div>
 
-      {(bud.items||[]).length===0 ? (
-        <div style={{textAlign:"center",padding:48,color:C.faint,border:`2px dashed ${C.border}`,borderRadius:12}}>
+      {/* 항목 없을 때 */}
+      {(q.items||[]).length===0 ? (
+        <div style={{textAlign:"center",padding:48,color:C.faint,border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px"}}>
           <div style={{fontSize:32,marginBottom:8}}>📋</div>
-          <div style={{fontWeight:600,marginBottom:4}}>실행예산 항목이 없습니다</div>
-          <div style={{fontSize:12,marginBottom:16}}>대분류 추가 버튼을 눌러 시작하세요</div>
-          <Btn primary onClick={addCat}>+ 대분류 추가</Btn>
+          <div style={{fontWeight:600,marginBottom:4}}>견적서 항목이 없습니다</div>
+          <div style={{fontSize:12}}>먼저 견적서 탭에서 항목을 추가하면 자동으로 연동됩니다</div>
         </div>
       ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {(bud.items||[]).map((cat,ci)=>{
-            const catTotal = catAmt2(cat);
+        <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+          {syncedItems.map((cat, ci) => {
+            const catSales    = (q.items[ci] ? catAmt(q.items[ci]) : 0);
+            const catPurchase = (cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
             return (
-              <div key={cat.id} style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
-                  <input value={cat.category} onChange={e=>renameCat(ci,e.target.value)}
-                    style={{flex:1,border:"none",background:"transparent",fontWeight:700,fontSize:14,color:C.dark,outline:"none"}}/>
-                  <span style={{fontSize:13,fontWeight:700,color:C.blue,minWidth:80,textAlign:"right"}}>{fmtM(catTotal)}</span>
-                  <button onClick={()=>addGrp(ci)} style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",color:C.sub,whiteSpace:"nowrap"}}>+ 중분류</button>
-                  <button onClick={()=>removeCat(ci)} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:16}}>×</button>
+              <div key={cat.category}>
+                {/* 대분류 행 */}
+                <div style={{display:"grid",gridTemplateColumns:"200px 1fr 16px 1fr",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.dark,borderRight:`1px solid ${C.border}`}}>
+                    {cat.category}
+                  </div>
+                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>
+                    {fmtM(catSales)}
+                  </div>
+                  <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.amber,textAlign:"right"}}>
+                    {fmtM(catPurchase)}
+                  </div>
                 </div>
-                {(cat.groups||[]).map((grp,gi)=>{
-                  const grpTotal=(grp.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
+
+                {/* 중분류 + 항목 */}
+                {(cat.groups||[]).map((grp, gi) => {
+                  const grpSales    = (q.items[ci]?.groups[gi] ? (q.items[ci].groups[gi].items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0) : 0);
+                  const grpPurchase = (grp.items||[]).reduce((s,it)=>s+(it.purchasePrice||0),0);
                   return (
-                    <div key={grp.id}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px 8px 28px",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
-                        <input value={grp.group} onChange={e=>renameGrp(ci,gi,e.target.value)}
-                          style={{flex:1,border:"none",background:"transparent",fontWeight:600,fontSize:13,color:C.slate,outline:"none"}}/>
-                        <span style={{fontSize:12,fontWeight:600,color:C.sub,minWidth:72,textAlign:"right"}}>{fmtM(grpTotal)}</span>
-                        <button onClick={()=>addItem(ci,gi)} style={{fontSize:11,padding:"2px 7px",borderRadius:6,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",color:C.sub,whiteSpace:"nowrap"}}>+ 항목</button>
-                        <button onClick={()=>removeGrp(ci,gi)} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:15}}>×</button>
-                      </div>
-                      {(grp.items||[]).length>0&&(
-                        <div>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 110px 36px",padding:"6px 14px 6px 42px",fontSize:11,fontWeight:700,color:C.faint,gap:8,background:C.white,borderBottom:`1px solid ${C.border}`}}>
-                            <span>항목명</span><span style={{textAlign:"center"}}>수량</span><span style={{textAlign:"right"}}>단가</span><span style={{textAlign:"right"}}>금액</span><span/>
-                          </div>
-                          {(grp.items||[]).map((it,idx)=>{
-                            const amt=(it.qty||0)*(it.unitPrice||0);
-                            return (
-                              <div key={it.id} style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 110px 36px",padding:"7px 14px 7px 42px",gap:8,alignItems:"center",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
-                                <input value={it.name||""} onChange={e=>patchItem(ci,gi,it.id,"name",e.target.value)}
-                                  style={{border:"none",background:"transparent",fontSize:13,color:C.dark,outline:"none",width:"100%"}} placeholder="항목명"/>
-                                <input value={it.qty||""} type="number" onChange={e=>patchItem(ci,gi,it.id,"qty",Number(e.target.value))}
-                                  style={{border:"none",background:"transparent",fontSize:13,textAlign:"center",color:C.dark,outline:"none",width:"100%"}}/>
-                                <input value={it.unitPrice||""} type="number" onChange={e=>patchItem(ci,gi,it.id,"unitPrice",Number(e.target.value))}
-                                  style={{border:"none",background:"transparent",fontSize:13,textAlign:"right",color:C.dark,outline:"none",width:"100%"}} placeholder="0"/>
-                                <span style={{textAlign:"right",fontWeight:700,fontSize:13,color:C.blue}}>{fmt(amt)}</span>
-                                <button onClick={()=>removeItem(ci,gi,it.id)} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14}}>×</button>
-                              </div>
-                            );
-                          })}
+                    <div key={grp.group}>
+                      {/* 중분류 행 */}
+                      <div style={{display:"grid",gridTemplateColumns:"200px 1fr 16px 1fr",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
+                        <div style={{padding:"7px 12px 7px 20px",fontWeight:600,fontSize:12,color:C.slate,borderRight:`1px solid ${C.border}`}}>
+                          {grp.group}
                         </div>
-                      )}
+                        <div style={{padding:"7px 12px",fontSize:12,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>
+                          {fmtM(grpSales)}
+                        </div>
+                        <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+                        <div style={{padding:"7px 12px",fontSize:12,color:C.amber,textAlign:"right"}}>
+                          {fmtM(grpPurchase)}
+                        </div>
+                      </div>
+
+                      {/* 소항목 행 */}
+                      {(grp.items||[]).map((it, idx) => {
+                        const qIt = q.items[ci]?.groups[gi]?.items[idx];
+                        const salesAmt = qIt ? (qIt.qty||0)*(qIt.unitPrice||0) : 0;
+                        return (
+                          <div key={it.id} style={{display:"grid",gridTemplateColumns:"200px 1fr 16px 1fr",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
+                            {/* 항목명 */}
+                            <div style={{padding:"8px 12px 8px 32px",fontSize:12,color:C.dark,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>
+                              {it.name}
+                            </div>
+                            {/* 매출 (읽기전용) */}
+                            <div style={{padding:"8px 12px",borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
+                              <span style={{fontSize:11,color:C.faint}}>{qIt?.qty||0}개 × {fmt(qIt?.unitPrice||0)}</span>
+                              <span style={{fontSize:13,fontWeight:600,color:C.blue,minWidth:80,textAlign:"right"}}>{fmt(salesAmt)}</span>
+                            </div>
+                            {/* 구분선 */}
+                            <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+                            {/* 매입 (수기 입력) */}
+                            <div style={{padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
+                              <input
+                                type="number"
+                                value={it.purchasePrice||""}
+                                onChange={e=>patch(ci,gi,it.id,{purchasePrice:Number(e.target.value)||0})}
+                                placeholder="금액 입력"
+                                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:13,textAlign:"right",outline:"none",color:C.dark,background:C.white}}
+                              />
+                              <input
+                                value={it.purchaseNote||""}
+                                onChange={e=>patch(ci,gi,it.id,{purchaseNote:e.target.value})}
+                                placeholder="메모"
+                                style={{width:80,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",color:C.sub,background:C.white}}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
-                {(cat.groups||[]).length===0&&(
-                  <div style={{padding:"12px 28px",fontSize:12,color:C.faint}}>중분류를 추가하세요</div>
-                )}
               </div>
             );
           })}
-          <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:16,padding:"12px 16px",background:C.slateLight,borderRadius:10,border:`1px solid ${C.border}`,fontWeight:700}}>
-            <span style={{fontSize:13,color:C.sub}}>실행예산 합계</span>
-            <span style={{fontSize:18,color:C.amber}}>{fmtM(totalBudget)}</span>
-            <span style={{fontSize:13,color:C.faint}}>/ 매출</span>
-            <span style={{fontSize:18,color:C.blue}}>{fmtM(supply)}</span>
-            <span style={{fontSize:13,fontWeight:700,color:profit>=0?C.green:C.red}}>
-              {profit>=0?"▲":"▼"} {fmtM(Math.abs(profit))} ({margin}%)
-            </span>
+
+          {/* 합계 행 */}
+          <div style={{display:"grid",gridTemplateColumns:"200px 1fr 16px 1fr",background:C.slateLight,borderTop:`2px solid ${C.border}`,fontWeight:700}}>
+            <div style={{padding:"10px 12px",fontSize:13,borderRight:`1px solid ${C.border}`}}>합계</div>
+            <div style={{padding:"10px 12px",fontSize:14,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(salesTotal)}</div>
+            <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+            <div style={{padding:"10px 12px",fontSize:14,color:C.amber,textAlign:"right",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:12}}>
+              <span>{fmtM(purchaseTotal)}</span>
+              <span style={{fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                background:profit>=0?"#dcfce7":"#fee2e2",color:profit>=0?C.green:C.red}}>
+                {profit>=0?"▲":"▼"} {margin}%
+              </span>
+            </div>
           </div>
         </div>
       )}
