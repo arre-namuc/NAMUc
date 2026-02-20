@@ -2217,6 +2217,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const [mentionIdx, setMentionIdx] = useState(-1); // 키보드 선택 인덱스
   const commentRef = useRef(null);
   const composingRef = useRef(false); // 한글 IME 조합 상태 추적
+  const mentionOpenRef = useRef(false); // mentionSuggest 열림 여부 즉시 추적용
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
@@ -2596,6 +2597,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                           const cur = commentText;
                           const atIdx = cur.lastIndexOf("@");
                           setCommentText(cur.slice(0,atIdx)+"@"+a.name+" ");
+                          mentionOpenRef.current = false;
                           setMentionSuggest([]);
                           setMentionIdx(-1);
                           setTimeout(()=>commentRef.current?.focus(),0);
@@ -2620,28 +2622,32 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                   onChange={e=>{
                     const val = e.target.value;
                     setCommentText(val);
-                    // 커서 위치 기준으로 @멘션 감지 (이미 완성된 @이름 뒤에서는 무시)
                     const cursor = e.target.selectionStart ?? val.length;
                     const textBeforeCursor = val.slice(0, cursor);
                     const atIdx = textBeforeCursor.lastIndexOf("@");
+                    let opened = false;
                     if(atIdx!==-1 && (atIdx===0||textBeforeCursor[atIdx-1]===" "||textBeforeCursor[atIdx-1]==="\n")) {
                       const fragment = textBeforeCursor.slice(atIdx+1);
-                      // 공백/줄바꿈이 없어야 아직 입력 중인 멘션
                       if(!/[\s\n]/.test(fragment)) {
                         const suggestions = accounts.filter(a=>a.name.toLowerCase().includes(fragment.toLowerCase())&&a.name!==user.name);
-                        setMentionSuggest(suggestions.slice(0,5));
-                        setMentionIdx(-1);
-                        return;
+                        if(suggestions.length>0) {
+                          setMentionSuggest(suggestions.slice(0,5));
+                          setMentionIdx(-1);
+                          opened = true;
+                        }
                       }
                     }
-                    setMentionSuggest([]);
-                    setMentionIdx(-1);
+                    if(!opened) {
+                      setMentionSuggest([]);
+                      setMentionIdx(-1);
+                    }
+                    mentionOpenRef.current = opened;
                   }}
                   onCompositionStart={()=>{ composingRef.current=true; }}
                   onCompositionEnd={e=>{ composingRef.current=false; setCommentText(e.target.value); }}
                   onKeyDown={e=>{
                     if(composingRef.current) return;
-                    if(mentionSuggest.length>0) {
+                    if(mentionOpenRef.current) {
                       if(e.key==="ArrowDown"){ e.preventDefault(); setMentionIdx(i=>Math.min(i+1,mentionSuggest.length-1)); return; }
                       if(e.key==="ArrowUp"){ e.preventDefault(); setMentionIdx(i=>Math.max(i-1,0)); return; }
                       if(e.key==="Enter"){
@@ -2651,12 +2657,19 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                           const cur = commentText;
                           const atIdx = cur.lastIndexOf("@");
                           setCommentText(cur.slice(0,atIdx)+"@"+target.name+" ");
-                          setMentionSuggest([]);
-                          setMentionIdx(-1);
                         }
+                        mentionOpenRef.current = false;
+                        setMentionSuggest([]);
+                        setMentionIdx(-1);
                         return;
                       }
-                      if(e.key==="Escape"){ e.preventDefault(); setMentionSuggest([]); setMentionIdx(-1); return; }
+                      if(e.key==="Escape"){
+                        e.preventDefault();
+                        mentionOpenRef.current = false;
+                        setMentionSuggest([]);
+                        setMentionIdx(-1);
+                        return;
+                      }
                     }
                     if(e.key==="Enter"&&e.shiftKey){ e.preventDefault(); addComment(detail); }
                   }}
