@@ -2621,9 +2621,15 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                       setMentionSuggest([]);
                     }
                   }}
+                  onCompositionEnd={e=>{ setCommentText(e.target.value); }}
                   onKeyDown={e=>{
-                    if(e.key==="Escape") setMentionSuggest([]);
-                    if(e.key==="Enter"&&!e.shiftKey&&mentionSuggest.length===0){e.preventDefault();addComment(detail);}
+                    if(e.nativeEvent?.isComposing || e.isComposing) return;
+                    if(e.key==="Escape") { e.preventDefault(); setMentionSuggest([]); }
+                    if(e.key==="Enter"&&!e.shiftKey) {
+                      if(mentionSuggest.length>0) { e.preventDefault(); return; }
+                      e.preventDefault();
+                      addComment(detail);
+                    }
                   }}
                   placeholder="댓글을 입력하세요... (@이름 으로 멘션, Enter 전송)"
                   style={{...inp,resize:"none",minHeight:44,paddingRight:70,lineHeight:1.5}}/>
@@ -3938,40 +3944,70 @@ return (
           />
         ) : (
           <>
-            {/* 프로젝트 정보 바 */}
-            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,marginBottom:20,overflow:"hidden",borderTop:`3px solid ${proj.color}`}}>
-              {/* 상단 타이틀 행 */}
-              <div style={{padding:"14px 20px 10px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`}}>
+            {/* 프로젝트 정보 카드 */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,marginBottom:20,overflow:"hidden"}}>
+              {/* 컬러 액센트 바 */}
+              <div style={{height:4,background:proj.color,width:"100%"}}/>
+              {/* 상단: 프로젝트명 + 태그 + 스테이지 */}
+              <div style={{padding:"14px 20px 12px",display:"flex",alignItems:"flex-start",gap:12}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:18,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{proj.name}</div>
-                  <div style={{fontSize:12,color:C.sub,marginTop:3,display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {proj.client&&<span style={{background:C.slateLight,borderRadius:99,padding:"1px 8px"}}>{proj.client}</span>}
-                    {proj.agency&&<span style={{background:C.slateLight,borderRadius:99,padding:"1px 8px"}}>{proj.agency}</span>}
-                    {proj.format&&<span style={{background:C.blueLight,color:C.blue,borderRadius:99,padding:"1px 8px",fontWeight:600}}>{proj.format}</span>}
+                  <div style={{fontWeight:800,fontSize:19,color:C.dark,lineHeight:1.3}}>{proj.name}</div>
+                  <div style={{marginTop:6,display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                    {proj.client&&<span style={{background:C.slateLight,borderRadius:6,padding:"3px 9px",fontSize:12,fontWeight:600,color:C.dark}}>{proj.client}</span>}
+                    {proj.agency&&<span style={{background:C.slateLight,borderRadius:6,padding:"3px 9px",fontSize:12,color:C.sub}}>{proj.agency}</span>}
+                    {proj.format&&<span style={{background:proj.color+"18",borderRadius:6,padding:"3px 9px",fontSize:12,color:proj.color,fontWeight:700}}>{proj.format}</span>}
                   </div>
                 </div>
                 <select value={proj.stage} onChange={e=>patchProj(p=>({...p,stage:e.target.value}))}
-                  style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:12,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700,flexShrink:0}}>
+                  style={{padding:"7px 12px",borderRadius:8,border:`1.5px solid ${STAGES[proj.stage]?.color||C.border}`,fontSize:13,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700,flexShrink:0}}>
                   {stageKeys.map(s=><option key={s}>{s}</option>)}
                 </select>
               </div>
-              {/* 하단 메타 정보 그리드 */}
-              <div style={{padding:"10px 20px",display:"flex",gap:0,flexWrap:"wrap"}}>
-                {[
-                  proj.director   && {icon:"🎬", label:"감독",   value: proj.director},
-                  proj.epd        && {icon:"🎯", label:"EPD",    value: proj.epd},
-                  proj.assistant  && {icon:"🎥", label:"조감독", value: proj.assistant},
-                  proj.pd         && {icon:"📋", label:"PD",     value: proj.pd},
-                  proj.contactName && {icon:"👤", label:"담당자", value: proj.contactName+(proj.contactPhone ? ` · ${proj.contactPhone}` : "")},
-                  proj.startDate  && {icon:"🗓", label:"시작",   value: proj.startDate},
-                  proj.due        && {icon:"📅", label:"납품",   value: proj.due},
-                ].filter(Boolean).map((item,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 14px 4px 0",fontSize:12,borderRight:`1px solid ${C.border}`,marginRight:14,marginBottom:4}}>
-                    <span style={{fontSize:14}}>{item.icon}</span>
-                    <span style={{color:C.faint,fontWeight:600,marginRight:2}}>{item.label}</span>
-                    <span style={{color:C.dark,fontWeight:500}}>{item.value}</span>
+              {/* 구분선 */}
+              <div style={{height:1,background:C.border}}/>
+              {/* 하단: 스탭 + 일정 정보 */}
+              <div style={{padding:"10px 20px 12px",display:"flex",gap:4,flexWrap:"wrap",alignItems:"stretch"}}>
+                {/* 스탭 정보 */}
+                <div style={{display:"flex",gap:0,flexWrap:"wrap",flex:1}}>
+                  {[
+                    proj.director   && {icon:"🎬", label:"감독",   value:proj.director},
+                    proj.epd        && {icon:"🎯", label:"EPD",    value:proj.epd},
+                    proj.assistant  && {icon:"🎥", label:"조감독", value:proj.assistant},
+                    proj.pd         && {icon:"📋", label:"PD",     value:proj.pd},
+                    proj.contactName && {icon:"👤", label:"담당자", value:proj.contactName, sub:proj.contactPhone},
+                  ].filter(Boolean).map((item,i,arr)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 16px 4px 0",marginRight:4,
+                      borderRight: i<arr.length-1 ? `1px solid ${C.border}` : "none"}}>
+                      <div style={{width:30,height:30,borderRadius:8,background:C.slateLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{item.icon}</div>
+                      <div>
+                        <div style={{fontSize:10,color:C.faint,lineHeight:1,marginBottom:2}}>{item.label}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.dark,lineHeight:1.2}}>{item.value}</div>
+                        {item.sub&&<div style={{fontSize:11,color:C.sub,marginTop:1}}>{item.sub}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* 일정 정보 */}
+                {(proj.startDate||proj.due)&&(
+                  <div style={{display:"flex",gap:8,alignItems:"center",borderLeft:`1px solid ${C.border}`,paddingLeft:16,flexShrink:0}}>
+                    {proj.startDate&&(
+                      <div style={{background:C.slateLight,borderRadius:10,padding:"6px 12px",textAlign:"center"}}>
+                        <div style={{fontSize:10,color:C.faint,marginBottom:2}}>시작일</div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.dark}}>{proj.startDate}</div>
+                      </div>
+                    )}
+                    {proj.startDate&&proj.due&&<div style={{color:C.faint,fontSize:16}}>→</div>}
+                    {proj.due&&(()=>{
+                      const isOver = proj.due < new Date().toISOString().slice(0,10);
+                      return (
+                        <div style={{background:isOver?"#fef2f2":C.blueLight,borderRadius:10,padding:"6px 12px",textAlign:"center",border:`1px solid ${isOver?"#fca5a5":C.blue+"44"}`}}>
+                          <div style={{fontSize:10,color:isOver?"#ef4444":C.blue,marginBottom:2,fontWeight:600}}>납품일</div>
+                          <div style={{fontSize:13,fontWeight:800,color:isOver?"#dc2626":C.blue}}>{proj.due}</div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
