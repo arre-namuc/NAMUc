@@ -1347,14 +1347,18 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 
                         {/* 마감일 텍스트 표시 */}
                         <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
-                          fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap"}}>
-                          {t.due ? t.due.slice(5).replace("-","/") : <span style={{color:"#cbd5e1"}}>-</span>}
+                          fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",lineHeight:1.3}}>
+                          {t.due
+                            ? <>{t.due.slice(5,10).replace("-","/")}
+                                {t.due.length>10&&<div style={{fontSize:9,color:"#94a3b8"}}>{t.due.slice(11,16)}</div>}
+                              </>
+                            : <span style={{color:"#cbd5e1"}}>-</span>}
                         </div>
 
                         {/* 달력 아이콘 버튼 — date input을 숨겨서 트리거 */}
                         <div style={{position:"relative",width:24,height:24}}>
                           <span style={{fontSize:14,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
-                          <input type="date" value={t.due||""}
+                          <input type="datetime-local" value={t.due||""}
                             onChange={e=>onUpdateTask({...t,due:e.target.value})}
                             onClick={e=>e.stopPropagation()}
                             style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
@@ -5493,7 +5497,7 @@ return (
             </Field>
 
             <Field label="마감일" half>
-              <input style={{...inp, paddingRight:36}} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
+              <input style={{...inp}} type="datetime-local" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
             </Field>
             <Field label="설명">
               <textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/>
@@ -5517,6 +5521,68 @@ return (
               </div>
             </Field>
           </div>
+          {/* 댓글 섹션 - 기존 태스크만 */}
+          {taskModal.id && (
+            <div style={{borderTop:"1px solid #f1f5f9",paddingTop:14,marginTop:8}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:10}}>
+                💬 댓글 {(taskModal.comments||[]).length>0?`(${(taskModal.comments||[]).length})`:""}
+              </div>
+              {(taskModal.comments||[]).length===0
+                ? <div style={{fontSize:12,color:"#94a3b8",padding:"10px 0",textAlign:"center"}}>아직 댓글이 없습니다</div>
+                : <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                    {(taskModal.comments||[]).map(c=>(
+                      <div key={c.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <Avatar name={c.author} size={28}/>
+                        <div style={{flex:1,background:"#f8fafc",borderRadius:"0 10px 10px 10px",
+                          padding:"8px 12px",border:"1px solid #e2e8f0"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{c.author}</span>
+                            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>
+                                {new Date(c.createdAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                              </span>
+                              {(c.author===user.name||user.role==="PD"||user.role==="대표")&&(
+                                <button
+                                  onClick={()=>{
+                                    const updated={...taskModal,comments:(taskModal.comments||[]).filter(x=>x.id!==c.id)};
+                                    setTaskModal(updated);
+                                    updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
+                                  }}
+                                  style={{fontSize:10,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",padding:"0 2px"}}>✕</button>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{fontSize:13,color:"#1e293b",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                            {c.text.split(/(@[^\s@]+)/g).map((part,i)=>
+                              part.startsWith("@")
+                                ? <span key={i} style={{color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:4,padding:"0 3px"}}>{part}</span>
+                                : part
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+              }
+              {/* 댓글 입력 */}
+              <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                <Avatar name={user.name} size={28} style={{marginTop:4}}/>
+                <div style={{flex:1}}>
+                  <CommentInput
+                    accounts={accounts}
+                    user={user}
+                    onSubmit={(text)=>{
+                      const comment={id:"c"+Date.now(),author:user.name,text,createdAt:new Date().toISOString()};
+                      const updated={...taskModal,comments:[...(taskModal.comments||[]),comment]};
+                      setTaskModal(updated);
+                      updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
             {taskModal.id&&<Btn danger sm onClick={()=>deleteTask(taskModal.id)}>삭제</Btn>}
             <div style={{flex:1}}/>
