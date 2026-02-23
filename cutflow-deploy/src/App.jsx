@@ -1474,7 +1474,7 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
               style={{width:18,height:18,accentColor:"#16a34a",cursor:"pointer",flexShrink:0}}/>
             {/* 태스크명 인라인 편집 */}
             <input value={task.title||""} onChange={e=>set({title:e.target.value})}
-              style={{flex:1,fontSize:16,fontWeight:700,color:"#1e293b",border:"none",
+              style={{flex:1,fontSize:16,fontWeight:700,border:"none",
                 outline:"none",background:"transparent",fontFamily:"inherit",
                 textDecoration:task.status==="완료"?"line-through":"none",
                 color:task.status==="완료"?"#94a3b8":"#1e293b"}}/>
@@ -3288,8 +3288,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
             return (
               <div key={i} onClick={()=>openAdd(dateStr)}
                 style={{minHeight:100,background:isToday?"#eff6ff":"transparent",borderRadius:8,padding:"6px 4px",cursor:canEdit?"pointer":"default",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
-                <div style={{fontSize:13,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:3,textAlign:"center",
-                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 3px",fontSize:12}:{})}}>
+                <div style={{fontWeight:isToday?800:400,marginBottom:3,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 3px",fontSize:12}:{fontSize:13,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark})}}>
                   {d}
                 </div>
                 {dayEvs.slice(0,3).map(ev=>(
@@ -4219,7 +4219,7 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
                 {PD_ST.map(s=>(
                   <button key={s.id} onClick={()=>setFf(v=>({...v,pdStatus:s.id}))}
                     style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:ff.pdStatus===s.id?800:400,
-                      border:`2px solid ${ff.pdStatus===s.id?s.color:C.border}`,
+                      outline:`2px solid ${ff.pdStatus===s.id?s.color:"transparent"}`,
                       background:ff.pdStatus===s.id?s.bg:"#fff",color:ff.pdStatus===s.id?s.color:C.sub}}>
                     {s.icon}<br/>{s.label}
                   </button>
@@ -4231,7 +4231,7 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
                 {TASK_ST.map(s=>(
                   <button key={s.id} onClick={()=>setFf(v=>({...v,taskStatus:s.id}))}
                     style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:ff.taskStatus===s.id?800:400,
-                      border:`2px solid ${ff.taskStatus===s.id?s.color:C.border}`,
+                      outline:`2px solid ${ff.taskStatus===s.id?s.color:"transparent"}`,
                       background:ff.taskStatus===s.id?s.bg:"#fff",color:ff.taskStatus===s.id?s.color:C.sub}}>
                     {s.icon}<br/>{s.label}
                   </button>
@@ -4715,8 +4715,8 @@ function MasterCalendar({ projects, user, onCalName }) {
             const dow     = (firstDay+d-1)%7;
             return (
               <div key={i} style={{minHeight:68,background:isToday?"#eff6ff":"transparent",borderRadius:6,padding:"3px 2px",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
-                <div style={{fontSize:11,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:2,textAlign:"center",
-                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{})}}>
+                <div style={{fontWeight:isToday?800:400,marginBottom:2,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{fontSize:11,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark})}}>
                   {d}
                 </div>
                 {dayEvs.slice(0,3).map(ev=>(
