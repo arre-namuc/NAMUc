@@ -4978,6 +4978,11 @@ function App() {
   const [editProjModal, setEditProjModal] = useState(false);
   const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"TVC",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
 
+  const [docTab,       setDocTab]       = useState("tasks");
+  const [viewMode,     setViewMode]     = useState("phase");
+  const [taskModal,    setTaskModal]    = useState(null);
+  const [tf,           setTf]           = useState({});
+
   useEffect(() => {
     if (!isConfigured) return;
     const u1 = subscribeProjects(fb => { if(fb.length>0){setProjects(fb);setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);} });
@@ -4985,11 +4990,6 @@ function App() {
     const u3 = subscribeMembers(m => { if(m.length>0) setAccounts(m); });
     return () => { u1(); u2(); u3(); };
   }, []);
-  const [docTab,       setDocTab]       = useState("tasks");   // tasks | feedback | calendar | ...
-  const [viewMode,     setViewMode]     = useState("phase");   // phase | flow | list | kanban
-  const [taskModal,    setTaskModal]    = useState(null);
-  const [tf,           setTf]           = useState({});
-
   // D-day 알림 자동 생성
   useEffect(() => {
     const today = new Date(); today.setHours(0,0,0,0);
