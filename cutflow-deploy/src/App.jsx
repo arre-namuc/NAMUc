@@ -1104,182 +1104,194 @@ function LoginScreen({ onLogin, accounts }) {
 // 칸반 컬럼
 // ═══════════════════════════════════════════════════════════
 // 단계(페이즈)별 뷰 - 22단계 워크플로우
-function PhaseView({ tasks, template, user, accounts, onEdit, onUpdateTask }) {
+function PhaseFeedbackBadge({ feedbacks, phaseId }) {
+  const phaseFbs = (feedbacks||[]).filter(fb=>fb.phaseId===phaseId);
+  const openFbs  = phaseFbs.filter(fb=>fb.taskStatus!=="done");
+  if(phaseFbs.length===0) return null;
+  if(openFbs.length>0) return (
+    <span style={{fontSize:9,padding:"2px 7px",borderRadius:99,
+      background:"#fef3c7",color:"#d97706",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+      💬 피드백 {openFbs.length}
+    </span>
+  );
+  return (
+    <span style={{fontSize:9,padding:"2px 7px",borderRadius:99,
+      background:"#f0fdf4",color:"#16a34a",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+      완료
+    </span>
+  );
+}
+
+function PhaseFeedbacks({ feedbacks, phaseId }) {
+  const phaseFbs = (feedbacks||[]).filter(fb=>fb.phaseId===phaseId);
+  if(phaseFbs.length===0) return null;
+  return (
+    <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:6,paddingLeft:4}}>
+        💬 연결된 피드백 ({phaseFbs.length})
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {phaseFbs.map(fb=>{
+          const isDone = fb.taskStatus==="done";
+          return (
+            <div key={fb.id} style={{display:"flex",alignItems:"flex-start",gap:8,
+              padding:"7px 10px",borderRadius:8,
+              background:isDone?"#f0fdf4":"#fffbeb",
+              border:"1px solid " + (isDone?"#86efac":"#fcd34d")}}>
+              <span style={{fontSize:11,flexShrink:0,marginTop:1}}>{isDone?"✅":"💬"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600,color:"#1e293b",
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {fb.title}
+                </div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>
+                  {fb.receivedDate}
+                  {(fb.assignees||[]).length>0 ? " · " + fb.assignees.join(", ") : ""}
+                </div>
+              </div>
+              <span style={{fontSize:9,padding:"2px 6px",borderRadius:99,flexShrink:0,
+                background:isDone?"#dcfce7":"#fef9c3",
+                color:isDone?"#16a34a":"#ca8a04",fontWeight:700}}>
+                {isDone?"완료":"처리중"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PhaseRoleDisplay({ projectRoles, phase }) {
+  const pr = (projectRoles||{})[phase.id] || {};
+  const owner  = pr.owner  || phase.owner;
+  const driver = pr.driver || phase.driver.join(", ");
+  return (
+    <>
+      <span style={{fontSize:10,color:"#94a3b8"}}>
+        주도: <strong style={{color:"#d97706"}}>{owner}</strong>
+      </span>
+      <span style={{fontSize:10,color:"#94a3b8",margin:"0 4px"}}>|</span>
+      <span style={{fontSize:10,color:"#94a3b8"}}>
+        실행: <strong style={{color:"#2563eb"}}>{driver}</strong>
+      </span>
+    </>
+  );
+}
+
+
+function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onUpdatePhaseRole, projectRoles }) {
   const [expandedPhase, setExpandedPhase] = useState(null);
+  const [roleModal, setRoleModal] = useState(null);
+  const [roleForm, setRoleForm] = useState({owner:"", driver:""});
   const today = todayStr();
+  const openRoleEdit = (e, phase) => { e.stopPropagation(); setRoleModal(phase); };
+  const saveRole = () => { if(onUpdatePhaseRole) onUpdatePhaseRole(roleModal.id, roleForm); setRoleModal(null); };
+  const memberNames = (accounts||[]).map(a=>a.name);
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+  const statusColor = s => STATUS_COLOR[s] || "#94a3b8";
+  const statusBg    = s => STATUS_BG[s]    || "#f8fafc";
+  const STATUS_OPTIONS = ["대기","진행중","완료","보류"];
 
-  // 현재 진행 중인 페이즈 자동 감지
-  const activePhase = (() => {
-    for(const phase of template) {
-      const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
-      const hasInProgress = phaseTasks.some(t=>t.status==="진행중");
-      const allDone = phaseTasks.length>0 && phaseTasks.every(t=>t.status==="완료");
-      if(hasInProgress || (phaseTasks.length>0 && !allDone)) return phase.id;
-    }
-    return template[0]?.id;
-  })();
-
-  // 페이즈 진행률
   const phaseProgress = (phaseId) => {
     const pt = tasks.filter(t=>t.phaseId===phaseId);
     if(pt.length===0) return {total:0, done:0, pct:0};
     const done = pt.filter(t=>t.status==="완료").length;
     return {total:pt.length, done, pct:Math.round(done/pt.length*100)};
   };
-
-  // 전체 진행률
   const totalProgress = (() => {
     const all = tasks.length;
     if(!all) return 0;
     return Math.round(tasks.filter(t=>t.status==="완료").length / all * 100);
   })();
-
-  const statusColor = s => s==="완료"?"#16a34a":s==="진행중"?"#2563eb":s==="보류"?"#d97706":"#94a3b8";
-  const statusBg    = s => s==="완료"?"#f0fdf4":s==="진행중"?"#eff6ff":s==="보류"?"#fffbeb":"#f8fafc";
-  const STATUS_OPTIONS = ["대기","진행중","완료","보류"];
-
-  const roleLabel = r => r==="owner"?"주도":r==="driver"?"실행":"보조";
-  const roleBg    = r => r==="owner"?"#fef3c7":r==="driver"?"#eff6ff":"#f8fafc";
-  const roleColor = r => r==="owner"?"#d97706":r==="driver"?"#2563eb":"#94a3b8";
+  const activePhase = (() => {
+    for(const phase of template) {
+      const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
+      const allDone = phaseTasks.length>0 && phaseTasks.every(t=>t.status==="완료");
+      if(phaseTasks.length>0 && !allDone) return phase.id;
+    }
+    return template[0]?.id;
+  })();
 
   return (
+    <>
     <div style={{display:"flex",flexDirection:"column",gap:0}}>
-
-      {/* 전체 진행 바 */}
       <div style={{background:"#f8fafc",borderRadius:12,padding:"14px 18px",marginBottom:16,border:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>프로젝트 전체 진행률</span>
           <span style={{fontSize:13,fontWeight:800,color:"#2563eb"}}>{totalProgress}%</span>
         </div>
         <div style={{height:8,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-          <div style={{height:"100%",width:`${totalProgress}%`,background:"linear-gradient(90deg,#3b82f6,#2563eb)",borderRadius:99,transition:"width .5s"}}/>
-        </div>
-        <div style={{display:"flex",gap:16,marginTop:10,flexWrap:"wrap"}}>
-          {[
-            {label:"전체",    count:tasks.length,                              color:"#64748b"},
-            {label:"완료",    count:tasks.filter(t=>t.status==="완료").length,  color:"#16a34a"},
-            {label:"진행중",  count:tasks.filter(t=>t.status==="진행중").length,color:"#2563eb"},
-            {label:"대기",    count:tasks.filter(t=>t.status==="대기").length,  color:"#94a3b8"},
-          ].map(s=>(
-            <span key={s.label} style={{fontSize:11,color:s.color,fontWeight:600}}>
-              {s.label} <strong>{s.count}</strong>
-            </span>
-          ))}
+          <div style={{height:"100%",width:totalProgress+"%",background:"#2563eb",borderRadius:99}}/>
         </div>
       </div>
 
-      {/* 22단계 아코디언 */}
-      {template.map((phase, pi) => {
-        const prog    = phaseProgress(phase.id);
-        const isActive= phase.id === activePhase;
-        const isOpen  = expandedPhase === phase.id || isActive && expandedPhase === null;
+      {template.map((phase) => {
+        const prog = phaseProgress(phase.id);
+        const isActive = phase.id === activePhase;
+        const isOpen = expandedPhase === phase.id || (isActive && expandedPhase === null);
         const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
-        const isDone  = prog.total>0 && prog.pct===100;
-        const hasAny  = prog.total>0;
-
+        const isDone = prog.total>0 && prog.pct===100;
+        const hasAny = prog.total>0;
         return (
-          <div key={phase.id} style={{
-            borderLeft:`3px solid ${isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0"}`,
-            marginBottom:2,background:"#fff",
-            borderRadius:"0 8px 8px 0",
-            boxShadow:isActive?"0 2px 8px rgba(37,99,235,.1)":"none",
-            transition:"all .2s"
-          }}>
-            {/* 페이즈 헤더 */}
-            <div
-              onClick={()=>setExpandedPhase(isOpen?-1:phase.id)}
-              style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",
-                cursor:"pointer",userSelect:"none",
-                background:isActive?"#eff6ff":isDone?"#f0fdf4":"transparent",
-                borderRadius:"0 8px 8px 0"}}
-              onMouseEnter={e=>!isActive&&!isDone&&(e.currentTarget.style.background="#f8fafc")}
-              onMouseLeave={e=>!isActive&&!isDone&&(e.currentTarget.style.background="transparent")}>
-
-              {/* 단계 번호 */}
+          <div key={phase.id} style={{borderLeft:"3px solid " + (isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0"),marginBottom:2,background:"#fff",borderRadius:"0 8px 8px 0"}}>
+            <div onClick={()=>setExpandedPhase(isOpen?-1:phase.id)}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",userSelect:"none",
+                background:isActive?"#eff6ff":isDone?"#f0fdf4":"transparent",borderRadius:"0 8px 8px 0"}}>
               <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,
                 background:isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0",
-                color:isDone||isActive?"#fff":"#94a3b8",
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:10,fontWeight:800}}>
+                color:(isDone||isActive)?"#fff":"#94a3b8",
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>
                 {isDone?"✓":phase.order}
               </div>
-
-              {/* 페이즈명 */}
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:13,fontWeight:700,
-                    color:isDone?"#16a34a":isActive?"#2563eb":"#334155"}}>
+                  <span style={{fontSize:13,fontWeight:700,color:isDone?"#16a34a":isActive?"#2563eb":"#334155"}}>
                     {phase.phase}
                   </span>
-                  {isActive&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
-                    background:"#2563eb",color:"#fff",fontWeight:700}}>진행중</span>}
+                  {isActive&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,background:"#2563eb",color:"#fff",fontWeight:700}}>진행중</span>}
                 </div>
-                <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center"}}>
-                  <span style={{fontSize:10,color:"#94a3b8"}}>주도: {phase.owner}</span>
-                  <span style={{fontSize:10,color:"#94a3b8"}}>·</span>
-                  <span style={{fontSize:10,color:"#94a3b8"}}>실행: {phase.driver.join(", ")}</span>
+                <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center",flexWrap:"wrap"}}>
+                  <PhaseRoleDisplay projectRoles={projectRoles} phase={phase}/>
                 </div>
               </div>
-
-              {/* 진행률 */}
               <div style={{textAlign:"right",flexShrink:0}}>
                 {hasAny ? (
-                  <>
-                    <div style={{fontSize:11,fontWeight:700,
-                      color:isDone?"#16a34a":isActive?"#2563eb":"#64748b"}}>
-                      {prog.done}/{prog.total}
-                    </div>
-                    <div style={{width:60,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginTop:3}}>
-                      <div style={{height:"100%",width:`${prog.pct}%`,
-                        background:isDone?"#16a34a":isActive?"#2563eb":"#94a3b8",
-                        borderRadius:99,transition:"width .3s"}}/>
-                    </div>
-                  </>
+                  <div style={{fontSize:11,fontWeight:700,color:isDone?"#16a34a":isActive?"#2563eb":"#64748b"}}>
+                    {prog.done + "/" + prog.total}
+                  </div>
                 ) : (
                   <span style={{fontSize:10,color:"#cbd5e1"}}>미시작</span>
                 )}
               </div>
-
-              <span style={{color:"#cbd5e1",fontSize:12,flexShrink:0,marginLeft:4}}>
-                {isOpen?"▲":"▼"}
-              </span>
+              <PhaseFeedbackBadge feedbacks={feedbacks} phaseId={phase.id}/>
+              <button onClick={e=>openRoleEdit(e,phase)}
+                style={{border:"1px solid #e2e8f0",background:"#f8fafc",borderRadius:6,
+                  padding:"2px 8px",fontSize:10,color:"#64748b",cursor:"pointer",flexShrink:0}}>
+                역할편집
+              </button>
+              <span style={{color:"#cbd5e1",fontSize:12,flexShrink:0}}>{isOpen?"▲":"▼"}</span>
             </div>
 
-            {/* 태스크 목록 */}
             {isOpen && (
               <div style={{padding:"0 14px 12px 14px"}}>
                 {phaseTasks.length===0 ? (
-                  <div style={{padding:"12px 0",fontSize:12,color:"#94a3b8",
-                    textAlign:"center",borderTop:"1px solid #f1f5f9"}}>
-                    태스크 없음 — 프로젝트 생성 시 템플릿을 적용하면 자동으로 생성됩니다
+                  <div style={{padding:"12px 0",fontSize:12,color:"#94a3b8",textAlign:"center",borderTop:"1px solid #f1f5f9"}}>
+                    태스크 없음 - 템플릿 적용 시 자동 생성됩니다
                   </div>
                 ) : (
-                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,
-                    display:"flex",flexDirection:"column",gap:4}}>
-                    {/* 헤더 */}
-                    <div style={{display:"grid",
-                      gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",
-                      padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:8}}>
-                      <span/>
-                      <span>태스크</span>
-                      <span>역할</span>
-                      <span>담당자</span>
-                      <span>상태</span>
-                      <span style={{textAlign:"right"}}>마감일</span>
+                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
+                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:8}}>
+                      <span/><span>태스크</span><span>역할</span><span>담당자</span><span>상태</span><span style={{textAlign:"right"}}>마감일</span>
                     </div>
                     {phaseTasks.map((t,ti)=>(
-                      <div key={t.id} style={{display:"grid",
-                        gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",
+                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",
                         padding:"7px 8px",borderRadius:8,gap:8,alignItems:"center",
-                        background:ti%2===0?"#fafbfc":"#fff",
-                        border:"1px solid #f1f5f9"}}>
-
-                        {/* 체크 */}
+                        background:ti%2===0?"#fafbfc":"#fff",border:"1px solid #f1f5f9"}}>
                         <input type="checkbox" checked={t.status==="완료"}
                           onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
                           style={{accentColor:"#16a34a",cursor:"pointer"}}/>
-
-                        {/* 태스크명 */}
                         <div onClick={()=>onEdit(t)} style={{cursor:"pointer"}}>
                           <div style={{fontSize:12,fontWeight:600,
                             color:t.status==="완료"?"#94a3b8":"#1e293b",
@@ -1287,51 +1299,64 @@ function PhaseView({ tasks, template, user, accounts, onEdit, onUpdateTask }) {
                             {t.title}
                           </div>
                         </div>
-
-                        {/* 역할 */}
-                        <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,
-                          background:"#f1f5f9",color:"#64748b",fontWeight:600,
-                          whiteSpace:"nowrap"}}>
-                          {t.role||"—"}
+                        <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#f1f5f9",color:"#64748b",fontWeight:600,whiteSpace:"nowrap"}}>
+                          {t.role||"-"}
                         </span>
-
-                        {/* 담당자 */}
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
                           {t.assignee && <Avatar name={t.assignee} size={18}/>}
-                          <span style={{fontSize:11,color:"#475569"}}>
-                            {t.assignee||"미배정"}
-                          </span>
+                          <span style={{fontSize:11,color:"#475569"}}>{t.assignee||"미배정"}</span>
                         </div>
-
-                        {/* 상태 */}
-                        <select
-                          value={t.status||"대기"}
+                        <select value={t.status||"대기"}
                           onChange={e=>onUpdateTask({...t,status:e.target.value})}
                           onClick={e=>e.stopPropagation()}
                           style={{fontSize:10,padding:"2px 6px",borderRadius:6,
-                            border:`1px solid ${statusColor(t.status||"대기")}40`,
+                            border:"1px solid " + statusColor(t.status||"대기") + "40",
                             background:statusBg(t.status||"대기"),
                             color:statusColor(t.status||"대기"),
                             fontWeight:600,cursor:"pointer",outline:"none"}}>
                           {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                         </select>
-
-                        {/* 마감일 */}
                         <input type="date" value={t.due||""}
                           onChange={e=>onUpdateTask({...t,due:e.target.value})}
                           onClick={e=>e.stopPropagation()}
-                          style={{fontSize:10,border:"1px solid #e2e8f0",borderRadius:6,
-                            padding:"2px 4px",color:"#64748b",outline:"none",width:"100%"}}/>
+                          style={{fontSize:10,border:"1px solid #e2e8f0",borderRadius:6,padding:"2px 4px",color:"#64748b",outline:"none",width:"100%"}}/>
                       </div>
                     ))}
                   </div>
                 )}
+                <PhaseFeedbacks feedbacks={feedbacks} phaseId={phase.id}/>
               </div>
             )}
           </div>
         );
       })}
     </div>
+
+    {roleModal && (
+      <Modal title={"역할 편집 - " + (roleModal.phase||"")} onClose={()=>setRoleModal(null)}>
+        <Field label="주도자 (Owner)">
+          <select style={inp} value={roleForm.owner} onChange={e=>setRoleForm(v=>({...v,owner:e.target.value}))}>
+            <option value="">- 선택 -</option>
+            {["EPD","기획실장","PD","감독","조감독","AE","AI작업자","경영지원","대표"].map(r=>(
+              <option key={r} value={r}>{r}</option>
+            ))}
+            {memberNames.map(n=>(
+              <option key={"m_"+n} value={n}>{n}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="실행자 (Driver) - 쉼표로 구분">
+          <input style={inp} value={roleForm.driver}
+            onChange={e=>setRoleForm(v=>({...v,driver:e.target.value}))}
+            placeholder="예: 감독, 조감독"/>
+        </Field>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+          <Btn onClick={()=>setRoleModal(null)}>취소</Btn>
+          <Btn primary onClick={saveRole}>저장</Btn>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
 
@@ -2230,13 +2255,13 @@ function SettlementView({ project, onConfirm, onSave }) {
               </Field>
               <Field label="대분류" half>
                 <select style={inp} value={vf.category} onChange={e=>{const cat=e.target.value,grp=groupOptions(cat)[0]||"";setVf(v=>({...v,category:cat,group:grp}));}}>
-                  <option value="">— 선택 —</option>
+                  <option value="">- 선택 -</option>
                   {catOptions.map(c=><option key={c}>{c}</option>)}
                 </select>
               </Field>
               <Field label="중분류" half>
                 <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
-                  <option value="">— 선택 —</option>
+                  <option value="">- 선택 -</option>
                   {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
                 </select>
               </Field>
@@ -3501,8 +3526,18 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
                   {fb.dueDate||"-"}{isOver&&" ⚠️"}
                 </span>
                 <span>{fb.stage
-                  ? <span style={{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",whiteSpace:"nowrap"}}>{fb.stage}</span>
-                  : <span style={{color:C.border,fontSize:12}}>—</span>}
+                  ? (() => {
+                      const ph = PROJECT_TEMPLATE.find(p=>p.id===fb.phaseId);
+                      return (
+                        <span style={{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:99,
+                          background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",
+                          whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                          {ph && <span style={{fontSize:9,background:"#7c3aed",color:"#fff",borderRadius:99,padding:"0 4px",marginRight:2}}>{ph.order}</span>}
+                          {fb.stage}
+                        </span>
+                      );
+                    })()
+                  : <span style={{color:C.border,fontSize:12}}>-</span>}
                 </span>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:tskSt.id==="done"?"#94a3b8":C.dark,
@@ -3677,18 +3712,16 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
           <Field label="제목 *">
             <input style={inp} autoFocus value={ff.title||""} onChange={e=>setFf(v=>({...v,title:e.target.value}))} placeholder="피드백 제목 (예: 1차 컷 수정 요청)"/>
           </Field>
-          <Field label="단계">
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {["기획","트리트먼트","PPM","촬영","편집","DI","사운드","시각디자인","기타"].map(s=>{
-                const sel = ff.stage===s;
-                return <button key={s} onClick={()=>setFf(v=>({...v,stage:v.stage===s?"":s}))}
-                  style={{padding:"5px 12px",borderRadius:99,cursor:"pointer",fontSize:12,fontWeight:sel?700:400,
-                    border:`1.5px solid ${sel?"#7c3aed":C.border}`,
-                    background:sel?"#f5f3ff":"#fff",color:sel?"#7c3aed":C.sub}}>
-                  {s}
-                </button>;
-              })}
-            </div>
+          <Field label="단계 연결">
+            <select style={inp} value={ff.phaseId||""} onChange={e=>{
+              const phase = PROJECT_TEMPLATE.find(p=>p.id===e.target.value);
+              setFf(v=>({...v, phaseId:e.target.value, stage:phase?phase.phase:""}));
+            }}>
+              <option value="">— 단계 선택 (선택사항) —</option>
+              {PROJECT_TEMPLATE.map(p=>(
+                <option key={p.id} value={p.id}>{p.order}. {p.phase}</option>
+              ))}
+            </select>
           </Field>
           <div style={{display:"flex",gap:12}}>
             <Field label="수신일 *" half><input style={inp} type="date" value={ff.receivedDate||""} onChange={e=>setFf(v=>({...v,receivedDate:e.target.value}))}/></Field>
@@ -5275,7 +5308,19 @@ return (
                 </div>
 
                 {viewMode==="phase"?(
-                  <PhaseView tasks={proj.tasks||[]} template={PROJECT_TEMPLATE} user={user} accounts={accounts} onEdit={t=>setTaskModal({...t})} onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}}/>
+                  <PhaseView
+  tasks={proj.tasks||[]}
+  feedbacks={proj.feedbacks||[]}
+  template={PROJECT_TEMPLATE}
+  user={user}
+  accounts={accounts}
+  projectRoles={proj.phaseRoles||{}}
+  onEdit={t=>setTaskModal({...t})}
+  onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}}
+  onUpdatePhaseRole={(phaseId, roleForm)=>{
+    patchProj(p=>({...p, phaseRoles:{...(p.phaseRoles||{}), [phaseId]:roleForm}}));
+  }}
+/>
                 ):viewMode==="flow"?(
                   <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskModal({...t})} onAdd={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
                 ):viewMode==="kanban"?(
