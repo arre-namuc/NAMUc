@@ -1405,210 +1405,207 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 }
 
 
-function TaskDetailPanel({ task, accounts, user, onClose, onEdit, onUpdate }) {
+function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) {
   if (!task) return null;
 
   const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
   const STATUS_BG    = {"대기":"#f1f5f9","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+  const PRIO_COLOR   = {"긴급":"#ef4444","높음":"#f59e0b","보통":"#64748b","낮음":"#94a3b8"};
+
+  const set = (patch) => onUpdate({...task, ...patch});
 
   const addComment = (text) => {
-    const comment = { id:"c"+Date.now(), author:user.name, text, createdAt:new Date().toISOString() };
-    onUpdate({ ...task, comments:[...(task.comments||[]), comment] });
+    const c = {id:"c"+Date.now(), author:user.name, text, createdAt:new Date().toISOString()};
+    set({comments:[...(task.comments||[]), c]});
+  };
+  const delComment = (cid) => set({comments:(task.comments||[]).filter(c=>c.id!==cid)});
+
+  const toggleAssignee = (name) => {
+    const cur = task.assignees||[];
+    set({assignees: cur.includes(name) ? cur.filter(n=>n!==name) : [...cur, name]});
   };
 
-  const deleteComment = (cid) => {
-    onUpdate({ ...task, comments:(task.comments||[]).filter(c=>c.id!==cid) });
-  };
-
-  const phaseLabel = task.phaseId
-    ? PROJECT_TEMPLATE.find(p=>p.id===task.phaseId)?.phase || ""
-    : "";
+  const phaseLabel = PROJECT_TEMPLATE.find(p=>p.id===task.phaseId)?.phase;
 
   return (
     <>
-      {/* 딤 배경 */}
-      <div onClick={onClose}
-        style={{position:"fixed",inset:0,background:"rgba(0,0,0,.25)",zIndex:200}}/>
+      <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.2)",zIndex:200}}/>
+      <div style={{position:"fixed",top:0,right:0,bottom:0,width:460,background:"#fff",
+        boxShadow:"-6px 0 32px rgba(0,0,0,.13)",zIndex:201,
+        display:"flex",flexDirection:"column",overflowY:"auto"}}>
 
-      {/* 슬라이드 패널 */}
-      <div style={{
-        position:"fixed",top:0,right:0,bottom:0,width:420,
-        background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,.12)",
-        zIndex:201,display:"flex",flexDirection:"column",overflowY:"auto"
-      }}>
-        {/* 헤더 */}
-        <div style={{padding:"18px 20px 14px",borderBottom:"1px solid #f1f5f9",
-          display:"flex",alignItems:"flex-start",gap:10,flexShrink:0}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:700,color:"#1e293b",lineHeight:1.4}}>
-              {task.title}
-            </div>
-            {phaseLabel && (
-              <div style={{fontSize:11,color:"#7c3aed",marginTop:4,fontWeight:600}}>
-                📌 {phaseLabel}
-              </div>
-            )}
-          </div>
-          <div style={{display:"flex",gap:6,flexShrink:0}}>
-            <button onClick={onEdit}
-              style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",
-                background:"#f8fafc",color:"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-              ✏️ 수정
-            </button>
+        {/* ── 헤더: 태스크명 편집 ── */}
+        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid #f1f5f9",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            {/* 완료 체크 */}
+            <input type="checkbox" checked={task.status==="완료"}
+              onChange={e=>set({status:e.target.checked?"완료":"진행중"})}
+              style={{width:18,height:18,accentColor:"#16a34a",cursor:"pointer",flexShrink:0}}/>
+            {/* 태스크명 인라인 편집 */}
+            <input value={task.title||""} onChange={e=>set({title:e.target.value})}
+              style={{flex:1,fontSize:16,fontWeight:700,color:"#1e293b",border:"none",
+                outline:"none",background:"transparent",fontFamily:"inherit",
+                textDecoration:task.status==="완료"?"line-through":"none",
+                color:task.status==="완료"?"#94a3b8":"#1e293b"}}/>
             <button onClick={onClose}
               style={{width:28,height:28,borderRadius:7,border:"1px solid #e2e8f0",
                 background:"#f8fafc",color:"#94a3b8",fontSize:16,cursor:"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center"}}>
-              ✕
-            </button>
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+          </div>
+          {/* 메타 정보 */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            {phaseLabel&&(
+              <span style={{fontSize:11,color:"#7c3aed",background:"#f5f3ff",
+                padding:"2px 8px",borderRadius:99,fontWeight:600}}>📌 {phaseLabel}</span>
+            )}
+            <span style={{fontSize:11,color:STAGES[task.stage]?.color||"#64748b",
+              background:STAGES[task.stage]?.bg||"#f1f5f9",
+              padding:"2px 8px",borderRadius:99,fontWeight:600}}>{task.stage||"PLANNING"}</span>
+            <select value={task.type||"내부"} onChange={e=>set({type:e.target.value})}
+              style={{fontSize:11,border:"1px solid #e2e8f0",borderRadius:99,padding:"2px 8px",
+                color:"#64748b",background:"#f8fafc",cursor:"pointer",outline:"none"}}>
+              {["내부","외주"].map(t=><option key={t}>{t}</option>)}
+            </select>
           </div>
         </div>
 
-        <div style={{flex:1,padding:"16px 20px",display:"flex",flexDirection:"column",gap:20}}>
+        <div style={{flex:1,padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:0}}>
 
           {/* ── 담당자 ── */}
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:.5}}>담당자</div>
+          <Section label="담당자">
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {accounts.map(a => {
-                const sel = (task.assignees||[]).includes(a.name);
+              {accounts.map(a=>{
+                const sel=(task.assignees||[]).includes(a.name);
                 return (
-                  <button key={a.id} type="button"
-                    onClick={() => {
-                      const cur = task.assignees||[];
-                      onUpdate({...task, assignees: sel ? cur.filter(n=>n!==a.name) : [...cur,a.name]});
-                    }}
-                    style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",
+                  <button key={a.id} type="button" onClick={()=>toggleAssignee(a.name)}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",
                       borderRadius:99,cursor:"pointer",fontSize:12,border:"none",
                       background:sel?"#eff6ff":"#f1f5f9",
-                      color:sel?"#2563eb":"#475569",
-                      fontWeight:sel?700:400,
-                      outline:sel?"2px solid #2563eb":"none"}}>
-                    <Avatar name={a.name} size={18}/>
-                    {a.name}
-                    {sel && <span style={{fontSize:10}}>✓</span>}
+                      color:sel?"#2563eb":"#475569",fontWeight:sel?700:400,
+                      outline:sel?"2px solid #2563eb":"none",transition:"all .12s"}}>
+                    <Avatar name={a.name} size={17}/>
+                    {a.name}{sel&&<span style={{fontSize:10,marginLeft:1}}>✓</span>}
                   </button>
                 );
               })}
-              {(task.assignees||[]).length === 0 && (
-                <span style={{fontSize:12,color:"#94a3b8"}}>미배정 — 위에서 선택하세요</span>
-              )}
             </div>
-          </div>
+            {(task.assignees||[]).length===0&&(
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>클릭하여 담당자를 지정하세요</div>
+            )}
+          </Section>
 
-          {/* ── 상태 + 마감일 ── */}
-          <div style={{display:"flex",gap:12}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
-                textTransform:"uppercase",letterSpacing:.5}}>상태</div>
-              <div style={{display:"flex",gap:6}}>
-                {["대기","진행중","완료","보류"].map(s => (
-                  <button key={s} type="button"
-                    onClick={() => onUpdate({...task, status:s})}
-                    style={{flex:1,padding:"7px 4px",borderRadius:8,cursor:"pointer",
-                      fontSize:11,fontWeight:task.status===s?800:400,border:"none",
-                      background:task.status===s ? STATUS_BG[s] : "#f8fafc",
-                      color:task.status===s ? STATUS_COLOR[s] : "#94a3b8",
-                      outline:task.status===s?"2px solid "+STATUS_COLOR[s]:"none"}}>
-                    {s}
-                  </button>
-                ))}
-              </div>
+          {/* ── 상태 + 우선순위 ── */}
+          <Section label="상태">
+            <div style={{display:"flex",gap:6}}>
+              {["대기","진행중","완료","보류"].map(s=>(
+                <button key={s} type="button" onClick={()=>set({status:s})}
+                  style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",
+                    fontSize:12,fontWeight:task.status===s?800:500,border:"none",
+                    background:task.status===s?STATUS_BG[s]:"#f8fafc",
+                    color:task.status===s?STATUS_COLOR[s]:"#94a3b8",
+                    outline:task.status===s?"2px solid "+STATUS_COLOR[s]:"1px solid #f1f5f9",
+                    transition:"all .12s"}}>
+                  {s}
+                </button>
+              ))}
             </div>
-          </div>
+          </Section>
 
-          {/* 마감일 */}
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:.5}}>마감일</div>
+          {/* ── 마감일 ── */}
+          <Section label="마감일">
             <input type="datetime-local" value={task.due||""}
-              onChange={e => onUpdate({...task, due:e.target.value})}
-              style={{padding:"8px 12px",borderRadius:8,border:"1px solid #e2e8f0",
-                fontSize:13,color:"#1e293b",outline:"none",width:"100%",
-                boxSizing:"border-box",fontFamily:"inherit"}}/>
-          </div>
+              onChange={e=>set({due:e.target.value})}
+              style={{width:"100%",padding:"9px 12px",borderRadius:8,
+                border:"1px solid #e2e8f0",fontSize:13,color:"#1e293b",
+                outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+            {task.due&&(
+              <button onClick={()=>set({due:""})}
+                style={{marginTop:4,fontSize:11,color:"#94a3b8",background:"none",
+                  border:"none",cursor:"pointer",textDecoration:"underline"}}>
+                마감일 제거
+              </button>
+            )}
+          </Section>
 
-          {/* ── 링크 연결 ── */}
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:.5}}>링크 연결</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {(task.links||[]).map((lk,li) => (
+          {/* ── 링크 ── */}
+          <Section label="링크 연결">
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {(task.links||[]).map((lk,li)=>(
                 <div key={li} style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <input value={lk.url||""} placeholder="https://..."
-                    onChange={e => {
-                      const links = (task.links||[]).map((l,i)=>i===li?{...l,url:e.target.value}:l);
-                      onUpdate({...task, links});
-                    }}
-                    style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
-                      fontSize:12,outline:"none",fontFamily:"inherit"}}/>
                   <input value={lk.label||""} placeholder="이름"
-                    onChange={e => {
-                      const links = (task.links||[]).map((l,i)=>i===li?{...l,label:e.target.value}:l);
-                      onUpdate({...task, links});
+                    onChange={e=>{
+                      const links=(task.links||[]).map((l,i)=>i===li?{...l,label:e.target.value}:l);
+                      set({links});
                     }}
                     style={{width:90,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
                       fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-                  <a href={lk.url} target="_blank" rel="noreferrer"
-                    style={{fontSize:16,textDecoration:"none",opacity:lk.url?1:.3,cursor:lk.url?"pointer":"default"}}
-                    onClick={e=>{if(!lk.url)e.preventDefault();}}>
-                    🔗
-                  </a>
+                  <input value={lk.url||""} placeholder="https://..."
+                    onChange={e=>{
+                      const links=(task.links||[]).map((l,i)=>i===li?{...l,url:e.target.value}:l);
+                      set({links});
+                    }}
+                    style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+                      fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  {lk.url
+                    ? <a href={lk.url} target="_blank" rel="noreferrer"
+                        style={{fontSize:18,textDecoration:"none",flexShrink:0}}>🔗</a>
+                    : <span style={{fontSize:18,opacity:.3,flexShrink:0}}>🔗</span>
+                  }
                   <button type="button"
-                    onClick={() => onUpdate({...task, links:(task.links||[]).filter((_,i)=>i!==li)})}
-                    style={{border:"none",background:"none",cursor:"pointer",fontSize:15,color:"#94a3b8",padding:0}}>✕</button>
+                    onClick={()=>set({links:(task.links||[]).filter((_,i)=>i!==li)})}
+                    style={{border:"none",background:"none",cursor:"pointer",
+                      fontSize:15,color:"#94a3b8",padding:0,flexShrink:0}}>✕</button>
                 </div>
               ))}
               <button type="button"
-                onClick={() => onUpdate({...task, links:[...(task.links||[]),{url:"",label:""}]})}
-                style={{alignSelf:"flex-start",fontSize:12,color:"#2563eb",background:"#eff6ff",
-                  border:"1px solid #bfdbfe",borderRadius:7,padding:"5px 12px",
-                  cursor:"pointer",fontWeight:600}}>
+                onClick={()=>set({links:[...(task.links||[]),{url:"",label:""}]})}
+                style={{alignSelf:"flex-start",fontSize:12,color:"#2563eb",
+                  background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:7,
+                  padding:"5px 12px",cursor:"pointer",fontWeight:600}}>
                 + 링크 추가
               </button>
             </div>
-          </div>
+          </Section>
+
+          {/* ── 설명 ── */}
+          <Section label="설명">
+            <textarea value={task.desc||""} onChange={e=>set({desc:e.target.value})}
+              placeholder="내용을 입력하세요..."
+              style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                fontSize:13,color:"#1e293b",outline:"none",resize:"vertical",minHeight:72,
+                boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
+          </Section>
 
           {/* ── 댓글 ── */}
-          <div style={{flex:1}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:.5}}>
-              댓글 {(task.comments||[]).length>0 && (
-                <span style={{background:"#f1f5f9",color:"#475569",borderRadius:99,
-                  padding:"1px 7px",fontSize:10,fontWeight:700,marginLeft:4}}>
-                  {(task.comments||[]).length}
-                </span>
-              )}
-            </div>
-
-            {/* 댓글 목록 */}
-            {(task.comments||[]).length === 0
-              ? <div style={{fontSize:12,color:"#94a3b8",padding:"16px 0",textAlign:"center",
-                  border:"1px dashed #e2e8f0",borderRadius:10}}>
+          <Section label={"댓글" + ((task.comments||[]).length>0?" ("+task.comments.length+")":"")}>
+            {(task.comments||[]).length===0
+              ? <div style={{fontSize:12,color:"#94a3b8",padding:"14px 0",textAlign:"center",
+                  border:"1px dashed #e2e8f0",borderRadius:10,marginBottom:10}}>
                   아직 댓글이 없습니다
                 </div>
               : <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                  {(task.comments||[]).map(c => (
+                  {(task.comments||[]).map(c=>(
                     <div key={c.id} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
                       <Avatar name={c.author} size={28}/>
                       <div style={{flex:1,background:"#f8fafc",borderRadius:"0 10px 10px 10px",
                         padding:"8px 12px",border:"1px solid #e2e8f0"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                        <div style={{display:"flex",justifyContent:"space-between",
+                          alignItems:"center",marginBottom:4}}>
                           <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{c.author}</span>
                           <div style={{display:"flex",gap:6,alignItems:"center"}}>
                             <span style={{fontSize:10,color:"#94a3b8"}}>
-                              {new Date(c.createdAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                              {new Date(c.createdAt).toLocaleDateString("ko-KR",
+                                {month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
                             </span>
-                            {(c.author===user.name||user.role==="PD"||user.role==="대표") && (
-                              <button onClick={()=>deleteComment(c.id)}
-                                style={{fontSize:10,color:"#94a3b8",background:"none",border:"none",
-                                  cursor:"pointer",padding:"0 2px"}}>✕</button>
+                            {(c.author===user.name||user.role==="PD"||user.role==="대표")&&(
+                              <button onClick={()=>delComment(c.id)}
+                                style={{fontSize:10,color:"#94a3b8",background:"none",
+                                  border:"none",cursor:"pointer",padding:"0 2px"}}>✕</button>
                             )}
                           </div>
                         </div>
                         <div style={{fontSize:13,color:"#1e293b",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
-                          {c.text.split(/(@[^\s@]+)/g).map((part,i) =>
+                          {c.text.split(/(@[^\s@]+)/g).map((part,i)=>
                             part.startsWith("@")
                               ? <span key={i} style={{color:"#2563eb",fontWeight:700,
                                   background:"#eff6ff",borderRadius:4,padding:"0 3px"}}>{part}</span>
@@ -1620,19 +1617,38 @@ function TaskDetailPanel({ task, accounts, user, onClose, onEdit, onUpdate }) {
                   ))}
                 </div>
             }
-
-            {/* 댓글 입력 */}
             <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
               <Avatar name={user.name} size={28} style={{marginTop:4}}/>
               <div style={{flex:1}}>
                 <CommentInput accounts={accounts} user={user} onSubmit={addComment}/>
               </div>
             </div>
+          </Section>
+
+          {/* 삭제 */}
+          <div style={{marginTop:8,paddingTop:16,borderTop:"1px solid #f1f5f9"}}>
+            <button onClick={()=>{if(window.confirm("태스크를 삭제하시겠습니까?"))onDelete(task.id);}}
+              style={{fontSize:12,color:"#ef4444",background:"none",border:"1px solid #fca5a5",
+                borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600}}>
+              🗑 태스크 삭제
+            </button>
           </div>
 
         </div>
       </div>
     </>
+  );
+}
+
+function Section({label, children}) {
+  return (
+    <div style={{paddingTop:16,paddingBottom:16,borderBottom:"1px solid #f8fafc"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:8,
+        textTransform:"uppercase",letterSpacing:.8}}>
+        {label}
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -5666,10 +5682,13 @@ return (
           accounts={accounts}
           user={user}
           onClose={()=>setTaskPanel(null)}
-          onEdit={()=>{ setTaskModal({...taskPanel}); setTaskPanel(null); }}
           onUpdate={(updated)=>{
             setTaskPanel(updated);
             updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
+          }}
+          onDelete={(id)=>{
+            updateTasks((proj.tasks||[]).filter(t=>t.id!==id));
+            setTaskPanel(null);
           }}
         />
       )}
