@@ -231,7 +231,7 @@ const STAGES = {
   "POST":       { color:C.blue,   bg:C.blueLight,   icon:"✂️", label:"POST" },
   "ONAIR":      { color:C.green,  bg:C.greenLight,  icon:"✅", label:"ONAIR" },
 };
-const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","PRODUCTION","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
+const TASK_TYPES = ["내부","고객사","협력사"];
 const FORMATS_DEFAULT = ["TVC","디지털 광고","유튜브 콘텐츠","숏폼","BTL","브랜드 필름"];
 const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
 const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
@@ -1093,7 +1093,7 @@ function PhaseRoleDisplay({ projectRoles, phase }) {
 }
 
 
-function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onAddTask, onDeleteTask, onUpdatePhaseRole, projectRoles }) {
+function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onAddTask, onAddSubTask, onDeleteTask, onUpdatePhaseRole, projectRoles }) {
   const [expandedPhase, setExpandedPhase] = useState(null);
   const [roleModal, setRoleModal] = useState(null);
   const [roleForm, setRoleForm] = useState({owner:"", driver:""});
@@ -1232,124 +1232,156 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                     </button>
                   </div>
                 ) : (
-                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
-                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
-                      <span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/><span/>
+                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:2}}>
+                    {/* 컬럼 헤더 */}
+                    <div style={{display:"grid",gridTemplateColumns:"16px 20px 1fr 110px 100px 90px 28px 28px 28px",
+                      padding:"3px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                      <span/><span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/><span/><span/>
                     </div>
-                    {phaseTasks.map((t,ti)=>(
-                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",
-                        padding:"7px 8px",borderRadius:8,gap:6,alignItems:"center",
-                        background:ti%2===0?"#fafbfc":"#fff",border:"1px solid #f1f5f9"}}>
+                    {/* 계층 렌더링 */}
+                    {(()=>{
+                      const roots = phaseTasks.filter(t=>!t.parentId);
+                      const children = (pid) => phaseTasks.filter(t=>t.parentId===pid);
+                      const renderTask = (t, depth=0) => {
+                        const kids = children(t.id);
+                        const hasKids = kids.length > 0;
+                        return (
+                          <div key={t.id}>
+                            <div style={{display:"grid",
+                              gridTemplateColumns:"16px 20px 1fr 110px 100px 90px 28px 28px 28px",
+                              padding:"6px 8px",borderRadius:8,gap:6,alignItems:"center",
+                              marginLeft: depth * 20,
+                              background:t.status==="완료"?"#f8fafc":"#fff",
+                              border:`1px solid ${t.status==="완료"?"#f1f5f9":"#e2e8f0"}`,
+                              marginBottom:2,
+                              borderLeft: depth>0 ? "3px solid #bfdbfe" : "3px solid transparent",
+                              opacity:t.status==="완료"?.65:1}}>
 
-                        {/* 체크박스 */}
-                        <input type="checkbox" checked={t.status==="완료"}
-                          onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
-                          style={{accentColor:"#16a34a",cursor:"pointer"}}/>
+                              {/* 들여쓰기 커넥터 */}
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                {depth>0 && <span style={{fontSize:9,color:"#cbd5e1"}}>└</span>}
+                              </div>
 
-                        {/* 태스크명 + 뱃지 + 링크 */}
-                        <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
-                          <div style={{fontSize:12,fontWeight:600,
-                            color:t.status==="완료"?"#94a3b8":"#1e293b",
-                            textDecoration:t.status==="완료"?"line-through":"none",
-                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                            {t.title}
-                          </div>
-                          {/* 댓글/회의 뱃지 */}
-                          {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
-                            <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
-                              {(t.comments||[]).length>0&&(
-                                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
-                                  background:"#f0fdf4",color:"#16a34a",
-                                  border:"1px solid #86efac",fontWeight:700,whiteSpace:"nowrap"}}>
-                                  💬 {t.comments.length}
-                                </span>
-                              )}
-                              {(t.meetings||[]).length>0&&(
-                                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
-                                  background:"#f5f3ff",color:"#7c3aed",
-                                  border:"1px solid #ddd6fe",fontWeight:700,whiteSpace:"nowrap"}}>
-                                  📅 {t.meetings.length}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {/* 링크 */}
-                          {(t.links||[]).filter(l=>l.url).length>0&&(
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>
-                              {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
-                                <a key={li} href={lk.url} target="_blank" rel="noreferrer"
+                              {/* 체크박스 */}
+                              <input type="checkbox" checked={t.status==="완료"}
+                                onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
+                                style={{accentColor:"#16a34a",cursor:"pointer"}}/>
+
+                              {/* 태스크명 + 뱃지 */}
+                              <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
+                                <div style={{fontSize:12,fontWeight:depth===0?600:500,
+                                  color:t.status==="완료"?"#94a3b8":"#1e293b",
+                                  textDecoration:t.status==="완료"?"line-through":"none",
+                                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                  {hasKids && <span style={{fontSize:9,color:"#94a3b8",marginRight:4}}>▸ {kids.length}</span>}
+                                  {t.title}
+                                </div>
+                                <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>
+                                  {(t.comments||[]).length>0&&(
+                                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:99,
+                                      background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                                      💬{t.comments.length}
+                                    </span>
+                                  )}
+                                  {(t.meetings||[]).length>0&&(
+                                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:99,
+                                      background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                                      📅{t.meetings.length}
+                                    </span>
+                                  )}
+                                  {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
+                                    <a key={li} href={lk.url} target="_blank" rel="noreferrer"
+                                      onClick={e=>e.stopPropagation()}
+                                      style={{fontSize:9,color:"#2563eb",background:"#eff6ff",
+                                        padding:"1px 6px",borderRadius:99,textDecoration:"none",
+                                        border:"1px solid #bfdbfe",fontWeight:600}}>
+                                      🔗{lk.label||"링크"}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 담당자 */}
+                              <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                                {(t.assignees&&t.assignees.length>0)
+                                  ? t.assignees.slice(0,2).map(n=>(
+                                      <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,
+                                        background:"#eff6ff",color:"#2563eb",padding:"1px 6px",borderRadius:99,fontWeight:600}}>
+                                        <Avatar name={n} size={14}/>{n}
+                                      </span>
+                                    ))
+                                  : t.assignee
+                                    ? <span style={{display:"flex",alignItems:"center",gap:2,fontSize:11,color:"#475569"}}>
+                                        <Avatar name={t.assignee} size={16}/>{t.assignee}
+                                      </span>
+                                    : <span style={{fontSize:11,color:"#94a3b8"}}>-</span>
+                                }
+                              </div>
+
+                              {/* 상태 */}
+                              <select value={t.status||"대기"}
+                                onChange={e=>onUpdateTask({...t,status:e.target.value})}
+                                onClick={e=>e.stopPropagation()}
+                                style={{fontSize:10,padding:"2px 5px",borderRadius:6,
+                                  border:"1px solid "+statusColor(t.status||"대기")+"40",
+                                  background:statusBg(t.status||"대기"),
+                                  color:statusColor(t.status||"대기"),
+                                  fontWeight:600,cursor:"pointer",outline:"none"}}>
+                                {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                              </select>
+
+                              {/* 마감일 */}
+                              <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
+                                fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",lineHeight:1.3}}>
+                                {t.due
+                                  ? <>{t.due.slice(5,10).replace("-","/")}
+                                      {t.due.length>10&&<div style={{fontSize:9,color:"#94a3b8"}}>{t.due.slice(11,16)}</div>}
+                                    </>
+                                  : <span style={{color:"#cbd5e1"}}>-</span>}
+                              </div>
+
+                              {/* 📅 날짜 편집 */}
+                              <div style={{position:"relative",width:24,height:24}}>
+                                <span style={{fontSize:13,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
+                                <input type="datetime-local" value={t.due||""}
+                                  onChange={e=>onUpdateTask({...t,due:e.target.value})}
                                   onClick={e=>e.stopPropagation()}
-                                  style={{fontSize:9,color:"#2563eb",background:"#eff6ff",
-                                    padding:"2px 7px",borderRadius:99,textDecoration:"none",
-                                    border:"1px solid #bfdbfe",whiteSpace:"nowrap",fontWeight:600}}>
-                                  🔗 {lk.label||"링크"}
-                                </a>
-                              ))}
+                                  style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
+                              </div>
+
+                              {/* ＋ 하위 태스크 추가 */}
+                              {depth===0 && (
+                                <button type="button"
+                                  title="하위 태스크 추가"
+                                  onClick={e=>{e.stopPropagation();onAddSubTask&&onAddSubTask(t);}}
+                                  style={{width:24,height:24,borderRadius:6,border:"1px solid #bfdbfe",
+                                    background:"#eff6ff",color:"#2563eb",fontSize:14,fontWeight:700,
+                                    cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                                    lineHeight:1,flexShrink:0}}
+                                  onMouseEnter={e=>e.currentTarget.style.background="#dbeafe"}
+                                  onMouseLeave={e=>e.currentTarget.style.background="#eff6ff"}>
+                                  ＋
+                                </button>
+                              )}
+                              {depth>0 && <div style={{width:24}}/>}
+
+                              {/* − 삭제 */}
+                              <button type="button"
+                                onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
+                                style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
+                                  background:"#fff1f2",color:"#ef4444",fontSize:15,fontWeight:700,
+                                  cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                                  lineHeight:1,flexShrink:0}}>−</button>
                             </div>
-                          )}
-                        </div>
+                            {/* 하위 태스크 재귀 렌더링 */}
+                            {kids.map(kid=>renderTask(kid, depth+1))}
+                          </div>
+                        );
+                      };
+                      return roots.map(t=>renderTask(t));
+                    })()}
 
-                        {/* 담당자 */}
-                        <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
-                          {(t.assignees&&t.assignees.length>0)
-                            ? t.assignees.map(n=>(
-                                <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,
-                                  background:"#eff6ff",color:"#2563eb",padding:"1px 6px",borderRadius:99,fontWeight:600}}>
-                                  <Avatar name={n} size={14}/>{n}
-                                </span>
-                              ))
-                            : t.assignee
-                              ? <span style={{display:"flex",alignItems:"center",gap:2,fontSize:11,color:"#475569"}}>
-                                  <Avatar name={t.assignee} size={16}/>{t.assignee}
-                                </span>
-                              : <span style={{fontSize:11,color:"#94a3b8"}}>미배정</span>
-                          }
-                        </div>
-
-                        {/* 상태 */}
-                        <select value={t.status||"대기"}
-                          onChange={e=>onUpdateTask({...t,status:e.target.value})}
-                          onClick={e=>e.stopPropagation()}
-                          style={{fontSize:10,padding:"2px 6px",borderRadius:6,
-                            border:"1px solid " + statusColor(t.status||"대기") + "40",
-                            background:statusBg(t.status||"대기"),
-                            color:statusColor(t.status||"대기"),
-                            fontWeight:600,cursor:"pointer",outline:"none"}}>
-                          {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
-                        </select>
-
-                        {/* 마감일 텍스트 표시 */}
-                        <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
-                          fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",lineHeight:1.3}}>
-                          {t.due
-                            ? <>{t.due.slice(5,10).replace("-","/")}
-                                {t.due.length>10&&<div style={{fontSize:9,color:"#94a3b8"}}>{t.due.slice(11,16)}</div>}
-                              </>
-                            : <span style={{color:"#cbd5e1"}}>-</span>}
-                        </div>
-
-                        {/* 달력 아이콘 버튼 — date input을 숨겨서 트리거 */}
-                        <div style={{position:"relative",width:24,height:24}}>
-                          <span style={{fontSize:14,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
-                          <input type="datetime-local" value={t.due||""}
-                            onChange={e=>onUpdateTask({...t,due:e.target.value})}
-                            onClick={e=>e.stopPropagation()}
-                            style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
-                        </div>
-
-                        {/* - 삭제 버튼 */}
-                        <button type="button"
-                          onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
-                          style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
-                            background:"#fff1f2",color:"#ef4444",fontSize:15,fontWeight:700,
-                            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                            lineHeight:1,flexShrink:0}}
-                          title="태스크 삭제">−</button>
-
-                      </div>
-                    ))}
-
-                    {/* 목록 하단 + 추가 버튼 */}
+                    {/* ＋ 태스크 추가 버튼 */}
                     <button type="button"
                       onClick={e=>{e.stopPropagation();onAddTask&&onAddTask(phase.id,phase.phase);}}
                       style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",
@@ -1404,7 +1436,7 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 }
 
 
-function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName }) {
+function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName, projTasks }) {
   if (!task) return null;
 
   const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
@@ -1511,7 +1543,7 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
             <select value={task.type||"내부"} onChange={e=>set({type:e.target.value})}
               style={{fontSize:11,border:"1px solid #e2e8f0",borderRadius:99,padding:"2px 8px",
                 color:"#64748b",background:"#f8fafc",cursor:"pointer",outline:"none"}}>
-              {["내부","외주"].map(t=><option key={t}>{t}</option>)}
+              {["내부","고객사","협력사"].map(t=><option key={t}>{t}</option>)}
             </select>
           </div>
         </div>
@@ -1669,6 +1701,39 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
                 + 링크 추가
               </button>
             </div>
+          </Section>
+
+          {/* ── 상위 태스크 연결 ── */}
+          <Section label="상위 태스크">
+            {(()=>{
+              const samePhase = (projTasks||[]).filter(t=>
+                t.phaseId===task.phaseId && t.id!==task.id && !t.parentId
+              );
+              return (
+                <div>
+                  <select
+                    value={task.parentId||""}
+                    onChange={e=>set({parentId:e.target.value||null})}
+                    style={{width:"100%",padding:"8px 12px",borderRadius:8,
+                      border:"1px solid #e2e8f0",fontSize:13,color:"#1e293b",
+                      outline:"none",boxSizing:"border-box",fontFamily:"inherit",
+                      background:"#fff",cursor:"pointer"}}>
+                    <option value="">— 상위 태스크 없음 (최상위)</option>
+                    {samePhase.map(t=>(
+                      <option key={t.id} value={t.id}>{t.title}</option>
+                    ))}
+                  </select>
+                  {task.parentId && (
+                    <div style={{marginTop:6,fontSize:11,color:"#2563eb",
+                      display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{color:"#cbd5e1"}}>└</span>
+                      {(projTasks||[]).find(t=>t.id===task.parentId)?.title||"(삭제된 태스크)"}
+                      <span style={{color:"#94a3b8"}}>의 하위 태스크</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </Section>
 
           {/* ── 설명 ── */}
@@ -1839,6 +1904,110 @@ function Section({label, children}) {
   );
 }
 
+
+// ── 요청 타입별 뷰 ──────────────────────────────────────────
+function TypeView({ tasks, onEdit, onDelete }) {
+  const TYPE_GROUPS = [
+    { key:"내부",   label:"내부",   color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", icon:"🏢" },
+    { key:"고객사", label:"고객사", color:"#d97706", bg:"#fffbeb", border:"#fde68a", icon:"🤝" },
+    { key:"협력사", label:"협력사", color:"#7c3aed", bg:"#f5f3ff", border:"#ddd6fe", icon:"🔗" },
+  ];
+  const today = todayStr();
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {TYPE_GROUPS.map(g=>{
+        const gtasks = tasks.filter(t=>(t.type||"내부")===g.key);
+        if(gtasks.length===0) return null;
+        const done = gtasks.filter(t=>t.status==="완료").length;
+        const pct = Math.round(done/gtasks.length*100);
+        return (
+          <div key={g.key} style={{border:`1px solid ${g.border}`,borderRadius:12,overflow:"hidden"}}>
+            {/* 그룹 헤더 */}
+            <div style={{padding:"10px 16px",background:g.bg,
+              display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>{g.icon}</span>
+              <span style={{fontSize:13,fontWeight:800,color:g.color,letterSpacing:.5}}>{g.label}</span>
+              <div style={{flex:1,height:5,background:"#fff",borderRadius:99,overflow:"hidden",margin:"0 8px"}}>
+                <div style={{height:"100%",width:pct+"%",background:g.color,borderRadius:99,transition:"width .3s"}}/>
+              </div>
+              <span style={{fontSize:12,fontWeight:700,color:g.color}}>{done}/{gtasks.length}</span>
+            </div>
+            {/* 태스크 목록 */}
+            <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
+              <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 90px 90px 28px",
+                padding:"3px 6px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                <span/><span>태스크</span><span>단계</span><span>담당자</span><span>마감일</span><span/>
+              </div>
+              {gtasks.map(t=>(
+                <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 90px 90px 28px",
+                  padding:"7px 8px",borderRadius:8,gap:6,alignItems:"center",
+                  background:t.status==="완료"?"#f8fafc":"#fff",
+                  border:`1px solid ${t.status==="완료"?"#f1f5f9":g.border}`,
+                  borderLeft:`3px solid ${t.status==="완료"?"#e2e8f0":g.color}`,
+                  opacity:t.status==="완료"?.65:1}}>
+                  {/* 상태 체크 */}
+                  <div style={{width:14,height:14,borderRadius:"50%",flexShrink:0,
+                    background:STATUS_BG[t.status||"대기"],
+                    border:`2px solid ${STATUS_COLOR[t.status||"대기"]}`,
+                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {t.status==="완료"&&<span style={{fontSize:8,color:"#16a34a"}}>✓</span>}
+                  </div>
+                  {/* 태스크명 */}
+                  <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:t.parentId?500:600,
+                      color:t.status==="완료"?"#94a3b8":"#1e293b",
+                      textDecoration:t.status==="완료"?"line-through":"none",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {t.parentId&&<span style={{fontSize:9,color:"#bfdbfe",marginRight:4}}>└</span>}
+                      {t.title}
+                    </div>
+                    {(t.comments||[]).length>0&&(
+                      <span style={{fontSize:9,padding:"1px 5px",borderRadius:99,
+                        background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                        💬{t.comments.length}
+                      </span>
+                    )}
+                  </div>
+                  {/* 단계 */}
+                  <span style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {t.phase||"-"}
+                  </span>
+                  {/* 담당자 */}
+                  <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+                    {(t.assignees||[]).slice(0,2).map(n=>(
+                      <span key={n} style={{fontSize:10,background:"#eff6ff",color:"#2563eb",
+                        padding:"1px 6px",borderRadius:99,fontWeight:600,
+                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:80}}>
+                        {n}
+                      </span>
+                    ))}
+                    {!(t.assignees||[]).length&&<span style={{fontSize:11,color:"#94a3b8"}}>-</span>}
+                  </div>
+                  {/* 마감일 */}
+                  <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
+                    fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap"}}>
+                    {t.due?t.due.slice(5,10).replace("-","/"):<span style={{color:"#cbd5e1"}}>-</span>}
+                  </div>
+                  {/* 삭제 */}
+                  <button type="button"
+                    onClick={()=>{if(window.confirm("삭제하시겠습니까?"))onDelete&&onDelete(t.id);}}
+                    style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
+                      background:"#fff1f2",color:"#ef4444",fontSize:14,fontWeight:700,
+                      cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    −
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
   const today = todayStr();
@@ -2051,6 +2220,9 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
     </div>
   );
 }
+
+
+
 
 
 function KanbanCol({ stage, tasks, onEdit }) {
@@ -5822,7 +5994,8 @@ return (
                     <button onClick={()=>setViewMode("flow")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="flow"?C.blue:C.border}`,background:viewMode==="flow"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="flow"?C.blue:C.sub}}>🔀 협업흐름</button>
                     <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
                     <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
-                    <Btn primary sm onClick={()=>{setTaskModal({stage:"PLANNING",type:TASK_TYPES[0],assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
+                    <button onClick={()=>setViewMode("type")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="type"?"#7c3aed":C.border}`,background:viewMode==="type"?"#f5f3ff":C.white,cursor:"pointer",fontSize:12,color:viewMode==="type"?"#7c3aed":C.sub}}>🏷 요청별</button>
+                    <Btn primary sm onClick={()=>{setTaskModal({stage:"PLANNING",type:"내부",assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
                   </div>
                 </div>
 
@@ -5839,7 +6012,20 @@ return (
   onAddTask={(phaseId, phaseName)=>{
     setTaskModal({
       phaseId, phase:phaseName,
-      stage:"PLANNING", type:TASK_TYPES[0],
+      stage:"PLANNING", type:"내부",
+      priority:"보통", status:"대기",
+      assignees:[], links:[], comments:[], meetings:[],
+      createdBy:user.name, createdAt:new Date().toISOString(),
+    });
+  }}
+  onAddSubTask={(parentTask)=>{
+    setTaskModal({
+      parentId: parentTask.id,
+      parentTitle: parentTask.title,
+      phaseId: parentTask.phaseId,
+      phase: parentTask.phase,
+      stage: parentTask.stage||"PLANNING",
+      type: parentTask.type||"내부",
       priority:"보통", status:"대기",
       assignees:[], links:[], comments:[], meetings:[],
       createdBy:user.name, createdAt:new Date().toISOString(),
@@ -5854,12 +6040,12 @@ return (
   }}
 />
                 ):viewMode==="flow"?(
-                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskPanel({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
+                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskPanel({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:"내부",assignee:user.name,priority:"보통"});}}/>
                 ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
                     {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskPanel({...t})}/>)}
                   </div>
-                ):(
+                ):viewMode==="list"?(
                   <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
                     <div style={{display:"grid",gridTemplateColumns:"2fr 100px 90px 90px 80px 32px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
                       <span>태스크</span><span>스테이지</span><span>마감일</span><span>담당자</span><span>우선순위</span><span/>
@@ -5899,7 +6085,9 @@ return (
                       </div>
                     ))}
                   </div>
-                )}
+                ):viewMode==="type"?(
+                  <TypeView tasks={filteredTasks} onEdit={t=>setTaskPanel({...t})} onDelete={deleteTask}/>
+                ):null}
               </div>
             )}
 
@@ -5945,6 +6133,7 @@ return (
             setTaskPanel(null);
           }}
           onNotify={(notif)=>setNotifications(prev=>[notif,...prev])}
+          projTasks={proj?.tasks||[]}
         />
       )}
 
@@ -5952,6 +6141,34 @@ return (
         <Modal title={taskModal.id?"태스크 수정":"새 태스크"} onClose={()=>setTaskModal(null)}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
 
+            {/* 상위 태스크 안내 (하위 추가 시) */}
+            {taskModal.parentId && (
+              <div style={{width:"100%",padding:"8px 12px",borderRadius:8,
+                background:"#eff6ff",border:"1px solid #bfdbfe",
+                fontSize:12,color:"#2563eb",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:16}}>↳</span>
+                <span><strong>{taskModal.parentTitle}</strong>의 하위 태스크</span>
+                <button type="button"
+                  onClick={()=>setTaskModal(v=>({...v,parentId:null,parentTitle:null}))}
+                  style={{marginLeft:"auto",border:"none",background:"none",
+                    cursor:"pointer",color:"#64748b",fontSize:12}}>✕ 해제</button>
+              </div>
+            )}
+
+            {/* ① 단계 연결 — 최상위 */}
+            <Field label="단계 연결">
+              <select style={inp} value={taskModal.phaseId||""} onChange={e=>{
+                const ph = PROJECT_TEMPLATE.find(p=>p.id===e.target.value);
+                setTaskModal(v=>({...v, phaseId:e.target.value, phase:ph?ph.phase:"", _showSugg:false}));
+              }}>
+                <option value="">- 단계 미연결 -</option>
+                {PROJECT_TEMPLATE.map(p=>(
+                  <option key={p.id} value={p.id}>{p.order}. {p.phase}</option>
+                ))}
+              </select>
+            </Field>
+
+            {/* ② 태스크명 + 추천 항목 버튼 */}
             <Field label="태스크명 *">
               <div style={{display:"flex",gap:6}}>
                 <input style={{...inp,flex:1}} autoFocus value={taskModal.title||""}
@@ -5964,8 +6181,7 @@ return (
                       style={{padding:"9px 12px",borderRadius:8,border:"1px solid #e2e8f0",
                         background:taskModal._showSugg?"#eff6ff":"#f8fafc",
                         color:taskModal._showSugg?"#2563eb":"#64748b",
-                        cursor:"pointer",fontSize:12,fontWeight:600,
-                        whiteSpace:"nowrap",flexShrink:0}}>
+                        cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>
                       📋 추천 항목
                     </button>
                     {taskModal._showSugg && (
@@ -5982,7 +6198,7 @@ return (
                             onClick={()=>setTaskModal(v=>({...v,title:name,_showSugg:false}))}
                             style={{textAlign:"left",padding:"7px 10px",borderRadius:7,
                               border:"none",background:"transparent",cursor:"pointer",
-                              fontSize:12,color:"#1e293b",fontWeight:400}}
+                              fontSize:12,color:"#1e293b"}}
                             onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
                             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                             {name}
@@ -5995,20 +6211,8 @@ return (
               </div>
             </Field>
 
-            {/* 단계 연결 */}
-            <Field label="단계 연결">
-              <select style={inp} value={taskModal.phaseId||""} onChange={e=>{
-                const ph = PROJECT_TEMPLATE.find(p=>p.id===e.target.value);
-                setTaskModal(v=>({...v, phaseId:e.target.value, phase:ph?ph.phase:""}));
-              }}>
-                <option value="">- 단계 미연결 -</option>
-                {PROJECT_TEMPLATE.map(p=>(
-                  <option key={p.id} value={p.id}>{p.order}. {p.phase}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="담당자 (복수 선택)">
+            {/* ③ 담당자 */}
+            <Field label="담당자">
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {accounts.map(a=>{
                   const sel=(taskModal.assignees||[]).includes(a.name);
@@ -6020,13 +6224,10 @@ return (
                       })}
                       style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",
                         borderRadius:99,cursor:"pointer",fontSize:12,border:"none",
-                        background:sel?"#eff6ff":"#f1f5f9",
-                        color:sel?"#2563eb":"#475569",
-                        fontWeight:sel?700:400,
-                        outline:sel?"2px solid #2563eb":"none"}}>
+                        background:sel?"#eff6ff":"#f1f5f9",color:sel?"#2563eb":"#475569",
+                        fontWeight:sel?700:400,outline:sel?"2px solid #2563eb":"none"}}>
                       <Avatar name={a.name} size={16}/>
-                      {a.name}
-                      {sel&&<span style={{fontSize:10}}>✓</span>}
+                      {a.name}{sel&&<span style={{fontSize:10}}>✓</span>}
                     </button>
                   );
                 })}
@@ -6036,6 +6237,7 @@ return (
               )}
             </Field>
 
+            {/* ④ 상태 / 우선순위 */}
             <Field label="상태" half>
               <select style={inp} value={taskModal.status||"대기"} onChange={e=>setTaskModal(v=>({...v,status:e.target.value}))}>
                 {["대기","진행중","완료","보류"].map(s=><option key={s}>{s}</option>)}
@@ -6047,43 +6249,30 @@ return (
               </select>
             </Field>
 
+            {/* ⑤ 스테이지 / 요청 */}
             <Field label="스테이지" half>
               <select style={inp} value={taskModal.stage||"PLANNING"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
                 {stageKeys.map(s=><option key={s}>{s}</option>)}
               </select>
             </Field>
-            <Field label="유형" half>
-              <select style={inp} value={taskModal.type||TASK_TYPES[0]} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
-                {TASK_TYPES.map(t=><option key={t}>{t}</option>)}
+            <Field label="요청" half>
+              <select style={inp} value={taskModal.type||"내부"} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
+                {["내부","고객사","협력사"].map(t=><option key={t}>{t}</option>)}
               </select>
             </Field>
 
+            {/* ⑥ 마감일 */}
             <Field label="마감일" half>
               <input style={{...inp}} type="datetime-local" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
             </Field>
+
+            {/* ⑦ 설명 */}
             <Field label="설명">
               <textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/>
             </Field>
-            <Field label="참고 링크">
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {(taskModal.links||[]).map((lk,li)=>(
-                  <div key={li} style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <input style={{...inp,flex:1,fontSize:12}} value={lk.url||""} placeholder="https://..."
-                      onChange={e=>setTaskModal(v=>({...v,links:v.links.map((l,i)=>i===li?{...l,url:e.target.value}:l)}))}/>
-                    <input style={{...inp,width:110,fontSize:12}} value={lk.label||""} placeholder="링크 이름"
-                      onChange={e=>setTaskModal(v=>({...v,links:v.links.map((l,i)=>i===li?{...l,label:e.target.value}:l)}))}/>
-                    <button type="button" onClick={()=>setTaskModal(v=>({...v,links:v.links.filter((_,i)=>i!==li)}))}
-                      style={{border:"none",background:"none",cursor:"pointer",fontSize:16,color:"#94a3b8",padding:"0 4px",flexShrink:0}}>✕</button>
-                  </div>
-                ))}
-                <button type="button" onClick={()=>setTaskModal(v=>({...v,links:[...(v.links||[]),{url:"",label:""}]}))}
-                  style={{alignSelf:"flex-start",fontSize:12,color:"#2563eb",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:7,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>
-                  + 링크 추가
-                </button>
-              </div>
-            </Field>
+
           </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
             {taskModal.id&&<Btn danger sm onClick={()=>deleteTask(taskModal.id)}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setTaskModal(null)}>취소</Btn>
