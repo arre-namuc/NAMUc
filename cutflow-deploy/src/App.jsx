@@ -1405,6 +1405,238 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 }
 
 
+function TaskDetailPanel({ task, accounts, user, onClose, onEdit, onUpdate }) {
+  if (!task) return null;
+
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
+  const STATUS_BG    = {"대기":"#f1f5f9","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+
+  const addComment = (text) => {
+    const comment = { id:"c"+Date.now(), author:user.name, text, createdAt:new Date().toISOString() };
+    onUpdate({ ...task, comments:[...(task.comments||[]), comment] });
+  };
+
+  const deleteComment = (cid) => {
+    onUpdate({ ...task, comments:(task.comments||[]).filter(c=>c.id!==cid) });
+  };
+
+  const phaseLabel = task.phaseId
+    ? PROJECT_TEMPLATE.find(p=>p.id===task.phaseId)?.phase || ""
+    : "";
+
+  return (
+    <>
+      {/* 딤 배경 */}
+      <div onClick={onClose}
+        style={{position:"fixed",inset:0,background:"rgba(0,0,0,.25)",zIndex:200}}/>
+
+      {/* 슬라이드 패널 */}
+      <div style={{
+        position:"fixed",top:0,right:0,bottom:0,width:420,
+        background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,.12)",
+        zIndex:201,display:"flex",flexDirection:"column",overflowY:"auto"
+      }}>
+        {/* 헤더 */}
+        <div style={{padding:"18px 20px 14px",borderBottom:"1px solid #f1f5f9",
+          display:"flex",alignItems:"flex-start",gap:10,flexShrink:0}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:700,color:"#1e293b",lineHeight:1.4}}>
+              {task.title}
+            </div>
+            {phaseLabel && (
+              <div style={{fontSize:11,color:"#7c3aed",marginTop:4,fontWeight:600}}>
+                📌 {phaseLabel}
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            <button onClick={onEdit}
+              style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",
+                background:"#f8fafc",color:"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+              ✏️ 수정
+            </button>
+            <button onClick={onClose}
+              style={{width:28,height:28,borderRadius:7,border:"1px solid #e2e8f0",
+                background:"#f8fafc",color:"#94a3b8",fontSize:16,cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center"}}>
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div style={{flex:1,padding:"16px 20px",display:"flex",flexDirection:"column",gap:20}}>
+
+          {/* ── 담당자 ── */}
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
+              textTransform:"uppercase",letterSpacing:.5}}>담당자</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {accounts.map(a => {
+                const sel = (task.assignees||[]).includes(a.name);
+                return (
+                  <button key={a.id} type="button"
+                    onClick={() => {
+                      const cur = task.assignees||[];
+                      onUpdate({...task, assignees: sel ? cur.filter(n=>n!==a.name) : [...cur,a.name]});
+                    }}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",
+                      borderRadius:99,cursor:"pointer",fontSize:12,border:"none",
+                      background:sel?"#eff6ff":"#f1f5f9",
+                      color:sel?"#2563eb":"#475569",
+                      fontWeight:sel?700:400,
+                      outline:sel?"2px solid #2563eb":"none"}}>
+                    <Avatar name={a.name} size={18}/>
+                    {a.name}
+                    {sel && <span style={{fontSize:10}}>✓</span>}
+                  </button>
+                );
+              })}
+              {(task.assignees||[]).length === 0 && (
+                <span style={{fontSize:12,color:"#94a3b8"}}>미배정 — 위에서 선택하세요</span>
+              )}
+            </div>
+          </div>
+
+          {/* ── 상태 + 마감일 ── */}
+          <div style={{display:"flex",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
+                textTransform:"uppercase",letterSpacing:.5}}>상태</div>
+              <div style={{display:"flex",gap:6}}>
+                {["대기","진행중","완료","보류"].map(s => (
+                  <button key={s} type="button"
+                    onClick={() => onUpdate({...task, status:s})}
+                    style={{flex:1,padding:"7px 4px",borderRadius:8,cursor:"pointer",
+                      fontSize:11,fontWeight:task.status===s?800:400,border:"none",
+                      background:task.status===s ? STATUS_BG[s] : "#f8fafc",
+                      color:task.status===s ? STATUS_COLOR[s] : "#94a3b8",
+                      outline:task.status===s?"2px solid "+STATUS_COLOR[s]:"none"}}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 마감일 */}
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
+              textTransform:"uppercase",letterSpacing:.5}}>마감일</div>
+            <input type="datetime-local" value={task.due||""}
+              onChange={e => onUpdate({...task, due:e.target.value})}
+              style={{padding:"8px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                fontSize:13,color:"#1e293b",outline:"none",width:"100%",
+                boxSizing:"border-box",fontFamily:"inherit"}}/>
+          </div>
+
+          {/* ── 링크 연결 ── */}
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
+              textTransform:"uppercase",letterSpacing:.5}}>링크 연결</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {(task.links||[]).map((lk,li) => (
+                <div key={li} style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input value={lk.url||""} placeholder="https://..."
+                    onChange={e => {
+                      const links = (task.links||[]).map((l,i)=>i===li?{...l,url:e.target.value}:l);
+                      onUpdate({...task, links});
+                    }}
+                    style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+                      fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <input value={lk.label||""} placeholder="이름"
+                    onChange={e => {
+                      const links = (task.links||[]).map((l,i)=>i===li?{...l,label:e.target.value}:l);
+                      onUpdate({...task, links});
+                    }}
+                    style={{width:90,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+                      fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <a href={lk.url} target="_blank" rel="noreferrer"
+                    style={{fontSize:16,textDecoration:"none",opacity:lk.url?1:.3,cursor:lk.url?"pointer":"default"}}
+                    onClick={e=>{if(!lk.url)e.preventDefault();}}>
+                    🔗
+                  </a>
+                  <button type="button"
+                    onClick={() => onUpdate({...task, links:(task.links||[]).filter((_,i)=>i!==li)})}
+                    style={{border:"none",background:"none",cursor:"pointer",fontSize:15,color:"#94a3b8",padding:0}}>✕</button>
+                </div>
+              ))}
+              <button type="button"
+                onClick={() => onUpdate({...task, links:[...(task.links||[]),{url:"",label:""}]})}
+                style={{alignSelf:"flex-start",fontSize:12,color:"#2563eb",background:"#eff6ff",
+                  border:"1px solid #bfdbfe",borderRadius:7,padding:"5px 12px",
+                  cursor:"pointer",fontWeight:600}}>
+                + 링크 추가
+              </button>
+            </div>
+          </div>
+
+          {/* ── 댓글 ── */}
+          <div style={{flex:1}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,
+              textTransform:"uppercase",letterSpacing:.5}}>
+              댓글 {(task.comments||[]).length>0 && (
+                <span style={{background:"#f1f5f9",color:"#475569",borderRadius:99,
+                  padding:"1px 7px",fontSize:10,fontWeight:700,marginLeft:4}}>
+                  {(task.comments||[]).length}
+                </span>
+              )}
+            </div>
+
+            {/* 댓글 목록 */}
+            {(task.comments||[]).length === 0
+              ? <div style={{fontSize:12,color:"#94a3b8",padding:"16px 0",textAlign:"center",
+                  border:"1px dashed #e2e8f0",borderRadius:10}}>
+                  아직 댓글이 없습니다
+                </div>
+              : <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                  {(task.comments||[]).map(c => (
+                    <div key={c.id} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                      <Avatar name={c.author} size={28}/>
+                      <div style={{flex:1,background:"#f8fafc",borderRadius:"0 10px 10px 10px",
+                        padding:"8px 12px",border:"1px solid #e2e8f0"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{c.author}</span>
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <span style={{fontSize:10,color:"#94a3b8"}}>
+                              {new Date(c.createdAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                            </span>
+                            {(c.author===user.name||user.role==="PD"||user.role==="대표") && (
+                              <button onClick={()=>deleteComment(c.id)}
+                                style={{fontSize:10,color:"#94a3b8",background:"none",border:"none",
+                                  cursor:"pointer",padding:"0 2px"}}>✕</button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{fontSize:13,color:"#1e293b",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                          {c.text.split(/(@[^\s@]+)/g).map((part,i) =>
+                            part.startsWith("@")
+                              ? <span key={i} style={{color:"#2563eb",fontWeight:700,
+                                  background:"#eff6ff",borderRadius:4,padding:"0 3px"}}>{part}</span>
+                              : part
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+
+            {/* 댓글 입력 */}
+            <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+              <Avatar name={user.name} size={28} style={{marginTop:4}}/>
+              <div style={{flex:1}}>
+                <CommentInput accounts={accounts} user={user} onSubmit={addComment}/>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+
 function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
   const today = todayStr();
 
@@ -4980,7 +5212,8 @@ function App() {
 
   const [docTab,       setDocTab]       = useState("tasks");
   const [viewMode,     setViewMode]     = useState("phase");
-  const [taskModal,    setTaskModal]    = useState(null);
+  const [taskModal,    setTaskModal]    = useState(null);  // 수정 모달
+  const [taskPanel,    setTaskPanel]    = useState(null);  // 상세 패널
   const [tf,           setTf]           = useState({});
 
   useEffect(() => {
@@ -5359,17 +5592,17 @@ return (
   user={user}
   accounts={accounts}
   projectRoles={proj.phaseRoles||{}}
-  onEdit={t=>setTaskModal({...t})}
+  onEdit={t=>setTaskPanel({...t})}
   onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}}
   onUpdatePhaseRole={(phaseId, roleForm)=>{
     patchProj(p=>({...p, phaseRoles:{...(p.phaseRoles||{}), [phaseId]:roleForm}}));
   }}
 />
                 ):viewMode==="flow"?(
-                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskModal({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
+                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskPanel({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
                 ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
-                    {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskModal({...t})}/>)}
+                    {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskPanel({...t})}/>)}
                   </div>
                 ):(
                   <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
@@ -5379,7 +5612,7 @@ return (
                     {filteredTasks.length===0&&<div style={{padding:"30px",textAlign:"center",color:C.faint,fontSize:14}}>태스크가 없습니다</div>}
                     {filteredTasks.map((t,i)=>(
                       <div key={t.id} style={{display:"grid",gridTemplateColumns:"2fr 100px 90px 90px 80px 32px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc",cursor:"pointer"}}
-                        onClick={()=>setTaskModal({...t})}>
+                        onClick={()=>setTaskPanel({...t})}>
                         <div>
                           <div style={{fontSize:13,fontWeight:600,color:isOverdue(t)?C.red:C.text}}>{t.title}{isOverdue(t)?" ⚠":""}</div>
                           <div style={{fontSize:11,color:C.faint,marginTop:2}}>{t.type}</div>
@@ -5426,6 +5659,21 @@ return (
       </div>
 
       {/* 태스크 모달 */}
+      {/* 태스크 상세 패널 */}
+      {taskPanel && (
+        <TaskDetailPanel
+          task={taskPanel}
+          accounts={accounts}
+          user={user}
+          onClose={()=>setTaskPanel(null)}
+          onEdit={()=>{ setTaskModal({...taskPanel}); setTaskPanel(null); }}
+          onUpdate={(updated)=>{
+            setTaskPanel(updated);
+            updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
+          }}
+        />
+      )}
+
       {taskModal && (
         <Modal title={taskModal.id?"태스크 수정":"새 태스크"} onClose={()=>setTaskModal(null)}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
@@ -5521,68 +5769,6 @@ return (
               </div>
             </Field>
           </div>
-          {/* 댓글 섹션 - 기존 태스크만 */}
-          {taskModal.id && (
-            <div style={{borderTop:"1px solid #f1f5f9",paddingTop:14,marginTop:8}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:10}}>
-                💬 댓글 {(taskModal.comments||[]).length>0?`(${(taskModal.comments||[]).length})`:""}
-              </div>
-              {(taskModal.comments||[]).length===0
-                ? <div style={{fontSize:12,color:"#94a3b8",padding:"10px 0",textAlign:"center"}}>아직 댓글이 없습니다</div>
-                : <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                    {(taskModal.comments||[]).map(c=>(
-                      <div key={c.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                        <Avatar name={c.author} size={28}/>
-                        <div style={{flex:1,background:"#f8fafc",borderRadius:"0 10px 10px 10px",
-                          padding:"8px 12px",border:"1px solid #e2e8f0"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{c.author}</span>
-                            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                              <span style={{fontSize:10,color:"#94a3b8"}}>
-                                {new Date(c.createdAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
-                              </span>
-                              {(c.author===user.name||user.role==="PD"||user.role==="대표")&&(
-                                <button
-                                  onClick={()=>{
-                                    const updated={...taskModal,comments:(taskModal.comments||[]).filter(x=>x.id!==c.id)};
-                                    setTaskModal(updated);
-                                    updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
-                                  }}
-                                  style={{fontSize:10,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",padding:"0 2px"}}>✕</button>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{fontSize:13,color:"#1e293b",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
-                            {c.text.split(/(@[^\s@]+)/g).map((part,i)=>
-                              part.startsWith("@")
-                                ? <span key={i} style={{color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:4,padding:"0 3px"}}>{part}</span>
-                                : part
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-              }
-              {/* 댓글 입력 */}
-              <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-                <Avatar name={user.name} size={28} style={{marginTop:4}}/>
-                <div style={{flex:1}}>
-                  <CommentInput
-                    accounts={accounts}
-                    user={user}
-                    onSubmit={(text)=>{
-                      const comment={id:"c"+Date.now(),author:user.name,text,createdAt:new Date().toISOString()};
-                      const updated={...taskModal,comments:[...(taskModal.comments||[]),comment]};
-                      setTaskModal(updated);
-                      updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
             {taskModal.id&&<Btn danger sm onClick={()=>deleteTask(taskModal.id)}>삭제</Btn>}
             <div style={{flex:1}}/>
