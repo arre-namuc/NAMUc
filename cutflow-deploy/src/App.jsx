@@ -142,7 +142,7 @@ const PROJECT_TEMPLATE = [
     ]
   },
   {
-    id:"s09", phase:"촬영", order:9,
+    id:"s09", phase:"PRODUCTION", order:9,
     owner:"감독", driver:["감독","조감독"], support:["PD"],
     steps:[
       {id:"s09-1", name:"촬영 현장 세팅",  role:"조감독"},
@@ -286,7 +286,7 @@ function generateTasksFromTemplate(projectId, projectMembers) {
         title: step.name,
         role: step.role,
         assignee: findMemberByRole(projectMembers, step.role) || "",
-        stage: phase.order <= 3 ? "브리프" : phase.order <= 6 ? "프리프로덕션" : phase.order <= 9 ? "촬영" : phase.order <= 19 ? "포스트" : "납품완료",
+        stage: phase.order <= 3 ? "PLANNING" : phase.order <= 6 ? "PRE" : phase.order <= 9 ? "PRODUCTION" : phase.order <= 21 ? "POST" : "ONAIR",
         priority: "보통",
         status: "대기",
         due: "",
@@ -309,13 +309,13 @@ function findMemberByRole(members, role) {
 // 프로덕션 상수
 // ═══════════════════════════════════════════════════════════
 const STAGES = {
-  "브리프":       { color:C.slate,  bg:C.slateLight, icon:"📋" },
-  "프리프로덕션": { color:C.purple, bg:C.purpleLight, icon:"🎨" },
-  "촬영":         { color:C.amber,  bg:C.amberLight,  icon:"🎬" },
-  "포스트":       { color:C.blue,   bg:C.blueLight,   icon:"✂️" },
-  "납품완료":     { color:C.green,  bg:C.greenLight,  icon:"✅" },
+  "PLANNING":   { color:C.slate,  bg:C.slateLight, icon:"📋", label:"PLANNING" },
+  "PRE":        { color:C.purple, bg:C.purpleLight, icon:"🎨", label:"PRE" },
+  "PRODUCTION": { color:C.amber,  bg:C.amberLight,  icon:"🎬", label:"PRODUCTION" },
+  "POST":       { color:C.blue,   bg:C.blueLight,   icon:"✂️", label:"POST" },
+  "ONAIR":      { color:C.green,  bg:C.greenLight,  icon:"✅", label:"ONAIR" },
 };
-const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","촬영","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
+const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","PRODUCTION","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
 const FORMATS_DEFAULT = ["TVC","디지털 광고","유튜브 콘텐츠","숏폼","BTL","브랜드 필름"];
 const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
 const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
@@ -336,7 +336,7 @@ const QUOTE_TEMPLATE = [
       { name:"P.P.M 경비",                   unit:"식", qty:1, unitPrice:0 },
     ]},
   ]},
-  { category:"프리프로덕션", groups:[
+  { category:"PRE", groups:[
     { group:"기획/연출", items:[
       { name:"기획 및 구성료 (구성안 작성)", unit:"건", qty:1, unitPrice:0 },
       { name:"프로듀싱, 프로덕션 매니징",    unit:"건", qty:1, unitPrice:0 },
@@ -350,7 +350,7 @@ const QUOTE_TEMPLATE = [
       { name:"장소 사용료",    unit:"일", qty:1, unitPrice:0 },
     ]},
   ]},
-  { category:"촬영", groups:[
+  { category:"PRODUCTION", groups:[
     { group:"촬영 인건비", items:[
       { name:"촬영팀 운용",    unit:"일", qty:1, unitPrice:0 },
       { name:"촬영감독료",     unit:"일", qty:1, unitPrice:0 },
@@ -663,13 +663,13 @@ const SEED_PROJECTS = [
   {
     id:"p1", name:"기아 EV9 런칭 캠페인", client:"기아자동차", color:"#2563eb",
     format:"60초", due:"2026-04-15", director:"이준혁", pd:"박민서",
-    stage:"촬영", createdAt:"2026-01-10",
+    stage:"PRODUCTION", createdAt:"2026-01-10",
     tasks:[
-      {id:"t1",title:"브랜드 방향성 확정",type:"스크립트",assignee:"박민서",stage:"납품완료",due:"2026-01-20",priority:"높음",desc:""},
-      {id:"t2",title:"콘티 1차 시안",type:"콘티",assignee:"이준혁",stage:"납품완료",due:"2026-02-05",priority:"높음",desc:""},
-      {id:"t3",title:"촬영지 헌팅",type:"로케이션",assignee:"한지수",stage:"납품완료",due:"2026-02-15",priority:"보통",desc:""},
-      {id:"t4",title:"D-day 촬영",type:"촬영",assignee:"김소연",stage:"촬영",due:"2026-03-10",priority:"긴급",desc:""},
-      {id:"t5",title:"1차 편집",type:"편집",assignee:"최다인",stage:"브리프",due:"2026-03-25",priority:"높음",desc:""},
+      {id:"t1",title:"브랜드 방향성 확정",type:"스크립트",assignee:"",stage:"ONAIR",due:"2026-01-20",priority:"높음",desc:""},
+      {id:"t2",title:"콘티 1차 시안",type:"콘티",assignee:"",stage:"ONAIR",due:"2026-02-05",priority:"높음",desc:""},
+      {id:"t3",title:"촬영지 헌팅",type:"로케이션",assignee:"",stage:"ONAIR",due:"2026-02-15",priority:"보통",desc:""},
+      {id:"t4",title:"D-day 촬영",type:"PRODUCTION",assignee:"",stage:"PRODUCTION",due:"2026-03-10",priority:"긴급",desc:""},
+      {id:"t5",title:"1차 편집",type:"편집",assignee:"",stage:"PLANNING",due:"2026-03-25",priority:"높음",desc:""},
     ],
     quote:{
       vat:true, agencyFeeRate:10,
@@ -687,8 +687,8 @@ const SEED_PROJECTS = [
     budget:{
       vouchers:[
         {id:"v1",name:"이준혁 감독료",vendor:"개인",type:"세금계산서",date:"2026-02-10",amount:3000000,category:"기획/제작관리",group:"제작관리",number:"",note:"",files:[]},
-        {id:"v2",name:"촬영 스튜디오",vendor:"(주)스튜디오101",type:"세금계산서",date:"2026-03-10",amount:2500000,category:"촬영",group:"촬영 장소",number:"",note:"",files:[]},
-        {id:"v3",name:"카메라 렌탈",vendor:"씨네렌탈",type:"영수증",date:"2026-03-10",amount:1800000,category:"촬영",group:"촬영 장비",number:"",note:"",files:[]},
+        {id:"v2",name:"촬영 스튜디오",vendor:"(주)스튜디오101",type:"세금계산서",date:"2026-03-10",amount:2500000,category:"PRODUCTION",group:"촬영 장소",number:"",note:"",files:[]},
+        {id:"v3",name:"카메라 렌탈",vendor:"씨네렌탈",type:"영수증",date:"2026-03-10",amount:1800000,category:"PRODUCTION",group:"촬영 장비",number:"",note:"",files:[]},
       ]
     },
     settlementDate:null, settled:false,
@@ -696,10 +696,10 @@ const SEED_PROJECTS = [
   {
     id:"p2", name:"현대 수소전기차 다큐", client:"현대자동차", color:"#7c3aed",
     format:"다큐멘터리형", due:"2026-05-30", director:"이준혁", pd:"박민서",
-    stage:"프리프로덕션", createdAt:"2026-02-01",
+    stage:"PRE", createdAt:"2026-02-01",
     tasks:[
-      {id:"t6",title:"다큐 기획안 작성",type:"스크립트",assignee:"박민서",stage:"납품완료",due:"2026-02-10",priority:"높음",desc:""},
-      {id:"t7",title:"인터뷰 대상 섭외",type:"캐스팅",assignee:"한지수",stage:"프리프로덕션",due:"2026-03-01",priority:"보통",desc:""},
+      {id:"t6",title:"다큐 기획안 작성",type:"스크립트",assignee:"",stage:"ONAIR",due:"2026-02-10",priority:"높음",desc:""},
+      {id:"t7",title:"인터뷰 대상 섭외",type:"캐스팅",assignee:"",stage:"PRE",due:"2026-03-01",priority:"보통",desc:""},
     ],
     quote:{
       vat:true, agencyFeeRate:10,
@@ -1050,7 +1050,7 @@ function TabBar({ tabs, active, onChange }) {
 }
 
 const todayStr = () => new Date().toISOString().slice(0,10);
-const isOverdue = t => t.stage!=="납품완료" && t.due && t.due < todayStr();
+const isOverdue = t => t.stage!=="ONAIR" && t.due && t.due < todayStr();
 
 // ═══════════════════════════════════════════════════════════
 // 로그인 화면
@@ -1302,9 +1302,20 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                         <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#f1f5f9",color:"#64748b",fontWeight:600,whiteSpace:"nowrap"}}>
                           {t.role||"-"}
                         </span>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          {t.assignee && <Avatar name={t.assignee} size={18}/>}
-                          <span style={{fontSize:11,color:"#475569"}}>{t.assignee||"미배정"}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                          {(t.assignees&&t.assignees.length>0)
+                            ? t.assignees.map(n=>(
+                                <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,
+                                  background:"#eff6ff",color:"#2563eb",padding:"1px 6px",borderRadius:99,fontWeight:600}}>
+                                  <Avatar name={n} size={14}/>{n}
+                                </span>
+                              ))
+                            : t.assignee
+                              ? <span style={{display:"flex",alignItems:"center",gap:2,fontSize:11,color:"#475569"}}>
+                                  <Avatar name={t.assignee} size={16}/>{t.assignee}
+                                </span>
+                              : <span style={{fontSize:11,color:"#94a3b8"}}>미배정</span>
+                          }
                         </div>
                         <select value={t.status||"대기"}
                           onChange={e=>onUpdateTask({...t,status:e.target.value})}
@@ -1365,14 +1376,14 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
   const today = todayStr();
 
   // 태스크를 4가지 버킷으로 분류
-  const myTasks     = tasks.filter(t => t.assignee === user.name && t.stage !== "납품완료");
-  const waitingFor  = tasks.filter(t => t.assignee !== user.name && t.stage !== "납품완료" && (t.requestedBy === user.name || (t.watchers||[]).includes(user.name)));
+  const myTasks     = tasks.filter(t => (t.assignee === user.name || (t.assignees||[]).includes(user.name)) && t.stage !== "ONAIR");
+  const waitingFor  = tasks.filter(t => t.assignee !== user.name && t.stage !== "ONAIR" && (t.requestedBy === user.name || (t.watchers||[]).includes(user.name)));
   const blockedTasks= tasks.filter(t => t.blocked);
-  const overdue     = tasks.filter(t => t.due && t.due < today && t.stage !== "납품완료");
+  const overdue     = tasks.filter(t => t.due && t.due < today && t.stage !== "ONAIR");
 
   // 전체 멤버별 태스크 현황
   const memberMap = {};
-  tasks.filter(t=>t.stage!=="납품완료").forEach(t=>{
+  tasks.filter(t=>t.stage!=="ONAIR").forEach(t=>{
     if(!memberMap[t.assignee]) memberMap[t.assignee] = {name:t.assignee, tasks:[]};
     memberMap[t.assignee].tasks.push(t);
   });
@@ -1380,7 +1391,7 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
   // 스테이지 진행 흐름
   const stageFlow = Object.keys(STAGES);
   const stageCount = s => tasks.filter(t=>t.stage===s).length;
-  const currentStage = stageFlow.reduce((cur, s) => tasks.filter(t=>t.stage===s && t.stage!=="납품완료").length > 0 ? s : cur, "브리프");
+  const currentStage = stageFlow.reduce((cur, s) => tasks.filter(t=>t.stage===s && t.stage!=="ONAIR").length > 0 ? s : cur, "PLANNING");
 
   const PriorityDot = ({p}) => {
     const colors = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
@@ -1453,8 +1464,8 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
           {stageFlow.map((s,i)=>{
             const cfg = STAGES[s];
             const cnt = stageCount(s);
-            const isCur = s === currentStage && s !== "납품완료";
-            const isDone = s === "납품완료";
+            const isCur = s === currentStage && s !== "ONAIR";
+            const isDone = s === "ONAIR";
             return (
               <div key={s} style={{display:"flex",alignItems:"center",flex:1}}>
                 <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
@@ -2944,10 +2955,10 @@ const STAFF_ROLES = [
 
 const STAFF_GROUPS = [
   { label:"제작/연출",   roles:["EPD","총괄감독","감독","조감독 1st","조감독 2nd","PD","AD","AE"] },
-  { label:"촬영",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
+  { label:"PRODUCTION",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
   { label:"조명",        roles:["조명감독","조명 1st","조명 Grip"] },
   { label:"미술",        roles:["미술감독","소품"] },
-  { label:"포스트",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
+  { label:"POST",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
   { label:"기타",        roles:["메이킹","작가","기타"] },
 ];
 
@@ -4971,7 +4982,7 @@ function App() {
       });
       // 태스크 마감
       (proj.tasks||[]).forEach(task => {
-        if(!task.due || task.stage==="납품완료") return;
+        if(!task.due || task.stage==="ONAIR") return;
         const due = new Date(task.due); due.setHours(0,0,0,0);
         const diff = Math.round((due-today)/(1000*60*60*24));
         if(diff<=1 && diff>=-1) {
@@ -5023,7 +5034,7 @@ function App() {
     );
     const initTasks = pf.useTemplate!==false ? generateTasksFromTemplate(id, projMembers) : [];
     const np = {
-      id, ...pf, stage:"브리프", createdAt:todayStr(),
+      id, ...pf, stage:"PLANNING", createdAt:todayStr(),
       tasks:initTasks,
       quote:{vat:true,agencyFeeRate:10,items:pf.quoteFmt==="B"?makeTemplateB():makeTemplate()},
       budget:{vouchers:[]},
@@ -5303,7 +5314,7 @@ return (
                     <button onClick={()=>setViewMode("flow")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="flow"?C.blue:C.border}`,background:viewMode==="flow"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="flow"?C.blue:C.sub}}>🔀 협업흐름</button>
                     <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
                     <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
-                    <Btn primary sm onClick={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
+                    <Btn primary sm onClick={()=>{setTaskModal({stage:"PLANNING",type:TASK_TYPES[0],assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
                   </div>
                 </div>
 
@@ -5322,7 +5333,7 @@ return (
   }}
 />
                 ):viewMode==="flow"?(
-                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskModal({...t})} onAdd={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
+                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskModal({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
                 ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
                     {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskModal({...t})}/>)}
@@ -5342,7 +5353,12 @@ return (
                         </div>
                         <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:STAGES[t.stage]?.bg,color:STAGES[t.stage]?.color,fontWeight:600,whiteSpace:"nowrap"}}>{t.stage}</span>
                         <span style={{fontSize:12,color:isOverdue(t)?C.red:C.faint}}>{t.due||"-"}</span>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={t.assignee} size={22}/><span style={{fontSize:12}}>{t.assignee}</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                          {(t.assignees&&t.assignees.length>0)
+                            ? t.assignees.slice(0,2).map(n=><span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:11}}><Avatar name={n} size={18}/>{n}</span>)
+                            : t.assignee ? <span style={{display:"flex",alignItems:"center",gap:2,fontSize:12}}><Avatar name={t.assignee} size={22}/>{t.assignee}</span> : <span style={{fontSize:12,color:"#94a3b8"}}>미배정</span>
+                          }
+                        </div>
                         <span style={{fontSize:11,color:t.priority==="긴급"?C.red:t.priority==="높음"?C.amber:C.faint,fontWeight:600}}>{t.priority||"-"}</span>
                         <button onClick={e=>{e.stopPropagation();deleteTask(t.id);}} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:16}}>×</button>
                       </div>
@@ -5397,19 +5413,32 @@ return (
               </select>
             </Field>
 
-            <Field label="담당자" half>
-              <select style={inp} value={taskModal.assignee||""} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
-                <option value="">- 미배정 -</option>
-                {accounts.map(a=><option key={a.id}>{a.name}</option>)}
-              </select>
-            </Field>
-            <Field label="역할" half>
-              <select style={inp} value={taskModal.role||""} onChange={e=>setTaskModal(v=>({...v,role:e.target.value}))}>
-                <option value="">- 역할 선택 -</option>
-                {["EPD","기획실장","PD","감독","조감독","AE","AI작업자","경영지원","대표"].map(r=>(
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
+            <Field label="담당자 (복수 선택)">
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {accounts.map(a=>{
+                  const sel=(taskModal.assignees||[]).includes(a.name);
+                  return (
+                    <button key={a.id} type="button"
+                      onClick={()=>setTaskModal(v=>{
+                        const cur=v.assignees||[];
+                        return {...v,assignees:sel?cur.filter(n=>n!==a.name):[...cur,a.name]};
+                      })}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",
+                        borderRadius:99,cursor:"pointer",fontSize:12,border:"none",
+                        background:sel?"#eff6ff":"#f1f5f9",
+                        color:sel?"#2563eb":"#475569",
+                        fontWeight:sel?700:400,
+                        outline:sel?"2px solid #2563eb":"none"}}>
+                      <Avatar name={a.name} size={16}/>
+                      {a.name}
+                      {sel&&<span style={{fontSize:10}}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {(taskModal.assignees||[]).length===0&&(
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>담당자를 선택하세요</div>
+              )}
             </Field>
 
             <Field label="상태" half>
@@ -5424,7 +5453,7 @@ return (
             </Field>
 
             <Field label="스테이지" half>
-              <select style={inp} value={taskModal.stage||"브리프"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
+              <select style={inp} value={taskModal.stage||"PLANNING"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
                 {stageKeys.map(s=><option key={s}>{s}</option>)}
               </select>
             </Field>
