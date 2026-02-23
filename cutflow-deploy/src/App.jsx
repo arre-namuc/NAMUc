@@ -5380,29 +5380,66 @@ return (
       {taskModal && (
         <Modal title={taskModal.id?"태스크 수정":"새 태스크"} onClose={()=>setTaskModal(null)}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="태스크명 *"><input style={inp} autoFocus value={taskModal.title||""} onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))} placeholder="ex. 촬영 D-day 준비"/></Field>
-            <Field label="유형" half>
-              <select style={inp} value={taskModal.type||TASK_TYPES[0]} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
-                {TASK_TYPES.map(t=><option key={t}>{t}</option>)}
+            <Field label="태스크명 *">
+              <input style={inp} autoFocus value={taskModal.title||""} onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))} placeholder="ex. 촬영 D-day 준비"/>
+            </Field>
+
+            {/* 단계 연결 */}
+            <Field label="단계 연결">
+              <select style={inp} value={taskModal.phaseId||""} onChange={e=>{
+                const ph = PROJECT_TEMPLATE.find(p=>p.id===e.target.value);
+                setTaskModal(v=>({...v, phaseId:e.target.value, phase:ph?ph.phase:""}));
+              }}>
+                <option value="">- 단계 미연결 -</option>
+                {PROJECT_TEMPLATE.map(p=>(
+                  <option key={p.id} value={p.id}>{p.order}. {p.phase}</option>
+                ))}
               </select>
             </Field>
+
             <Field label="담당자" half>
-              <select style={inp} value={taskModal.assignee||SEED_ACCOUNTS[0].name} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
+              <select style={inp} value={taskModal.assignee||""} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
+                <option value="">- 미배정 -</option>
                 {accounts.map(a=><option key={a.id}>{a.name}</option>)}
               </select>
             </Field>
+            <Field label="역할" half>
+              <select style={inp} value={taskModal.role||""} onChange={e=>setTaskModal(v=>({...v,role:e.target.value}))}>
+                <option value="">- 역할 선택 -</option>
+                {["EPD","기획실장","PD","감독","조감독","AE","AI작업자","경영지원","대표"].map(r=>(
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="상태" half>
+              <select style={inp} value={taskModal.status||"대기"} onChange={e=>setTaskModal(v=>({...v,status:e.target.value}))}>
+                {["대기","진행중","완료","보류"].map(s=><option key={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="우선순위" half>
+              <select style={inp} value={taskModal.priority||"보통"} onChange={e=>setTaskModal(v=>({...v,priority:e.target.value}))}>
+                {["긴급","높음","보통","낮음"].map(p=><option key={p}>{p}</option>)}
+              </select>
+            </Field>
+
             <Field label="스테이지" half>
               <select style={inp} value={taskModal.stage||"브리프"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
                 {stageKeys.map(s=><option key={s}>{s}</option>)}
               </select>
             </Field>
-            <Field label="우선순위" half>
-              <select style={inp} value={taskModal.priority||"보통"} onChange={e=>setTaskModal(v=>({...v,priority:e.target.value}))}>
-                {["긴급","높음","보통"].map(p=><option key={p}>{p}</option>)}
+            <Field label="유형" half>
+              <select style={inp} value={taskModal.type||TASK_TYPES[0]} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
+                {TASK_TYPES.map(t=><option key={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="마감일" half><input style={inp} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/></Field>
-            <Field label="설명"><textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/></Field>
+
+            <Field label="마감일" half>
+              <input style={inp} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
+            </Field>
+            <Field label="설명">
+              <textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/>
+            </Field>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
             {taskModal.id&&<Btn danger sm onClick={()=>deleteTask(taskModal.id)}>삭제</Btn>}
@@ -5477,6 +5514,42 @@ return (
             {(pf.allowedFinanceMembers||[]).length>0 && <button onClick={()=>setPf(v=>({...v,allowedFinanceMembers:[]}))} style={{marginTop:6,fontSize:11,color:C.faint,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>전체 허용으로 초기화</button>}
           </div>
           )}
+          {/* 워크플로우 템플릿 */}
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#16a34a",marginBottom:8}}>🗂 워크플로우 템플릿</div>
+            {(proj.tasks||[]).filter(t=>t.phaseId).length > 0 ? (
+              <div style={{fontSize:12,color:"#15803d",marginBottom:8}}>
+                현재 템플릿 태스크 {(proj.tasks||[]).filter(t=>t.phaseId).length}개 연결됨
+              </div>
+            ) : (
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>
+                현재 템플릿이 적용되지 않은 프로젝트입니다
+              </div>
+            )}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                if(window.confirm("22단계 표준 템플릿을 적용합니다.\n기존 템플릿 태스크는 유지되고 누락된 단계만 추가됩니다.")) {
+                  const existing = (proj.tasks||[]).filter(t=>t.phaseId);
+                  const existingPhaseSteps = new Set(existing.map(t=>t.id));
+                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>[pf.pd,pf.director,pf.epd,pf.assistant].includes(a.name)));
+                  const toAdd = newTasks.filter(t => !existing.some(e=>e.phaseId===t.phaseId && e.title===t.title));
+                  updateTasks([...(proj.tasks||[]), ...toAdd]);
+                }
+              }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #86efac",background:"#dcfce7",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                + 템플릿 적용 (누락 단계 추가)
+              </button>
+              <button onClick={()=>{
+                if(window.confirm("템플릿 태스크를 모두 초기화하고 새로 생성합니다.\n진행 상태가 초기화됩니다. 계속하시겠습니까?")) {
+                  const nonTemplate = (proj.tasks||[]).filter(t=>!t.phaseId);
+                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>[pf.pd,pf.director,pf.epd,pf.assistant].includes(a.name)));
+                  updateTasks([...nonTemplate, ...newTasks]);
+                }
+              }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #fca5a5",background:"#fee2e2",color:"#ef4444",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                ↺ 템플릿 초기화
+              </button>
+            </div>
+          </div>
+
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
             <div style={{display:"flex",gap:8}}>
