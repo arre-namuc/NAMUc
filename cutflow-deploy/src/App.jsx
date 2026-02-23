@@ -284,8 +284,9 @@ function generateTasksFromTemplate(projectId, projectMembers) {
         phaseId: phase.id,
         phase: phase.phase,
         title: step.name,
-        role: step.role,
-        assignee: findMemberByRole(projectMembers, step.role) || "",
+        role: "",
+        assignee: "",
+        assignees: [],
         stage: phase.order <= 3 ? "PLANNING" : phase.order <= 6 ? "PRE" : phase.order <= 9 ? "PRODUCTION" : phase.order <= 21 ? "POST" : "ONAIR",
         priority: "보통",
         status: "대기",
@@ -1164,17 +1165,14 @@ function PhaseFeedbacks({ feedbacks, phaseId }) {
 
 function PhaseRoleDisplay({ projectRoles, phase }) {
   const pr = (projectRoles||{})[phase.id] || {};
-  const owner  = pr.owner  || phase.owner;
-  const driver = pr.driver || phase.driver.join(", ");
+  const owner  = pr.owner  || "";
+  const driver = pr.driver || "";
+  if(!owner && !driver) return null;
   return (
     <>
-      <span style={{fontSize:10,color:"#94a3b8"}}>
-        주도: <strong style={{color:"#d97706"}}>{owner}</strong>
-      </span>
-      <span style={{fontSize:10,color:"#94a3b8",margin:"0 4px"}}>|</span>
-      <span style={{fontSize:10,color:"#94a3b8"}}>
-        실행: <strong style={{color:"#2563eb"}}>{driver}</strong>
-      </span>
+      {owner && <span style={{fontSize:10,color:"#94a3b8"}}>주도: <strong style={{color:"#d97706"}}>{owner}</strong></span>}
+      {owner && driver && <span style={{fontSize:10,color:"#94a3b8",margin:"0 4px"}}>|</span>}
+      {driver && <span style={{fontSize:10,color:"#94a3b8"}}>실행: <strong style={{color:"#2563eb"}}>{driver}</strong></span>}
     </>
   );
 }
