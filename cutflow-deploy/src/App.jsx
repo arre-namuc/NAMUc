@@ -1280,36 +1280,43 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                   </div>
                 ) : (
                   <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
-                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 80px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:8}}>
-                      <span/><span>태스크</span><span>담당자</span><span>상태</span><span style={{textAlign:"right"}}>마감일</span>
+                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                      <span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/>
                     </div>
                     {phaseTasks.map((t,ti)=>(
-                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 80px",
-                        padding:"7px 8px",borderRadius:8,gap:8,alignItems:"center",
+                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px",
+                        padding:"7px 8px",borderRadius:8,gap:6,alignItems:"center",
                         background:ti%2===0?"#fafbfc":"#fff",border:"1px solid #f1f5f9"}}>
+
+                        {/* 체크박스 */}
                         <input type="checkbox" checked={t.status==="완료"}
                           onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
                           style={{accentColor:"#16a34a",cursor:"pointer"}}/>
-                        <div onClick={()=>onEdit(t)} style={{cursor:"pointer"}}>
+
+                        {/* 태스크명 + 링크 */}
+                        <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
                           <div style={{fontSize:12,fontWeight:600,
                             color:t.status==="완료"?"#94a3b8":"#1e293b",
-                            textDecoration:t.status==="완료"?"line-through":"none"}}>
+                            textDecoration:t.status==="완료"?"line-through":"none",
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                             {t.title}
                           </div>
-                          {(t.links||[]).length>0&&(
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                          {(t.links||[]).filter(l=>l.url).length>0&&(
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>
                               {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
                                 <a key={li} href={lk.url} target="_blank" rel="noreferrer"
                                   onClick={e=>e.stopPropagation()}
                                   style={{fontSize:9,color:"#2563eb",background:"#eff6ff",
-                                    padding:"1px 6px",borderRadius:99,textDecoration:"none",
-                                    border:"1px solid #bfdbfe",whiteSpace:"nowrap"}}>
+                                    padding:"2px 7px",borderRadius:99,textDecoration:"none",
+                                    border:"1px solid #bfdbfe",whiteSpace:"nowrap",fontWeight:600}}>
                                   🔗 {lk.label||"링크"}
                                 </a>
                               ))}
                             </div>
                           )}
                         </div>
+
+                        {/* 담당자 */}
                         <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
                           {(t.assignees&&t.assignees.length>0)
                             ? t.assignees.map(n=>(
@@ -1325,6 +1332,8 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                               : <span style={{fontSize:11,color:"#94a3b8"}}>미배정</span>
                           }
                         </div>
+
+                        {/* 상태 */}
                         <select value={t.status||"대기"}
                           onChange={e=>onUpdateTask({...t,status:e.target.value})}
                           onClick={e=>e.stopPropagation()}
@@ -1335,10 +1344,22 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                             fontWeight:600,cursor:"pointer",outline:"none"}}>
                           {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                         </select>
-                        <input type="date" value={t.due||""}
-                          onChange={e=>onUpdateTask({...t,due:e.target.value})}
-                          onClick={e=>e.stopPropagation()}
-                          style={{fontSize:10,border:"1px solid #e2e8f0",borderRadius:6,padding:"2px 4px 2px 4px",paddingRight:24,color:"#64748b",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+
+                        {/* 마감일 텍스트 표시 */}
+                        <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
+                          fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap"}}>
+                          {t.due ? t.due.slice(5).replace("-","/") : <span style={{color:"#cbd5e1"}}>-</span>}
+                        </div>
+
+                        {/* 달력 아이콘 버튼 — date input을 숨겨서 트리거 */}
+                        <div style={{position:"relative",width:24,height:24}}>
+                          <span style={{fontSize:14,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
+                          <input type="date" value={t.due||""}
+                            onChange={e=>onUpdateTask({...t,due:e.target.value})}
+                            onClick={e=>e.stopPropagation()}
+                            style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
+                        </div>
+
                       </div>
                     ))}
                   </div>
