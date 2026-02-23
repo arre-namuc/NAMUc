@@ -1425,7 +1425,7 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 }
 
 
-function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) {
+function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName }) {
   if (!task) return null;
 
   const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
@@ -1433,6 +1433,43 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
   const PRIO_COLOR   = {"긴급":"#ef4444","높음":"#f59e0b","보통":"#64748b","낮음":"#94a3b8"};
 
   const set = (patch) => onUpdate({...task, ...patch});
+
+  // 담당자 전달 알림
+  const notifyAssign = (names) => {
+    if (!onNotify) return;
+    names.forEach(name => {
+      if (name === user.name) return;
+      onNotify({
+        id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+        type: "assign",
+        label: "태스크 전달",
+        to: name,
+        from: user.name,
+        taskId: task.id,
+        fbTitle: task.title,
+        projName: projName||"",
+        createdAt: new Date().toISOString(),
+        urgent: false,
+      });
+    });
+  };
+
+  // 완료 시 생성자에게 알림
+  const notifyComplete = () => {
+    if (!onNotify || !task.createdBy || task.createdBy === user.name) return;
+    onNotify({
+      id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+      type: "done",
+      label: "태스크 완료",
+      to: task.createdBy,
+      from: user.name,
+      taskId: task.id,
+      fbTitle: task.title,
+      projName: projName||"",
+      createdAt: new Date().toISOString(),
+      urgent: false,
+    });
+  };
 
   const addMeeting = () => {
     const m = {id:"m"+Date.now(), title:"", date:"", attendees:"", link:"", memo:""};
@@ -1504,7 +1541,7 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
 
           {/* ── 담당자 ── */}
           <Section label="담당자">
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
               {accounts.map(a=>{
                 const sel=(task.assignees||[]).includes(a.name);
                 return (
@@ -1520,16 +1557,49 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
                 );
               })}
             </div>
-            {(task.assignees||[]).length===0&&(
-              <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>클릭하여 담당자를 지정하세요</div>
-            )}
+            {(task.assignees||[]).length===0
+              ? <div style={{fontSize:11,color:"#94a3b8"}}>클릭하여 담당자를 지정하세요</div>
+              : <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {/* 전달 버튼 */}
+                  <button type="button"
+                    onClick={()=>{
+                      const others = (task.assignees||[]).filter(n=>n!==user.name);
+                      if(others.length===0){alert("본인 외 담당자가 없습니다.");return;}
+                      notifyAssign(others);
+                      // 댓글에 자동 기록
+                      const names = others.join(", ");
+                      const c = {id:"c"+Date.now(), author:user.name,
+                        text:"📨 "+names+"에게 태스크를 전달했습니다.",
+                        createdAt:new Date().toISOString(), isSystem:true};
+                      set({
+                        assignedBy: user.name,
+                        assignedAt: new Date().toISOString(),
+                        comments:[...(task.comments||[]),c]
+                      });
+                    }}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",
+                      borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+                      background:"#2563eb",color:"#fff",transition:"all .12s"}}>
+                    📨 전달 알림 보내기
+                  </button>
+                  {task.assignedAt&&(
+                    <span style={{fontSize:11,color:"#94a3b8"}}>
+                      {task.assignedBy} · {new Date(task.assignedAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} 전달
+                    </span>
+                  )}
+                </div>
+            }
           </Section>
 
-          {/* ── 상태 + 우선순위 ── */}
+          {/* ── 상태 ── */}
           <Section label="상태">
             <div style={{display:"flex",gap:6}}>
               {["대기","진행중","완료","보류"].map(s=>(
-                <button key={s} type="button" onClick={()=>set({status:s})}
+                <button key={s} type="button"
+                  onClick={()=>{
+                    set({status:s});
+                    if(s==="완료") notifyComplete();
+                  }}
                   style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",
                     fontSize:12,fontWeight:task.status===s?800:500,border:"none",
                     background:task.status===s?STATUS_BG[s]:"#f8fafc",
@@ -1540,6 +1610,11 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
                 </button>
               ))}
             </div>
+            {task.status==="완료"&&task.createdBy&&task.createdBy!==user.name&&(
+              <div style={{marginTop:6,fontSize:11,color:"#16a34a",fontWeight:600}}>
+                ✅ {task.createdBy}에게 완료 알림이 전송됩니다
+              </div>
+            )}
           </Section>
 
           {/* ── 마감일 ── */}
@@ -1771,10 +1846,10 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
   const today = todayStr();
 
   // 태스크를 4가지 버킷으로 분류
-  const myTasks     = tasks.filter(t => (t.assignee === user.name || (t.assignees||[]).includes(user.name)) && t.stage !== "ONAIR");
-  const waitingFor  = tasks.filter(t => t.assignee !== user.name && t.stage !== "ONAIR" && (t.requestedBy === user.name || (t.watchers||[]).includes(user.name)));
-  const blockedTasks= tasks.filter(t => t.blocked);
-  const overdue     = tasks.filter(t => t.due && t.due < today && t.stage !== "ONAIR");
+  const myTasks     = tasks.filter(t => (t.assignee === user.name || (t.assignees||[]).includes(user.name)) && t.stage !== "ONAIR" && t.status !== "완료");
+  const waitingFor  = tasks.filter(t => t.assignedBy === user.name && !(t.assignees||[]).includes(user.name) && t.status !== "완료" && t.stage !== "ONAIR");
+  const doneForMe   = tasks.filter(t => t.createdBy === user.name && t.status === "완료" && t.assignedBy && t.assignedBy !== user.name);
+  const overdue     = tasks.filter(t => t.due && t.due < today && t.stage !== "ONAIR" && t.status !== "완료");
 
   // 전체 멤버별 태스크 현황
   const memberMap = {};
@@ -1908,7 +1983,7 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
           empty="지금 처리해야 할 태스크가 없어요"
         />
         <Section
-          icon="⏳" title="내가 넘긴 것 · 대기 중"
+          icon="⏳" title="내가 전달한 것 · 처리 대기"
           color="#7c3aed" bg="#f5f3ff"
           tasks={waitingFor}
           showAssignee={true}
@@ -1922,11 +1997,11 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
           empty="기한 초과 태스크 없음 👍"
         />
         <Section
-          icon="🚫" title="블로킹 (막힌 것)"
-          color="#f59e0b" bg="#fffbeb"
-          tasks={blockedTasks}
+          icon="✅" title="완료 보고 받은 것"
+          color="#16a34a" bg="#f0fdf4"
+          tasks={doneForMe}
           showAssignee={true}
-          empty="막힌 태스크가 없어요"
+          empty="완료 보고가 없어요"
         />
       </div>
 
@@ -5500,7 +5575,7 @@ function App() {
     if (!tf.title?.trim()) return;
     const tasks = tf.id
       ? proj.tasks.map(t=>t.id===tf.id?tf:t)
-      : [...proj.tasks, {...tf,id:"t"+Date.now()}];
+      : [...proj.tasks, {...tf, id:"t"+Date.now(), createdBy:user.name, createdAt:new Date().toISOString()}];
     updateTasks(tasks);
     setTaskModal(null);
   };
@@ -5574,29 +5649,36 @@ return (
               <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
                 display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <span style={{fontWeight:700,fontSize:14}}>알림</span>
-                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)).length}건</span>
+                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||(n.to&&n.to===user.name)).length}건</span>
               </div>
               {notifications.length===0
                 ? <div style={{padding:"24px",textAlign:"center",color:C.faint,fontSize:13}}>새 알림이 없습니다</div>
                 : <div style={{maxHeight:360,overflowY:"auto"}}>
-                    {notifications.filter(n=>n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)).map(n=>(
-                      <div key={n.id} onClick={()=>{setShowNotif(false);setMainTab("tasks");}}
+                    {notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||(n.to&&n.to===user.name)).map(n=>(
+                      <div key={n.id} onClick={()=>{
+                          setShowNotif(false);
+                          setMainTab("tasks");
+                          if(n.taskId){
+                            const t=proj?.tasks?.find(x=>x.id===n.taskId);
+                            if(t) setTaskPanel({...t});
+                          }
+                        }}
                         style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
                           cursor:"pointer",
-                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#f0fdf4":n.urgent?"#fff5f5":"#fff",
+                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.urgent?"#fff5f5":"#fff",
                           transition:"background .1s"}}
                         onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#f0fdf4":n.urgent?"#fff5f5":"#fff"}>
+                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.urgent?"#fff5f5":"#fff"}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                           <span style={{fontSize:13}}>
-                            {n.type==="mention"?"💬":n.type==="assign"?"👤":n.urgent?"🔴":"🟡"}
+                            {n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.urgent?"🔴":"🟡"}
                           </span>
                           <span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:99,
-                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#16a34a":n.urgent?"#ef4444":"#f59e0b",
-                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#dcfce7":n.urgent?"#fef2f2":"#fffbeb"}}>
+                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.urgent?"#ef4444":"#f59e0b",
+                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.urgent?"#fef2f2":"#fffbeb"}}>
                             {n.label}
                           </span>
-                          {n.from&&<span style={{fontSize:11,color:C.faint}}>{n.from} →</span>}
+                          {n.from&&<span style={{fontSize:11,color:C.faint}}>{n.from}{n.type==="assign"?" → "+((n.to)||""):" →"}</span>}
                         </div>
                         <div style={{fontSize:12,fontWeight:600,color:C.dark,marginBottom:2}}>{n.fbTitle}</div>
                         {n.commentText&&<div style={{fontSize:11,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{n.commentText}</div>}
@@ -5841,6 +5923,7 @@ return (
           task={taskPanel}
           accounts={accounts}
           user={user}
+          projName={proj?.name||""}
           onClose={()=>setTaskPanel(null)}
           onUpdate={(updated)=>{
             setTaskPanel(updated);
@@ -5850,6 +5933,7 @@ return (
             updateTasks((proj.tasks||[]).filter(t=>t.id!==id));
             setTaskPanel(null);
           }}
+          onNotify={(notif)=>setNotifications(prev=>[notif,...prev])}
         />
       )}
 
