@@ -54,223 +54,112 @@ const PROJECT_TEMPLATE = [
   {
     id:"s01", phase:"비딩", order:1,
     owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
-    steps:[
-      {id:"s01-1", name:"스터디 및 관점 도출",     role:"기획실장"},
-      {id:"s01-2", name:"R&R 설정",                role:"기획실장"},
-      {id:"s01-3", name:"기획방향 정리 및 아이데이션", role:"기획실장"},
-      {id:"s01-4", name:"1차 내부 공유",           role:"기획실장"},
-      {id:"s01-5", name:"문서화",                  role:"기획실장"},
-      {id:"s01-6", name:"외주 발주 (그래픽/콘티)", role:"PD"},
-      {id:"s01-7", name:"문서 취합",               role:"PD"},
-      {id:"s01-8", name:"전달",                   role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s02", phase:"기획", order:2,
     owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
-    steps:[
-      {id:"s02-1", name:"스터디 및 관점 도출",       role:"기획실장"},
-      {id:"s02-2", name:"R&R 설정",                  role:"기획실장"},
-      {id:"s02-3", name:"기획방향 정리 및 아이데이션", role:"기획실장"},
-      {id:"s02-4", name:"1차 내부 공유",             role:"기획실장"},
-      {id:"s02-5", name:"수정 및 보완",              role:"기획실장"},
-      {id:"s02-6", name:"2차 제안",                  role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s03", phase:"트리트먼트", order:3,
     owner:"감독", driver:["감독"], support:["PD"],
-    steps:[
-      {id:"s03-1", name:"R&R 설정",              role:"PD"},
-      {id:"s03-2", name:"스터디 및 관점 도출",   role:"감독"},
-      {id:"s03-3", name:"레퍼런스 서칭 및 콘티 구상", role:"감독"},
-      {id:"s03-4", name:"스토리보드 발주",       role:"PD"},
-      {id:"s03-5", name:"문서 정리",             role:"PD"},
-      {id:"s03-6", name:"제안",                 role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s04", phase:"PPM 준비", order:4,
     owner:"EPD", driver:["감독","조감독"], support:["PD"],
-    steps:[
-      {id:"s04-1", name:"PPM 자료 준비",    role:"감독"},
-      {id:"s04-2", name:"스태프 리스트 정리", role:"PD"},
-      {id:"s04-3", name:"로케이션 서칭",    role:"조감독"},
-      {id:"s04-4", name:"캐스팅 준비",      role:"조감독"},
-      {id:"s04-5", name:"PPM 문서 취합",   role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s05", phase:"견적서 및 실행예산서 1차", order:5,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps:[
-      {id:"s05-1", name:"견적 항목 구성",    role:"PD"},
-      {id:"s05-2", name:"단가 산출",         role:"PD"},
-      {id:"s05-3", name:"실행예산서 작성",   role:"PD"},
-      {id:"s05-4", name:"내부 검토",         role:"EPD"},
-    ]
+    steps: []
   },
   {
     id:"s06", phase:"PPM 및 견적 보고", order:6,
     owner:"EPD", driver:["EPD","PD"], support:["감독"],
-    steps:[
-      {id:"s06-1", name:"PPM 미팅",         role:"EPD"},
-      {id:"s06-2", name:"견적 보고",         role:"PD"},
-      {id:"s06-3", name:"클라이언트 피드백 수령", role:"PD"},
-      {id:"s06-4", name:"수정 반영",         role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s07", phase:"촬영 준비", order:7,
     owner:"PD", driver:["PD","조감독"], support:["감독"],
-    steps:[
-      {id:"s07-1", name:"스태프 확정",      role:"PD"},
-      {id:"s07-2", name:"장비 발주",        role:"PD"},
-      {id:"s07-3", name:"로케이션 확정",    role:"PD"},
-      {id:"s07-4", name:"캐스팅 확정",      role:"조감독"},
-      {id:"s07-5", name:"촬영 콘티 확정",   role:"감독"},
-      {id:"s07-6", name:"촬영 콜시트 작성", role:"조감독"},
-    ]
+    steps: []
   },
   {
     id:"s08", phase:"실행예산서 2차 (내부)", order:8,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps:[
-      {id:"s08-1", name:"확정 스태프 기준 예산 재산출", role:"PD"},
-      {id:"s08-2", name:"실행예산서 업데이트",         role:"PD"},
-      {id:"s08-3", name:"내부 보고",                  role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s09", phase:"PRODUCTION", order:9,
     owner:"감독", driver:["감독","조감독"], support:["PD"],
-    steps:[
-      {id:"s09-1", name:"촬영 현장 세팅",  role:"조감독"},
-      {id:"s09-2", name:"촬영 진행",        role:"감독"},
-      {id:"s09-3", name:"소스 확인 및 백업", role:"조감독"},
-      {id:"s09-4", name:"촬영 결과 보고",   role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s10", phase:"편집", order:10,
     owner:"감독", driver:["감독"], support:["PD"],
-    steps:[
-      {id:"s10-1", name:"소스 정리 및 로깅",  role:"감독"},
-      {id:"s10-2", name:"어셈블리 편집",       role:"감독"},
-      {id:"s10-3", name:"파인 컷 편집",        role:"감독"},
-      {id:"s10-4", name:"내부 검토",           role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s11", phase:"색보정", order:11,
     owner:"감독", driver:["감독"], support:["PD"],
-    steps:[
-      {id:"s11-1", name:"색보정 작업",        role:"감독"},
-      {id:"s11-2", name:"내부 검토",          role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s12", phase:"편집 시사", order:12,
     owner:"감독", driver:["PD"], support:["감독"],
-    steps:[
-      {id:"s12-1", name:"시사 준비",          role:"PD"},
-      {id:"s12-2", name:"클라이언트 시사",    role:"PD"},
-      {id:"s12-3", name:"피드백 수령 및 정리", role:"PD"},
-      {id:"s12-4", name:"수정 방향 공유",     role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s13", phase:"실행 결산서 1차", order:13,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps:[
-      {id:"s13-1", name:"집행 내역 취합",      role:"PD"},
-      {id:"s13-2", name:"결산서 1차 작성",     role:"PD"},
-      {id:"s13-3", name:"내부 검토",           role:"EPD"},
-    ]
+    steps: []
   },
   {
     id:"s14", phase:"그래픽 작업 1차", order:14,
     owner:"감독", driver:["AI작업자","감독"], support:["PD"],
-    steps:[
-      {id:"s14-1", name:"그래픽 소스 정리",    role:"감독"},
-      {id:"s14-2", name:"그래픽 작업",         role:"AI작업자"},
-      {id:"s14-3", name:"내부 검토",           role:"감독"},
-    ]
+    steps: []
   },
   {
     id:"s15", phase:"1차 시사", order:15,
     owner:"감독", driver:["PD"], support:["감독"],
-    steps:[
-      {id:"s15-1", name:"시사 준비",           role:"PD"},
-      {id:"s15-2", name:"클라이언트 시사",     role:"PD"},
-      {id:"s15-3", name:"피드백 수령 및 정리", role:"PD"},
-      {id:"s15-4", name:"수정 방향 결정",      role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s16", phase:"그래픽 작업 2차", order:16,
     owner:"PD", driver:["AI작업자","감독"], support:["PD"],
-    steps:[
-      {id:"s16-1", name:"피드백 반영 작업",    role:"AI작업자"},
-      {id:"s16-2", name:"내부 검토",           role:"감독"},
-      {id:"s16-3", name:"수정 완료 보고",      role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s17", phase:"2차 시사", order:17,
     owner:"PD", driver:["PD"], support:["감독"],
-    steps:[
-      {id:"s17-1", name:"시사 준비",           role:"PD"},
-      {id:"s17-2", name:"클라이언트 시사",     role:"PD"},
-      {id:"s17-3", name:"피드백 수령 및 정리", role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s18", phase:"그래픽 작업 3차", order:18,
     owner:"PD", driver:["AI작업자","감독"], support:["PD"],
-    steps:[
-      {id:"s18-1", name:"2차 피드백 반영",     role:"AI작업자"},
-      {id:"s18-2", name:"내부 검토",           role:"감독"},
-      {id:"s18-3", name:"수정 완료 보고",      role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s19", phase:"최종 시사", order:19,
     owner:"PD", driver:["PD"], support:["감독","EPD"],
-    steps:[
-      {id:"s19-1", name:"최종 시사 준비",      role:"PD"},
-      {id:"s19-2", name:"클라이언트 최종 시사", role:"PD"},
-      {id:"s19-3", name:"최종 컨펌 수령",      role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s20", phase:"결산서 2차", order:20,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps:[
-      {id:"s20-1", name:"최종 집행 내역 취합", role:"PD"},
-      {id:"s20-2", name:"결산서 최종 작성",    role:"PD"},
-      {id:"s20-3", name:"내부 결재",           role:"EPD"},
-    ]
+    steps: []
   },
   {
     id:"s21", phase:"납품", order:21,
     owner:"PD", driver:["PD","AI작업자"], support:["감독"],
-    steps:[
-      {id:"s21-1", name:"납품 파일 최종 확인", role:"감독"},
-      {id:"s21-2", name:"납품 패키징",         role:"AI작업자"},
-      {id:"s21-3", name:"납품 전달",           role:"PD"},
-      {id:"s21-4", name:"클라이언트 수령 확인", role:"PD"},
-    ]
+    steps: []
   },
   {
     id:"s22", phase:"프로젝트 최종 보고", order:22,
     owner:"EPD", driver:["PD"], support:["경영지원"],
-    steps:[
-      {id:"s22-1", name:"투여 시간 집계",      role:"PD"},
-      {id:"s22-2", name:"ROI 산출",            role:"경영지원"},
-      {id:"s22-3", name:"결과 보고서 작성",    role:"PD"},
-      {id:"s22-4", name:"사내 공유",           role:"EPD"},
-    ]
+    steps: []
   },
 ];
 
@@ -1178,7 +1067,7 @@ function PhaseRoleDisplay({ projectRoles, phase }) {
 }
 
 
-function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onUpdatePhaseRole, projectRoles }) {
+function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onAddTask, onDeleteTask, onUpdatePhaseRole, projectRoles }) {
   const [expandedPhase, setExpandedPhase] = useState(null);
   const [roleModal, setRoleModal] = useState(null);
   const [roleForm, setRoleForm] = useState({owner:"", driver:""});
@@ -1275,16 +1164,24 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
             {isOpen && (
               <div style={{padding:"0 14px 12px 14px"}}>
                 {phaseTasks.length===0 ? (
-                  <div style={{padding:"12px 0",fontSize:12,color:"#94a3b8",textAlign:"center",borderTop:"1px solid #f1f5f9"}}>
-                    태스크 없음 - 템플릿 적용 시 자동 생성됩니다
+                  <div style={{padding:"10px 0",borderTop:"1px solid #f1f5f9",textAlign:"center"}}>
+                    <button type="button" onClick={e=>{e.stopPropagation();onAddTask&&onAddTask(phase.id,phase.phase);}}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,
+                        padding:"7px 16px",borderRadius:8,border:"1.5px dashed #cbd5e1",
+                        background:"#f8fafc",color:"#94a3b8",fontSize:12,
+                        cursor:"pointer",fontWeight:600,transition:"all .15s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.color="#2563eb";e.currentTarget.style.background="#eff6ff";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#cbd5e1";e.currentTarget.style.color="#94a3b8";e.currentTarget.style.background="#f8fafc";}}>
+                      <span style={{fontSize:16,lineHeight:1}}>＋</span> 태스크 추가
+                    </button>
                   </div>
                 ) : (
                   <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
-                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
-                      <span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/>
+                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                      <span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/><span/>
                     </div>
                     {phaseTasks.map((t,ti)=>(
-                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px",
+                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",
                         padding:"7px 8px",borderRadius:8,gap:6,alignItems:"center",
                         background:ti%2===0?"#fafbfc":"#fff",border:"1px solid #f1f5f9"}}>
 
@@ -1384,8 +1281,29 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                             style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
                         </div>
 
+                        {/* - 삭제 버튼 */}
+                        <button type="button"
+                          onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
+                          style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
+                            background:"#fff1f2",color:"#ef4444",fontSize:15,fontWeight:700,
+                            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                            lineHeight:1,flexShrink:0}}
+                          title="태스크 삭제">−</button>
+
                       </div>
                     ))}
+
+                    {/* 목록 하단 + 추가 버튼 */}
+                    <button type="button"
+                      onClick={e=>{e.stopPropagation();onAddTask&&onAddTask(phase.id,phase.phase);}}
+                      style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",
+                        borderRadius:8,border:"1.5px dashed #cbd5e1",background:"#f8fafc",
+                        color:"#94a3b8",fontSize:11,cursor:"pointer",fontWeight:600,
+                        marginTop:4,transition:"all .15s",alignSelf:"flex-start"}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.color="#2563eb";e.currentTarget.style.background="#eff6ff";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#cbd5e1";e.currentTarget.style.color="#94a3b8";e.currentTarget.style.background="#f8fafc";}}>
+                      <span style={{fontSize:14,lineHeight:1}}>＋</span> 태스크 추가
+                    </button>
                   </div>
                 )}
                 <PhaseFeedbacks feedbacks={feedbacks} phaseId={phase.id}/>
@@ -1539,9 +1457,10 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
 
         <div style={{flex:1,padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:0}}>
 
-          {/* ── 담당자 ── */}
+          {/* ── 담당자 + 전달 ── */}
           <Section label="담당자">
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {/* 담당자 선택 */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
               {accounts.map(a=>{
                 const sel=(task.assignees||[]).includes(a.name);
                 return (
@@ -1557,38 +1476,56 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
                 );
               })}
             </div>
-            {(task.assignees||[]).length===0
-              ? <div style={{fontSize:11,color:"#94a3b8"}}>클릭하여 담당자를 지정하세요</div>
-              : <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  {/* 전달 버튼 */}
-                  <button type="button"
-                    onClick={()=>{
-                      const others = (task.assignees||[]).filter(n=>n!==user.name);
-                      if(others.length===0){alert("본인 외 담당자가 없습니다.");return;}
-                      notifyAssign(others);
-                      // 댓글에 자동 기록
-                      const names = others.join(", ");
-                      const c = {id:"c"+Date.now(), author:user.name,
-                        text:"📨 "+names+"에게 태스크를 전달했습니다.",
-                        createdAt:new Date().toISOString(), isSystem:true};
-                      set({
-                        assignedBy: user.name,
-                        assignedAt: new Date().toISOString(),
-                        comments:[...(task.comments||[]),c]
-                      });
-                    }}
-                    style={{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",
-                      borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
-                      background:"#2563eb",color:"#fff",transition:"all .12s"}}>
-                    📨 전달 알림 보내기
-                  </button>
-                  {task.assignedAt&&(
-                    <span style={{fontSize:11,color:"#94a3b8"}}>
-                      {task.assignedBy} · {new Date(task.assignedAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} 전달
-                    </span>
-                  )}
+
+            {/* 전달 영역 - 항상 표시 */}
+            <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px",
+              border:"1px solid #e2e8f0"}}>
+              <div style={{fontSize:11,color:"#64748b",marginBottom:8,fontWeight:600}}>
+                📨 담당자에게 태스크 전달
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                {/* 수신자 표시 */}
+                <div style={{flex:1,display:"flex",gap:4,flexWrap:"wrap",minWidth:0}}>
+                  {(task.assignees||[]).filter(n=>n!==user.name).length > 0
+                    ? (task.assignees||[]).filter(n=>n!==user.name).map(n=>(
+                        <span key={n} style={{display:"flex",alignItems:"center",gap:3,
+                          fontSize:11,fontWeight:600,color:"#2563eb",
+                          background:"#eff6ff",padding:"3px 8px",borderRadius:99}}>
+                          <Avatar name={n} size={14}/>{n}
+                        </span>
+                      ))
+                    : <span style={{fontSize:11,color:"#94a3b8"}}>위에서 담당자를 선택하세요</span>
+                  }
                 </div>
-            }
+                {/* 전달 버튼 */}
+                <button type="button"
+                  disabled={(task.assignees||[]).filter(n=>n!==user.name).length===0}
+                  onClick={()=>{
+                    const others=(task.assignees||[]).filter(n=>n!==user.name);
+                    notifyAssign(others);
+                    const names=others.join(", ");
+                    const c={id:"c"+Date.now(),author:user.name,
+                      text:"📨 "+names+"에게 태스크를 전달했습니다.",
+                      createdAt:new Date().toISOString(),isSystem:true};
+                    set({assignedBy:user.name,assignedAt:new Date().toISOString(),
+                      comments:[...(task.comments||[]),c]});
+                  }}
+                  style={{flexShrink:0,padding:"8px 16px",borderRadius:8,border:"none",
+                    cursor:(task.assignees||[]).filter(n=>n!==user.name).length===0?"not-allowed":"pointer",
+                    fontSize:12,fontWeight:700,transition:"all .12s",
+                    background:(task.assignees||[]).filter(n=>n!==user.name).length===0?"#e2e8f0":"#2563eb",
+                    color:(task.assignees||[]).filter(n=>n!==user.name).length===0?"#94a3b8":"#fff"}}>
+                  📨 전달하기
+                </button>
+              </div>
+              {/* 마지막 전달 기록 */}
+              {task.assignedAt&&(
+                <div style={{marginTop:8,fontSize:11,color:"#94a3b8",
+                  borderTop:"1px solid #e2e8f0",paddingTop:6}}>
+                  마지막 전달: <strong>{task.assignedBy}</strong> · {new Date(task.assignedAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                </div>
+              )}
+            </div>
           </Section>
 
           {/* ── 상태 ── */}
@@ -5838,6 +5775,19 @@ return (
   projectRoles={proj.phaseRoles||{}}
   onEdit={t=>setTaskPanel({...t})}
   onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}}
+  onAddTask={(phaseId, phaseName)=>{
+    setTaskModal({
+      phaseId, phase:phaseName,
+      stage:"PLANNING", type:TASK_TYPES[0],
+      priority:"보통", status:"대기",
+      assignees:[], links:[], comments:[], meetings:[],
+      createdBy:user.name, createdAt:new Date().toISOString(),
+    });
+  }}
+  onDeleteTask={(taskId)=>{
+    if(window.confirm("태스크를 삭제하시겠습니까?"))
+      updateTasks((proj.tasks||[]).filter(t=>t.id!==taskId));
+  }}
   onUpdatePhaseRole={(phaseId, roleForm)=>{
     patchProj(p=>({...p, phaseRoles:{...(p.phaseRoles||{}), [phaseId]:roleForm}}));
   }}
