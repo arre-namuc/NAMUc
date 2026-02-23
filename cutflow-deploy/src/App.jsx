@@ -2449,6 +2449,136 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify
         />
       </div>
 
+      {/* ── 전체 흐름 ── */}
+      <div>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>🔄 전체 전달 흐름</div>
+        {(()=>{
+          // assignedBy 있는 태스크만 — 누군가에서 누군가에게 전달된 것
+          const transferred = tasks.filter(t=>t.assignedBy && (t.assignees||[]).length>0);
+          if(transferred.length===0) return (
+            <div style={{textAlign:"center",padding:"20px",color:"#94a3b8",fontSize:12,
+              background:"#f8fafc",borderRadius:12,border:"1px solid #e2e8f0"}}>
+              아직 전달된 태스크가 없어요
+            </div>
+          );
+
+          const STATUS_COLOR2 = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+          const STATUS_BG2    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+
+          // 단계(phase)별로 묶기
+          const byPhase = {};
+          transferred.forEach(t=>{
+            const key = t.phase||"단계 미연결";
+            if(!byPhase[key]) byPhase[key]=[];
+            byPhase[key].push(t);
+          });
+
+          return Object.entries(byPhase).map(([phase, pts])=>(
+            <div key={phase} style={{marginBottom:12,background:"#fff",
+              border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+              {/* 단계 헤더 */}
+              <div style={{padding:"8px 14px",background:"#f8fafc",
+                borderBottom:"1px solid #e2e8f0",
+                display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"#475569"}}>{phase}</span>
+                <span style={{fontSize:10,color:"#94a3b8"}}>{pts.length}건</span>
+                <div style={{marginLeft:"auto",display:"flex",gap:4}}>
+                  {["진행중","컨펌요청","완료"].map(s=>{
+                    const cnt=pts.filter(t=>t.status===s).length;
+                    return cnt>0?(
+                      <span key={s} style={{fontSize:9,padding:"1px 6px",borderRadius:99,fontWeight:700,
+                        background:STATUS_BG2[s],color:STATUS_COLOR2[s]}}>
+                        {s} {cnt}
+                      </span>
+                    ):null;
+                  })}
+                </div>
+              </div>
+
+              {/* 태스크별 흐름 행 */}
+              <div style={{display:"flex",flexDirection:"column"}}>
+                {pts.map((t,i)=>{
+                  const isMine = (t.assignees||[]).includes(user.name)||t.assignee===user.name||t.assignedBy===user.name||t.createdBy===user.name;
+                  const sColor = STATUS_COLOR2[t.status||"대기"];
+                  const sBg    = STATUS_BG2[t.status||"대기"];
+                  return (
+                    <div key={t.id} onClick={()=>onEdit(t)}
+                      style={{display:"flex",alignItems:"center",gap:10,
+                        padding:"10px 14px",cursor:"pointer",
+                        borderBottom:i<pts.length-1?"1px solid #f1f5f9":"none",
+                        background:isMine?"#fafeff":"#fff",
+                        borderLeft:isMine?"3px solid #93c5fd":"3px solid transparent",
+                        transition:"background .1s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                      onMouseLeave={e=>e.currentTarget.style.background=isMine?"#fafeff":"#fff"}>
+
+                      {/* 태스크명 */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:isMine?700:500,color:"#1e293b",
+                          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {isMine&&<span style={{fontSize:9,color:"#2563eb",marginRight:4}}>●</span>}
+                          {t.title}
+                        </div>
+                        {t.parentId&&(
+                          <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>└ 하위 태스크</div>
+                        )}
+                      </div>
+
+                      {/* 전달 흐름 화살표: assignedBy → assignees */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                        {/* 전달자 */}
+                        <div style={{display:"flex",alignItems:"center",gap:3}}>
+                          <Avatar name={t.assignedBy} size={18}/>
+                          <span style={{fontSize:11,color:"#475569",fontWeight:t.assignedBy===user.name?700:400}}>
+                            {t.assignedBy}
+                          </span>
+                        </div>
+                        {/* 화살표 */}
+                        <span style={{fontSize:14,color:"#94a3b8"}}>→</span>
+                        {/* 담당자들 */}
+                        <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                          {(t.assignees||[]).map(n=>(
+                            <div key={n} style={{display:"flex",alignItems:"center",gap:2}}>
+                              <Avatar name={n} size={18}/>
+                              <span style={{fontSize:11,color:"#475569",fontWeight:n===user.name?700:400}}>
+                                {n}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 상태 뱃지 */}
+                      <span style={{fontSize:10,padding:"2px 8px",borderRadius:99,
+                        fontWeight:700,flexShrink:0,
+                        background:sBg,color:sColor,
+                        outline:`1px solid ${sColor}30`}}>
+                        {t.status||"대기"}
+                      </span>
+
+                      {/* 마감일 */}
+                      {t.due&&(
+                        <span style={{fontSize:10,color:t.due<today?"#ef4444":"#94a3b8",
+                          fontWeight:t.due<today?700:400,flexShrink:0,whiteSpace:"nowrap"}}>
+                          {t.due<today?"⚠ ":""}{t.due.slice(5,10).replace("-","/")}
+                        </span>
+                      )}
+
+                      {/* 컨펌 대상 표시 */}
+                      {t.status==="컨펌요청"&&t.confirmTo&&(
+                        <span style={{fontSize:10,color:"#d97706",flexShrink:0,whiteSpace:"nowrap"}}>
+                          📋→{t.confirmTo}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+
       {/* 팀원별 현황 */}
       <div>
         <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>👥 팀원별 진행 현황</div>
