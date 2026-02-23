@@ -1301,21 +1301,27 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                                 </div>
                               </div>
 
-                              {/* 담당자 */}
+                              {/* 담당자 — 전원 표시, 3명 초과시 +N */}
                               <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
-                                {(t.assignees&&t.assignees.length>0)
-                                  ? t.assignees.slice(0,2).map(n=>(
+                                {(t.assignees&&t.assignees.length>0) ? (
+                                  <>
+                                    {t.assignees.slice(0,3).map(n=>(
                                       <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,
-                                        background:"#eff6ff",color:"#2563eb",padding:"1px 6px",borderRadius:99,fontWeight:600}}>
+                                        background:"#eff6ff",color:"#2563eb",padding:"1px 6px",borderRadius:99,fontWeight:600,whiteSpace:"nowrap"}}>
                                         <Avatar name={n} size={14}/>{n}
                                       </span>
-                                    ))
-                                  : t.assignee
-                                    ? <span style={{display:"flex",alignItems:"center",gap:2,fontSize:11,color:"#475569"}}>
-                                        <Avatar name={t.assignee} size={16}/>{t.assignee}
-                                      </span>
-                                    : <span style={{fontSize:11,color:"#94a3b8"}}>-</span>
-                                }
+                                    ))}
+                                    {t.assignees.length>3&&(
+                                      <span style={{fontSize:10,color:"#64748b",fontWeight:600}}>+{t.assignees.length-3}</span>
+                                    )}
+                                  </>
+                                ) : t.assignee ? (
+                                  <span style={{display:"flex",alignItems:"center",gap:2,fontSize:11,color:"#475569"}}>
+                                    <Avatar name={t.assignee} size={16}/>{t.assignee}
+                                  </span>
+                                ) : (
+                                  <span style={{fontSize:11,color:"#94a3b8"}}>-</span>
+                                )}
                               </div>
 
                               {/* 상태 */}
@@ -1465,10 +1471,10 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
     });
   };
 
-  // 컨펌 요청 — 전달자(assignedBy) 또는 생성자(createdBy)에게
+  // 컨펌 요청 — confirmTo 우선, 없으면 assignedBy/createdBy
   const notifyConfirmRequest = () => {
     if (!onNotify) return;
-    const to = task.assignedBy || task.createdBy;
+    const to = task.confirmTo || task.assignedBy || task.createdBy;
     if (!to || to === user.name) return;
     onNotify({
       id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
@@ -1485,7 +1491,7 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
     // 댓글에 자동 기록
     const c = {
       id:"c"+Date.now(), author:user.name,
-      text:"📋 컨펌을 요청했습니다.",
+      text:`📋 ${to}에게 컨펌을 요청했습니다.`,
       createdAt:new Date().toISOString()
     };
     set({comments:[...(task.comments||[]), c]});
@@ -1657,9 +1663,20 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
                 return (
                   <button key={s} type="button"
                     onClick={()=>{
-                      if(s==="컨펌요청") notifyConfirmRequest();
-                      else if(s==="완료") notifyComplete();
-                      set({status:s});
+                      if(s==="컨펌요청"){
+                        // 컨펌 대상자 미지정이면 먼저 선택 유도
+                        if(!task.confirmTo){
+                          set({status:s, _showConfirmTarget:true});
+                        } else {
+                          set({status:s});
+                          notifyConfirmRequest();
+                        }
+                      } else if(s==="완료") {
+                        set({status:s});
+                        notifyComplete();
+                      } else {
+                        set({status:s});
+                      }
                     }}
                     style={{flex:1,minWidth:56,padding:"8px 4px",borderRadius:8,cursor:"pointer",
                       fontSize:12,fontWeight:isSel?800:500,border:"none",
@@ -1672,12 +1689,54 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
                 );
               })}
             </div>
-            {task.status==="컨펌요청"&&(
-              <div style={{marginTop:6,fontSize:11,color:"#d97706",fontWeight:600,
-                background:"#fffbeb",border:"1px solid #fde68a",borderRadius:7,padding:"6px 10px"}}>
-                📋 {task.assignedBy||task.createdBy}에게 컨펌 요청이 전송됩니다
+
+            {/* 컨펌 대상자 선택 UI */}
+            {(task.status==="컨펌요청"||task._showConfirmTarget) && (
+              <div style={{marginTop:8,padding:"10px 12px",background:"#fffbeb",
+                border:"1px solid #fde68a",borderRadius:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>
+                  📋 컨펌 요청 대상자
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {/* 전달자 우선 */}
+                  {[...(task.assignedBy?[task.assignedBy]:[]),
+                    ...(task.createdBy&&task.createdBy!==task.assignedBy?[task.createdBy]:[]),
+                    ...(accounts||[]).filter(a=>
+                      a.name!==user.name &&
+                      a.name!==task.assignedBy &&
+                      a.name!==task.createdBy
+                    ).map(a=>a.name)
+                  ].filter(Boolean).map(name=>{
+                    const isSel2 = task.confirmTo===name;
+                    const isAuto = name===task.assignedBy||name===task.createdBy;
+                    return (
+                      <button key={name} type="button"
+                        onClick={()=>{
+                          set({confirmTo:name, _showConfirmTarget:false, status:"컨펌요청"});
+                          setTimeout(()=>notifyConfirmRequest(), 50);
+                        }}
+                        style={{display:"flex",alignItems:"center",gap:4,
+                          padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                          fontSize:11,fontWeight:isSel2?700:400,
+                          background:isSel2?"#fef3c7":isAuto?"#fef9c3":"#fff",
+                          color:isSel2?"#92400e":isAuto?"#b45309":"#475569",
+                          outline:isSel2?"2px solid #f59e0b":"1px solid #e2e8f0"}}>
+                          <Avatar name={name} size={14}/>
+                          {name}
+                          {isAuto&&!isSel2&&<span style={{fontSize:9,color:"#b45309"}}>(전달자)</span>}
+                          {isSel2&&<span style={{fontSize:10}}>✓</span>}
+                        </button>
+                    );
+                  })}
+                </div>
+                {task.confirmTo&&(
+                  <div style={{fontSize:11,color:"#d97706",fontWeight:600}}>
+                    → <strong>{task.confirmTo}</strong>에게 컨펌 요청이 전송됩니다
+                  </div>
+                )}
               </div>
             )}
+
             {task.status==="완료"&&task.createdBy&&task.createdBy!==user.name&&(
               <div style={{marginTop:6,fontSize:11,color:"#16a34a",fontWeight:600}}>
                 ✅ {task.createdBy}에게 완료 알림이 전송됩니다
@@ -2056,10 +2115,11 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify
     (t.assignee === user.name || (t.assignees||[]).includes(user.name)) &&
     t.status !== "완료"
   );
-  // 컨펌 요청 받은 것: 내가 전달자(assignedBy)이고 담당자가 "컨펌요청" 상태로 올린 것
+  // 컨펌 요청 받은 것: confirmTo가 나이거나 전달자/생성자인 경우
   const confirmReqs = tasks.filter(t =>
     t.status === "컨펌요청" &&
-    (t.assignedBy === user.name || t.createdBy === user.name) &&
+    (t.confirmTo === user.name ||
+      (!t.confirmTo && (t.assignedBy === user.name || t.createdBy === user.name))) &&
     !(t.assignees||[]).includes(user.name)
   );
   // 내가 전달한 것: 아직 진행 중
