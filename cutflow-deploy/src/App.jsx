@@ -1280,11 +1280,11 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                   </div>
                 ) : (
                   <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
-                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:8}}>
-                      <span/><span>태스크</span><span>역할</span><span>담당자</span><span>상태</span><span style={{textAlign:"right"}}>마감일</span>
+                    <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 80px",padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:8}}>
+                      <span/><span>태스크</span><span>담당자</span><span>상태</span><span style={{textAlign:"right"}}>마감일</span>
                     </div>
                     {phaseTasks.map((t,ti)=>(
-                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",
+                      <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 80px",
                         padding:"7px 8px",borderRadius:8,gap:8,alignItems:"center",
                         background:ti%2===0?"#fafbfc":"#fff",border:"1px solid #f1f5f9"}}>
                         <input type="checkbox" checked={t.status==="완료"}
@@ -1296,10 +1296,20 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                             textDecoration:t.status==="완료"?"line-through":"none"}}>
                             {t.title}
                           </div>
+                          {(t.links||[]).length>0&&(
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:2}}>
+                              {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
+                                <a key={li} href={lk.url} target="_blank" rel="noreferrer"
+                                  onClick={e=>e.stopPropagation()}
+                                  style={{fontSize:9,color:"#2563eb",background:"#eff6ff",
+                                    padding:"1px 6px",borderRadius:99,textDecoration:"none",
+                                    border:"1px solid #bfdbfe",whiteSpace:"nowrap"}}>
+                                  🔗 {lk.label||"링크"}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#f1f5f9",color:"#64748b",fontWeight:600,whiteSpace:"nowrap"}}>
-                          {t.role||"-"}
-                        </span>
                         <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
                           {(t.assignees&&t.assignees.length>0)
                             ? t.assignees.map(n=>(
@@ -1328,7 +1338,7 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                         <input type="date" value={t.due||""}
                           onChange={e=>onUpdateTask({...t,due:e.target.value})}
                           onClick={e=>e.stopPropagation()}
-                          style={{fontSize:10,border:"1px solid #e2e8f0",borderRadius:6,padding:"2px 4px",color:"#64748b",outline:"none",width:"100%"}}/>
+                          style={{fontSize:10,border:"1px solid #e2e8f0",borderRadius:6,padding:"2px 4px 2px 4px",paddingRight:24,color:"#64748b",outline:"none",width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     ))}
                   </div>
@@ -5462,10 +5472,28 @@ return (
             </Field>
 
             <Field label="마감일" half>
-              <input style={inp} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
+              <input style={{...inp, paddingRight:36}} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
             </Field>
             <Field label="설명">
               <textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/>
+            </Field>
+            <Field label="참고 링크">
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {(taskModal.links||[]).map((lk,li)=>(
+                  <div key={li} style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <input style={{...inp,flex:1,fontSize:12}} value={lk.url||""} placeholder="https://..."
+                      onChange={e=>setTaskModal(v=>({...v,links:v.links.map((l,i)=>i===li?{...l,url:e.target.value}:l)}))}/>
+                    <input style={{...inp,width:110,fontSize:12}} value={lk.label||""} placeholder="링크 이름"
+                      onChange={e=>setTaskModal(v=>({...v,links:v.links.map((l,i)=>i===li?{...l,label:e.target.value}:l)}))}/>
+                    <button type="button" onClick={()=>setTaskModal(v=>({...v,links:v.links.filter((_,i)=>i!==li)}))}
+                      style={{border:"none",background:"none",cursor:"pointer",fontSize:16,color:"#94a3b8",padding:"0 4px",flexShrink:0}}>✕</button>
+                  </div>
+                ))}
+                <button type="button" onClick={()=>setTaskModal(v=>({...v,links:[...(v.links||[]),{url:"",label:""}]}))}
+                  style={{alignSelf:"flex-start",fontSize:12,color:"#2563eb",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:7,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>
+                  + 링크 추가
+                </button>
+              </div>
             </Field>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
