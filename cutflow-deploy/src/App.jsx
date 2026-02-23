@@ -1293,7 +1293,7 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                           onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
                           style={{accentColor:"#16a34a",cursor:"pointer"}}/>
 
-                        {/* 태스크명 + 링크 */}
+                        {/* 태스크명 + 뱃지 + 링크 */}
                         <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
                           <div style={{fontSize:12,fontWeight:600,
                             color:t.status==="완료"?"#94a3b8":"#1e293b",
@@ -1301,6 +1301,26 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                             {t.title}
                           </div>
+                          {/* 댓글/회의 뱃지 */}
+                          {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
+                            <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
+                              {(t.comments||[]).length>0&&(
+                                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                                  background:"#f0fdf4",color:"#16a34a",
+                                  border:"1px solid #86efac",fontWeight:700,whiteSpace:"nowrap"}}>
+                                  💬 {t.comments.length}
+                                </span>
+                              )}
+                              {(t.meetings||[]).length>0&&(
+                                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                                  background:"#f5f3ff",color:"#7c3aed",
+                                  border:"1px solid #ddd6fe",fontWeight:700,whiteSpace:"nowrap"}}>
+                                  📅 {t.meetings.length}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {/* 링크 */}
                           {(t.links||[]).filter(l=>l.url).length>0&&(
                             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:3}}>
                               {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
@@ -1413,6 +1433,17 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
   const PRIO_COLOR   = {"긴급":"#ef4444","높음":"#f59e0b","보통":"#64748b","낮음":"#94a3b8"};
 
   const set = (patch) => onUpdate({...task, ...patch});
+
+  const addMeeting = () => {
+    const m = {id:"m"+Date.now(), title:"", date:"", attendees:"", link:"", memo:""};
+    set({meetings:[...(task.meetings||[]), m]});
+  };
+  const updateMeeting = (id, patch) => {
+    set({meetings:(task.meetings||[]).map(m=>m.id===id?{...m,...patch}:m)});
+  };
+  const deleteMeeting = (id) => {
+    set({meetings:(task.meetings||[]).filter(m=>m.id!==id)});
+  };
 
   const addComment = (text) => {
     const c = {id:"c"+Date.now(), author:user.name, text, createdAt:new Date().toISOString()};
@@ -1576,6 +1607,89 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete }) 
                 boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
           </Section>
 
+          {/* ── 회의 일정 ── */}
+          <Section label={"회의 일정" + ((task.meetings||[]).length>0?" ("+task.meetings.length+")":"")}>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {(task.meetings||[]).length===0&&(
+                <div style={{fontSize:12,color:"#94a3b8",padding:"12px 0",textAlign:"center",
+                  border:"1px dashed #e2e8f0",borderRadius:10}}>
+                  회의 일정이 없습니다
+                </div>
+              )}
+              {(task.meetings||[]).map((m,mi)=>(
+                <div key={m.id} style={{border:"1px solid #e2e8f0",borderRadius:10,
+                  padding:"12px 14px",background:"#fafbfc",position:"relative"}}>
+                  {/* 헤더: 순번 + 삭제 */}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#7c3aed",
+                      background:"#f5f3ff",padding:"2px 8px",borderRadius:99}}>
+                      회의 {mi+1}
+                    </span>
+                    <button onClick={()=>deleteMeeting(m.id)}
+                      style={{border:"none",background:"none",cursor:"pointer",
+                        fontSize:13,color:"#94a3b8",padding:0}}>✕</button>
+                  </div>
+                  {/* 회의명 + 일시 */}
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    <input value={m.title||""} placeholder="회의 제목"
+                      onChange={e=>updateMeeting(m.id,{title:e.target.value})}
+                      style={{flex:1,padding:"7px 10px",borderRadius:7,
+                        border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                        fontFamily:"inherit",fontWeight:600}}/>
+                    <input type="datetime-local" value={m.date||""}
+                      onChange={e=>updateMeeting(m.id,{date:e.target.value})}
+                      style={{width:175,padding:"7px 10px",borderRadius:7,
+                        border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                        fontFamily:"inherit"}}/>
+                  </div>
+                  {/* 참석자 */}
+                  <input value={m.attendees||""} placeholder="참석자 (예: 홍길동, 김철수)"
+                    onChange={e=>updateMeeting(m.id,{attendees:e.target.value})}
+                    style={{width:"100%",padding:"7px 10px",borderRadius:7,
+                      border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                      fontFamily:"inherit",boxSizing:"border-box",marginBottom:8}}/>
+                  {/* 회의록 링크 */}
+                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0}}>📄 회의록</span>
+                    <input value={m.link||""} placeholder="회의록 URL"
+                      onChange={e=>updateMeeting(m.id,{link:e.target.value})}
+                      style={{flex:1,padding:"6px 10px",borderRadius:7,
+                        border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                        fontFamily:"inherit"}}/>
+                    {m.link
+                      ? <a href={m.link} target="_blank" rel="noreferrer"
+                          style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
+                            background:"#eff6ff",border:"1px solid #bfdbfe",
+                            color:"#2563eb",fontSize:12,fontWeight:700,
+                            textDecoration:"none",whiteSpace:"nowrap"}}>
+                          열기 🔗
+                        </a>
+                      : <span style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
+                          background:"#f1f5f9",color:"#94a3b8",fontSize:12,
+                          fontWeight:700,whiteSpace:"nowrap"}}>
+                          열기 🔗
+                        </span>
+                    }
+                  </div>
+                  {/* 메모 */}
+                  <textarea value={m.memo||""} placeholder="회의 메모..."
+                    onChange={e=>updateMeeting(m.id,{memo:e.target.value})}
+                    rows={2}
+                    style={{width:"100%",padding:"7px 10px",borderRadius:7,
+                      border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                      fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",
+                      lineHeight:1.5}}/>
+                </div>
+              ))}
+              <button type="button" onClick={addMeeting}
+                style={{alignSelf:"flex-start",fontSize:12,color:"#7c3aed",
+                  background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:7,
+                  padding:"6px 14px",cursor:"pointer",fontWeight:600}}>
+                + 회의 추가
+              </button>
+            </div>
+          </Section>
+
           {/* ── 댓글 ── */}
           <Section label={"댓글" + ((task.comments||[]).length>0?" ("+task.comments.length+")":"")}>
             {(task.comments||[]).length===0
@@ -1694,6 +1808,22 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
           <PriorityDot p={t.priority}/>
           <div style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b",lineHeight:1.3}}>{t.title}</div>
         </div>
+        {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
+          <div style={{display:"flex",gap:4,marginBottom:5}}>
+            {(t.comments||[]).length>0&&(
+              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                💬 {t.comments.length}
+              </span>
+            )}
+            {(t.meetings||[]).length>0&&(
+              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                📅 {t.meetings.length}
+              </span>
+            )}
+          </div>
+        )}
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
             background:stage.bg||"#f1f5f9",color:stage.color||"#64748b",fontWeight:600}}>
@@ -1862,6 +1992,22 @@ function KanbanCol({ stage, tasks, onEdit }) {
       {tasks.map(t=>(
         <div key={t.id} onClick={()=>onEdit(t)} style={{background:C.white,border:`1px solid ${isOverdue(t)?"#fca5a5":C.border}`,borderRadius:10,padding:"12px 13px",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>{t.title}</div>
+          {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
+            <div style={{display:"flex",gap:4,marginBottom:6}}>
+              {(t.comments||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                  💬 {t.comments.length}
+                </span>
+              )}
+              {(t.meetings||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                  📅 {t.meetings.length}
+                </span>
+              )}
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:99}}>{t.type}</span>
             <Avatar name={t.assignee} size={22}/>
@@ -5631,7 +5777,21 @@ return (
                         onClick={()=>setTaskPanel({...t})}>
                         <div>
                           <div style={{fontSize:13,fontWeight:600,color:isOverdue(t)?C.red:C.text}}>{t.title}{isOverdue(t)?" ⚠":""}</div>
-                          <div style={{fontSize:11,color:C.faint,marginTop:2}}>{t.type}</div>
+                          <div style={{display:"flex",gap:4,marginTop:3,alignItems:"center",flexWrap:"wrap"}}>
+                            <span style={{fontSize:11,color:C.faint}}>{t.type}</span>
+                            {(t.comments||[]).length>0&&(
+                              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                                background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                                💬 {t.comments.length}
+                              </span>
+                            )}
+                            {(t.meetings||[]).length>0&&(
+                              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                                background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                                📅 {t.meetings.length}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:STAGES[t.stage]?.bg,color:STAGES[t.stage]?.color,fontWeight:600,whiteSpace:"nowrap"}}>{t.stage}</span>
                         <span style={{fontSize:12,color:isOverdue(t)?C.red:C.faint}}>{t.due||"-"}</span>
