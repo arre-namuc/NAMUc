@@ -41,6 +41,271 @@ const SEED_ACCOUNTS = [
 ];
 
 // ═══════════════════════════════════════════════════════════
+// 프로젝트 워크플로우 템플릿
+// ═══════════════════════════════════════════════════════════
+
+// 역할 정의
+const ROLE_OWNER   = "owner";    // 주도자 (책임자)
+const ROLE_DRIVER  = "driver";   // 실행자
+const ROLE_SUPPORT = "support";  // 보조
+
+// 22단계 표준 워크플로우 템플릿
+const PROJECT_TEMPLATE = [
+  {
+    id:"s01", phase:"비딩", order:1,
+    owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
+    steps:[
+      {id:"s01-1", name:"스터디 및 관점 도출",     role:"기획실장"},
+      {id:"s01-2", name:"R&R 설정",                role:"기획실장"},
+      {id:"s01-3", name:"기획방향 정리 및 아이데이션", role:"기획실장"},
+      {id:"s01-4", name:"1차 내부 공유",           role:"기획실장"},
+      {id:"s01-5", name:"문서화",                  role:"기획실장"},
+      {id:"s01-6", name:"외주 발주 (그래픽/콘티)", role:"PD"},
+      {id:"s01-7", name:"문서 취합",               role:"PD"},
+      {id:"s01-8", name:"전달",                   role:"PD"},
+    ]
+  },
+  {
+    id:"s02", phase:"기획", order:2,
+    owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
+    steps:[
+      {id:"s02-1", name:"스터디 및 관점 도출",       role:"기획실장"},
+      {id:"s02-2", name:"R&R 설정",                  role:"기획실장"},
+      {id:"s02-3", name:"기획방향 정리 및 아이데이션", role:"기획실장"},
+      {id:"s02-4", name:"1차 내부 공유",             role:"기획실장"},
+      {id:"s02-5", name:"수정 및 보완",              role:"기획실장"},
+      {id:"s02-6", name:"2차 제안",                  role:"PD"},
+    ]
+  },
+  {
+    id:"s03", phase:"트리트먼트", order:3,
+    owner:"감독", driver:["감독"], support:["PD"],
+    steps:[
+      {id:"s03-1", name:"R&R 설정",              role:"PD"},
+      {id:"s03-2", name:"스터디 및 관점 도출",   role:"감독"},
+      {id:"s03-3", name:"레퍼런스 서칭 및 콘티 구상", role:"감독"},
+      {id:"s03-4", name:"스토리보드 발주",       role:"PD"},
+      {id:"s03-5", name:"문서 정리",             role:"PD"},
+      {id:"s03-6", name:"제안",                 role:"PD"},
+    ]
+  },
+  {
+    id:"s04", phase:"PPM 준비", order:4,
+    owner:"EPD", driver:["감독","조감독"], support:["PD"],
+    steps:[
+      {id:"s04-1", name:"PPM 자료 준비",    role:"감독"},
+      {id:"s04-2", name:"스태프 리스트 정리", role:"PD"},
+      {id:"s04-3", name:"로케이션 서칭",    role:"조감독"},
+      {id:"s04-4", name:"캐스팅 준비",      role:"조감독"},
+      {id:"s04-5", name:"PPM 문서 취합",   role:"PD"},
+    ]
+  },
+  {
+    id:"s05", phase:"견적서 및 실행예산서 1차", order:5,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    steps:[
+      {id:"s05-1", name:"견적 항목 구성",    role:"PD"},
+      {id:"s05-2", name:"단가 산출",         role:"PD"},
+      {id:"s05-3", name:"실행예산서 작성",   role:"PD"},
+      {id:"s05-4", name:"내부 검토",         role:"EPD"},
+    ]
+  },
+  {
+    id:"s06", phase:"PPM 및 견적 보고", order:6,
+    owner:"EPD", driver:["EPD","PD"], support:["감독"],
+    steps:[
+      {id:"s06-1", name:"PPM 미팅",         role:"EPD"},
+      {id:"s06-2", name:"견적 보고",         role:"PD"},
+      {id:"s06-3", name:"클라이언트 피드백 수령", role:"PD"},
+      {id:"s06-4", name:"수정 반영",         role:"PD"},
+    ]
+  },
+  {
+    id:"s07", phase:"촬영 준비", order:7,
+    owner:"PD", driver:["PD","조감독"], support:["감독"],
+    steps:[
+      {id:"s07-1", name:"스태프 확정",      role:"PD"},
+      {id:"s07-2", name:"장비 발주",        role:"PD"},
+      {id:"s07-3", name:"로케이션 확정",    role:"PD"},
+      {id:"s07-4", name:"캐스팅 확정",      role:"조감독"},
+      {id:"s07-5", name:"촬영 콘티 확정",   role:"감독"},
+      {id:"s07-6", name:"촬영 콜시트 작성", role:"조감독"},
+    ]
+  },
+  {
+    id:"s08", phase:"실행예산서 2차 (내부)", order:8,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    steps:[
+      {id:"s08-1", name:"확정 스태프 기준 예산 재산출", role:"PD"},
+      {id:"s08-2", name:"실행예산서 업데이트",         role:"PD"},
+      {id:"s08-3", name:"내부 보고",                  role:"PD"},
+    ]
+  },
+  {
+    id:"s09", phase:"촬영", order:9,
+    owner:"감독", driver:["감독","조감독"], support:["PD"],
+    steps:[
+      {id:"s09-1", name:"촬영 현장 세팅",  role:"조감독"},
+      {id:"s09-2", name:"촬영 진행",        role:"감독"},
+      {id:"s09-3", name:"소스 확인 및 백업", role:"조감독"},
+      {id:"s09-4", name:"촬영 결과 보고",   role:"PD"},
+    ]
+  },
+  {
+    id:"s10", phase:"편집", order:10,
+    owner:"감독", driver:["감독"], support:["PD"],
+    steps:[
+      {id:"s10-1", name:"소스 정리 및 로깅",  role:"감독"},
+      {id:"s10-2", name:"어셈블리 편집",       role:"감독"},
+      {id:"s10-3", name:"파인 컷 편집",        role:"감독"},
+      {id:"s10-4", name:"내부 검토",           role:"PD"},
+    ]
+  },
+  {
+    id:"s11", phase:"색보정", order:11,
+    owner:"감독", driver:["감독"], support:["PD"],
+    steps:[
+      {id:"s11-1", name:"색보정 작업",        role:"감독"},
+      {id:"s11-2", name:"내부 검토",          role:"PD"},
+    ]
+  },
+  {
+    id:"s12", phase:"편집 시사", order:12,
+    owner:"감독", driver:["PD"], support:["감독"],
+    steps:[
+      {id:"s12-1", name:"시사 준비",          role:"PD"},
+      {id:"s12-2", name:"클라이언트 시사",    role:"PD"},
+      {id:"s12-3", name:"피드백 수령 및 정리", role:"PD"},
+      {id:"s12-4", name:"수정 방향 공유",     role:"PD"},
+    ]
+  },
+  {
+    id:"s13", phase:"실행 결산서 1차", order:13,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    steps:[
+      {id:"s13-1", name:"집행 내역 취합",      role:"PD"},
+      {id:"s13-2", name:"결산서 1차 작성",     role:"PD"},
+      {id:"s13-3", name:"내부 검토",           role:"EPD"},
+    ]
+  },
+  {
+    id:"s14", phase:"그래픽 작업 1차", order:14,
+    owner:"감독", driver:["AI작업자","감독"], support:["PD"],
+    steps:[
+      {id:"s14-1", name:"그래픽 소스 정리",    role:"감독"},
+      {id:"s14-2", name:"그래픽 작업",         role:"AI작업자"},
+      {id:"s14-3", name:"내부 검토",           role:"감독"},
+    ]
+  },
+  {
+    id:"s15", phase:"1차 시사", order:15,
+    owner:"감독", driver:["PD"], support:["감독"],
+    steps:[
+      {id:"s15-1", name:"시사 준비",           role:"PD"},
+      {id:"s15-2", name:"클라이언트 시사",     role:"PD"},
+      {id:"s15-3", name:"피드백 수령 및 정리", role:"PD"},
+      {id:"s15-4", name:"수정 방향 결정",      role:"PD"},
+    ]
+  },
+  {
+    id:"s16", phase:"그래픽 작업 2차", order:16,
+    owner:"PD", driver:["AI작업자","감독"], support:["PD"],
+    steps:[
+      {id:"s16-1", name:"피드백 반영 작업",    role:"AI작업자"},
+      {id:"s16-2", name:"내부 검토",           role:"감독"},
+      {id:"s16-3", name:"수정 완료 보고",      role:"PD"},
+    ]
+  },
+  {
+    id:"s17", phase:"2차 시사", order:17,
+    owner:"PD", driver:["PD"], support:["감독"],
+    steps:[
+      {id:"s17-1", name:"시사 준비",           role:"PD"},
+      {id:"s17-2", name:"클라이언트 시사",     role:"PD"},
+      {id:"s17-3", name:"피드백 수령 및 정리", role:"PD"},
+    ]
+  },
+  {
+    id:"s18", phase:"그래픽 작업 3차", order:18,
+    owner:"PD", driver:["AI작업자","감독"], support:["PD"],
+    steps:[
+      {id:"s18-1", name:"2차 피드백 반영",     role:"AI작업자"},
+      {id:"s18-2", name:"내부 검토",           role:"감독"},
+      {id:"s18-3", name:"수정 완료 보고",      role:"PD"},
+    ]
+  },
+  {
+    id:"s19", phase:"최종 시사", order:19,
+    owner:"PD", driver:["PD"], support:["감독","EPD"],
+    steps:[
+      {id:"s19-1", name:"최종 시사 준비",      role:"PD"},
+      {id:"s19-2", name:"클라이언트 최종 시사", role:"PD"},
+      {id:"s19-3", name:"최종 컨펌 수령",      role:"PD"},
+    ]
+  },
+  {
+    id:"s20", phase:"결산서 2차", order:20,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    steps:[
+      {id:"s20-1", name:"최종 집행 내역 취합", role:"PD"},
+      {id:"s20-2", name:"결산서 최종 작성",    role:"PD"},
+      {id:"s20-3", name:"내부 결재",           role:"EPD"},
+    ]
+  },
+  {
+    id:"s21", phase:"납품", order:21,
+    owner:"PD", driver:["PD","AI작업자"], support:["감독"],
+    steps:[
+      {id:"s21-1", name:"납품 파일 최종 확인", role:"감독"},
+      {id:"s21-2", name:"납품 패키징",         role:"AI작업자"},
+      {id:"s21-3", name:"납품 전달",           role:"PD"},
+      {id:"s21-4", name:"클라이언트 수령 확인", role:"PD"},
+    ]
+  },
+  {
+    id:"s22", phase:"프로젝트 최종 보고", order:22,
+    owner:"EPD", driver:["PD"], support:["경영지원"],
+    steps:[
+      {id:"s22-1", name:"투여 시간 집계",      role:"PD"},
+      {id:"s22-2", name:"ROI 산출",            role:"경영지원"},
+      {id:"s22-3", name:"결과 보고서 작성",    role:"PD"},
+      {id:"s22-4", name:"사내 공유",           role:"EPD"},
+    ]
+  },
+];
+
+// 템플릿에서 프로젝트 태스크 생성
+function generateTasksFromTemplate(projectId, projectMembers) {
+  const tasks = [];
+  PROJECT_TEMPLATE.forEach(phase => {
+    phase.steps.forEach(step => {
+      tasks.push({
+        id: "t" + Date.now() + Math.random().toString(36).slice(2,6),
+        phaseId: phase.id,
+        phase: phase.phase,
+        title: step.name,
+        role: step.role,
+        assignee: findMemberByRole(projectMembers, step.role) || "",
+        stage: phase.order <= 3 ? "브리프" : phase.order <= 6 ? "프리프로덕션" : phase.order <= 9 ? "촬영" : phase.order <= 19 ? "포스트" : "납품완료",
+        priority: "보통",
+        status: "대기",
+        due: "",
+        desc: "",
+        repeatCount: 0,
+        timeSpent: 0,
+      });
+    });
+  });
+  return tasks;
+}
+
+function findMemberByRole(members, role) {
+  if(!members) return "";
+  const m = members.find(m => m.role === role || m.role?.includes(role));
+  return m ? m.name : "";
+}
+
+// ═══════════════════════════════════════════════════════════
 // 프로덕션 상수
 // ═══════════════════════════════════════════════════════════
 const STAGES = {
@@ -838,6 +1103,239 @@ function LoginScreen({ onLogin, accounts }) {
 // ═══════════════════════════════════════════════════════════
 // 칸반 컬럼
 // ═══════════════════════════════════════════════════════════
+// 단계(페이즈)별 뷰 - 22단계 워크플로우
+function PhaseView({ tasks, template, user, accounts, onEdit, onUpdateTask }) {
+  const [expandedPhase, setExpandedPhase] = useState(null);
+  const today = todayStr();
+
+  // 현재 진행 중인 페이즈 자동 감지
+  const activePhase = (() => {
+    for(const phase of template) {
+      const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
+      const hasInProgress = phaseTasks.some(t=>t.status==="진행중");
+      const allDone = phaseTasks.length>0 && phaseTasks.every(t=>t.status==="완료");
+      if(hasInProgress || (phaseTasks.length>0 && !allDone)) return phase.id;
+    }
+    return template[0]?.id;
+  })();
+
+  // 페이즈 진행률
+  const phaseProgress = (phaseId) => {
+    const pt = tasks.filter(t=>t.phaseId===phaseId);
+    if(pt.length===0) return {total:0, done:0, pct:0};
+    const done = pt.filter(t=>t.status==="완료").length;
+    return {total:pt.length, done, pct:Math.round(done/pt.length*100)};
+  };
+
+  // 전체 진행률
+  const totalProgress = (() => {
+    const all = tasks.length;
+    if(!all) return 0;
+    return Math.round(tasks.filter(t=>t.status==="완료").length / all * 100);
+  })();
+
+  const statusColor = s => s==="완료"?"#16a34a":s==="진행중"?"#2563eb":s==="보류"?"#d97706":"#94a3b8";
+  const statusBg    = s => s==="완료"?"#f0fdf4":s==="진행중"?"#eff6ff":s==="보류"?"#fffbeb":"#f8fafc";
+  const STATUS_OPTIONS = ["대기","진행중","완료","보류"];
+
+  const roleLabel = r => r==="owner"?"주도":r==="driver"?"실행":"보조";
+  const roleBg    = r => r==="owner"?"#fef3c7":r==="driver"?"#eff6ff":"#f8fafc";
+  const roleColor = r => r==="owner"?"#d97706":r==="driver"?"#2563eb":"#94a3b8";
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:0}}>
+
+      {/* 전체 진행 바 */}
+      <div style={{background:"#f8fafc",borderRadius:12,padding:"14px 18px",marginBottom:16,border:"1px solid #e2e8f0"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>프로젝트 전체 진행률</span>
+          <span style={{fontSize:13,fontWeight:800,color:"#2563eb"}}>{totalProgress}%</span>
+        </div>
+        <div style={{height:8,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${totalProgress}%`,background:"linear-gradient(90deg,#3b82f6,#2563eb)",borderRadius:99,transition:"width .5s"}}/>
+        </div>
+        <div style={{display:"flex",gap:16,marginTop:10,flexWrap:"wrap"}}>
+          {[
+            {label:"전체",    count:tasks.length,                              color:"#64748b"},
+            {label:"완료",    count:tasks.filter(t=>t.status==="완료").length,  color:"#16a34a"},
+            {label:"진행중",  count:tasks.filter(t=>t.status==="진행중").length,color:"#2563eb"},
+            {label:"대기",    count:tasks.filter(t=>t.status==="대기").length,  color:"#94a3b8"},
+          ].map(s=>(
+            <span key={s.label} style={{fontSize:11,color:s.color,fontWeight:600}}>
+              {s.label} <strong>{s.count}</strong>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 22단계 아코디언 */}
+      {template.map((phase, pi) => {
+        const prog    = phaseProgress(phase.id);
+        const isActive= phase.id === activePhase;
+        const isOpen  = expandedPhase === phase.id || isActive && expandedPhase === null;
+        const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
+        const isDone  = prog.total>0 && prog.pct===100;
+        const hasAny  = prog.total>0;
+
+        return (
+          <div key={phase.id} style={{
+            borderLeft:`3px solid ${isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0"}`,
+            marginBottom:2,background:"#fff",
+            borderRadius:"0 8px 8px 0",
+            boxShadow:isActive?"0 2px 8px rgba(37,99,235,.1)":"none",
+            transition:"all .2s"
+          }}>
+            {/* 페이즈 헤더 */}
+            <div
+              onClick={()=>setExpandedPhase(isOpen?-1:phase.id)}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",
+                cursor:"pointer",userSelect:"none",
+                background:isActive?"#eff6ff":isDone?"#f0fdf4":"transparent",
+                borderRadius:"0 8px 8px 0"}}
+              onMouseEnter={e=>!isActive&&!isDone&&(e.currentTarget.style.background="#f8fafc")}
+              onMouseLeave={e=>!isActive&&!isDone&&(e.currentTarget.style.background="transparent")}>
+
+              {/* 단계 번호 */}
+              <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,
+                background:isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0",
+                color:isDone||isActive?"#fff":"#94a3b8",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:10,fontWeight:800}}>
+                {isDone?"✓":phase.order}
+              </div>
+
+              {/* 페이즈명 */}
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13,fontWeight:700,
+                    color:isDone?"#16a34a":isActive?"#2563eb":"#334155"}}>
+                    {phase.phase}
+                  </span>
+                  {isActive&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                    background:"#2563eb",color:"#fff",fontWeight:700}}>진행중</span>}
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"#94a3b8"}}>주도: {phase.owner}</span>
+                  <span style={{fontSize:10,color:"#94a3b8"}}>·</span>
+                  <span style={{fontSize:10,color:"#94a3b8"}}>실행: {phase.driver.join(", ")}</span>
+                </div>
+              </div>
+
+              {/* 진행률 */}
+              <div style={{textAlign:"right",flexShrink:0}}>
+                {hasAny ? (
+                  <>
+                    <div style={{fontSize:11,fontWeight:700,
+                      color:isDone?"#16a34a":isActive?"#2563eb":"#64748b"}}>
+                      {prog.done}/{prog.total}
+                    </div>
+                    <div style={{width:60,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginTop:3}}>
+                      <div style={{height:"100%",width:`${prog.pct}%`,
+                        background:isDone?"#16a34a":isActive?"#2563eb":"#94a3b8",
+                        borderRadius:99,transition:"width .3s"}}/>
+                    </div>
+                  </>
+                ) : (
+                  <span style={{fontSize:10,color:"#cbd5e1"}}>미시작</span>
+                )}
+              </div>
+
+              <span style={{color:"#cbd5e1",fontSize:12,flexShrink:0,marginLeft:4}}>
+                {isOpen?"▲":"▼"}
+              </span>
+            </div>
+
+            {/* 태스크 목록 */}
+            {isOpen && (
+              <div style={{padding:"0 14px 12px 14px"}}>
+                {phaseTasks.length===0 ? (
+                  <div style={{padding:"12px 0",fontSize:12,color:"#94a3b8",
+                    textAlign:"center",borderTop:"1px solid #f1f5f9"}}>
+                    태스크 없음 — 프로젝트 생성 시 템플릿을 적용하면 자동으로 생성됩니다
+                  </div>
+                ) : (
+                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,
+                    display:"flex",flexDirection:"column",gap:4}}>
+                    {/* 헤더 */}
+                    <div style={{display:"grid",
+                      gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",
+                      padding:"4px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:8}}>
+                      <span/>
+                      <span>태스크</span>
+                      <span>역할</span>
+                      <span>담당자</span>
+                      <span>상태</span>
+                      <span style={{textAlign:"right"}}>마감일</span>
+                    </div>
+                    {phaseTasks.map((t,ti)=>(
+                      <div key={t.id} style={{display:"grid",
+                        gridTemplateColumns:"20px 1fr 80px 100px 100px 80px",
+                        padding:"7px 8px",borderRadius:8,gap:8,alignItems:"center",
+                        background:ti%2===0?"#fafbfc":"#fff",
+                        border:"1px solid #f1f5f9"}}>
+
+                        {/* 체크 */}
+                        <input type="checkbox" checked={t.status==="완료"}
+                          onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
+                          style={{accentColor:"#16a34a",cursor:"pointer"}}/>
+
+                        {/* 태스크명 */}
+                        <div onClick={()=>onEdit(t)} style={{cursor:"pointer"}}>
+                          <div style={{fontSize:12,fontWeight:600,
+                            color:t.status==="완료"?"#94a3b8":"#1e293b",
+                            textDecoration:t.status==="완료"?"line-through":"none"}}>
+                            {t.title}
+                          </div>
+                        </div>
+
+                        {/* 역할 */}
+                        <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,
+                          background:"#f1f5f9",color:"#64748b",fontWeight:600,
+                          whiteSpace:"nowrap"}}>
+                          {t.role||"—"}
+                        </span>
+
+                        {/* 담당자 */}
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          {t.assignee && <Avatar name={t.assignee} size={18}/>}
+                          <span style={{fontSize:11,color:"#475569"}}>
+                            {t.assignee||"미배정"}
+                          </span>
+                        </div>
+
+                        {/* 상태 */}
+                        <select
+                          value={t.status||"대기"}
+                          onChange={e=>onUpdateTask({...t,status:e.target.value})}
+                          onClick={e=>e.stopPropagation()}
+                          style={{fontSize:10,padding:"2px 6px",borderRadius:6,
+                            border:`1px solid ${statusColor(t.status||"대기")}40`,
+                            background:statusBg(t.status||"대기"),
+                            color:statusColor(t.status||"대기"),
+                            fontWeight:600,cursor:"pointer",outline:"none"}}>
+                          {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                        </select>
+
+                        {/* 마감일 */}
+                        <input type="date" value={t.due||""}
+                          onChange={e=>onUpdateTask({...t,due:e.target.value})}
+                          onClick={e=>e.stopPropagation()}
+                          style={{fontSize:10,border:"1px solid #e2e8f0",borderRadius:6,
+                            padding:"2px 4px",color:"#64748b",outline:"none",width:"100%"}}/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
   const today = todayStr();
 
@@ -4411,7 +4909,7 @@ function App() {
     return () => { u1(); u2(); u3(); };
   }, []);
   const [docTab,       setDocTab]       = useState("tasks");   // tasks | feedback | calendar | ...
-  const [viewMode,     setViewMode]     = useState("flow");    // list | kanban | flow
+  const [viewMode,     setViewMode]     = useState("phase");   // phase | flow | list | kanban
   const [taskModal,    setTaskModal]    = useState(null);
   const [tf,           setTf]           = useState({});
 
@@ -4487,9 +4985,13 @@ function App() {
   const createProject = () => {
     if (!pf.name.trim()||!pf.client.trim()) return;
     const id = "p"+Date.now();
+    const projMembers = accounts.filter(a=>
+      [pf.pd, pf.director, pf.epd, pf.assistant].includes(a.name)
+    );
+    const initTasks = pf.useTemplate!==false ? generateTasksFromTemplate(id, projMembers) : [];
     const np = {
       id, ...pf, stage:"브리프", createdAt:todayStr(),
-      tasks:[],
+      tasks:initTasks,
       quote:{vat:true,agencyFeeRate:10,items:pf.quoteFmt==="B"?makeTemplateB():makeTemplate()},
       budget:{vouchers:[]},
       settlementDate:null, settled:false,
@@ -4498,7 +5000,7 @@ function App() {
     setSelId(id);
     setAddProjModal(false);
     if(isConfigured) saveProject(np).catch(console.error);
-    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0],useTemplate:true});
   };
 
   const openEditProj = () => {
@@ -4512,7 +5014,7 @@ function App() {
     if(!pf.name.trim()||!pf.client.trim()) return;
     patchProj(p=>({...p,...pf}));
     setEditProjModal(false);
-    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0],useTemplate:true});
   };
 
   const deleteProjectById = (id) => {
@@ -4764,6 +5266,7 @@ return (
                     {stageKeys.map(s=><option key={s}>{s}</option>)}
                   </select>
                   <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                    <button onClick={()=>setViewMode("phase")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="phase"?C.blue:C.border}`,background:viewMode==="phase"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="phase"?C.blue:C.sub}}>📋 단계별</button>
                     <button onClick={()=>setViewMode("flow")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="flow"?C.blue:C.border}`,background:viewMode==="flow"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="flow"?C.blue:C.sub}}>🔀 협업흐름</button>
                     <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
                     <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
@@ -4771,7 +5274,9 @@ return (
                   </div>
                 </div>
 
-                {viewMode==="flow"?(
+                {viewMode==="phase"?(
+                  <PhaseView tasks={proj.tasks||[]} template={PROJECT_TEMPLATE} user={user} accounts={accounts} onEdit={t=>setTaskModal({...t})} onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}}/>
+                ):viewMode==="flow"?(
                   <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskModal({...t})} onAdd={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:user.name,priority:"보통"});}}/>
                 ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
@@ -4965,6 +5470,23 @@ return (
               {P_COLORS.map(c=><div key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",outline:pf.color===c?`3px solid ${c}`:"none",outlineOffset:2}}/>)}
             </div>
           </Field>
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#16a34a"}}>🗂 워크플로우 템플릿</div>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:13}}>
+                <input type="checkbox" checked={pf.useTemplate!==false}
+                  onChange={e=>setPf(v=>({...v,useTemplate:e.target.checked}))}
+                  style={{accentColor:"#16a34a",width:16,height:16}}/>
+                <span style={{color:"#16a34a",fontWeight:600}}>22단계 표준 템플릿 적용</span>
+              </label>
+            </div>
+            {pf.useTemplate!==false && (
+              <div style={{fontSize:11,color:"#15803d"}}>
+                비딩 → 기획 → 트리트먼트 → PPM → 촬영준비 → 촬영 → 편집 → 색보정 → 시사 × 3 → 납품 → 최종보고
+                <div style={{marginTop:4,color:"#86efac"}}>총 22단계 · 65개 하위 태스크가 자동으로 생성됩니다</div>
+              </div>
+            )}
+          </div>
           <Field label="견적서 포맷">
             <div style={{display:"flex",gap:8}}>
               {[{val:"A",label:"📄 표준형",desc:"대분류/중분류 계층"},{val:"B",label:"📋 상세형",desc:"부문별 소계 + 관리비/이윤"}].map(opt=>(
