@@ -1101,8 +1101,8 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
   const openRoleEdit = (e, phase) => { e.stopPropagation(); setRoleModal(phase); };
   const saveRole = () => { if(onUpdatePhaseRole) onUpdatePhaseRole(roleModal.id, roleForm); setRoleModal(null); };
   const memberNames = (accounts||[]).map(a=>a.name);
-  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
-  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
   const statusColor = s => STATUS_COLOR[s] || "#94a3b8";
   const statusBg    = s => STATUS_BG[s]    || "#f8fafc";
   const STATUS_OPTIONS = ["대기","진행중","완료","보류"];
@@ -1439,7 +1439,7 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName, projTasks }) {
   if (!task) return null;
 
-  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
   const STATUS_BG    = {"대기":"#f1f5f9","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
   const PRIO_COLOR   = {"긴급":"#ef4444","높음":"#f59e0b","보통":"#64748b","낮음":"#94a3b8"};
 
@@ -1463,6 +1463,32 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
         urgent: false,
       });
     });
+  };
+
+  // 컨펌 요청 — 전달자(assignedBy) 또는 생성자(createdBy)에게
+  const notifyConfirmRequest = () => {
+    if (!onNotify) return;
+    const to = task.assignedBy || task.createdBy;
+    if (!to || to === user.name) return;
+    onNotify({
+      id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+      type: "confirm_req",
+      label: "컨펌 요청",
+      to,
+      from: user.name,
+      taskId: task.id,
+      fbTitle: task.title,
+      projName: projName||"",
+      createdAt: new Date().toISOString(),
+      urgent: true,
+    });
+    // 댓글에 자동 기록
+    const c = {
+      id:"c"+Date.now(), author:user.name,
+      text:"📋 컨펌을 요청했습니다.",
+      createdAt:new Date().toISOString()
+    };
+    set({comments:[...(task.comments||[]), c]});
   };
 
   // 완료 시 생성자에게 알림
@@ -1623,23 +1649,35 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
 
           {/* ── 상태 ── */}
           <Section label="상태">
-            <div style={{display:"flex",gap:6}}>
-              {["대기","진행중","완료","보류"].map(s=>(
-                <button key={s} type="button"
-                  onClick={()=>{
-                    set({status:s});
-                    if(s==="완료") notifyComplete();
-                  }}
-                  style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",
-                    fontSize:12,fontWeight:task.status===s?800:500,border:"none",
-                    background:task.status===s?STATUS_BG[s]:"#f8fafc",
-                    color:task.status===s?STATUS_COLOR[s]:"#94a3b8",
-                    outline:task.status===s?"2px solid "+STATUS_COLOR[s]:"1px solid #f1f5f9",
-                    transition:"all .12s"}}>
-                  {s}
-                </button>
-              ))}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["대기","진행중","컨펌요청","완료","보류"].map(s=>{
+                const clr = STATUS_COLOR[s]||"#94a3b8";
+                const bg  = STATUS_BG[s]||"#f8fafc";
+                const isSel = task.status===s;
+                return (
+                  <button key={s} type="button"
+                    onClick={()=>{
+                      if(s==="컨펌요청") notifyConfirmRequest();
+                      else if(s==="완료") notifyComplete();
+                      set({status:s});
+                    }}
+                    style={{flex:1,minWidth:56,padding:"8px 4px",borderRadius:8,cursor:"pointer",
+                      fontSize:12,fontWeight:isSel?800:500,border:"none",
+                      background:isSel?bg:"#f8fafc",
+                      color:isSel?clr:"#94a3b8",
+                      outline:isSel?"2px solid "+clr:"1px solid #f1f5f9",
+                      transition:"all .12s"}}>
+                    {s==="컨펌요청"?"📋 컨펌요청":s}
+                  </button>
+                );
+              })}
             </div>
+            {task.status==="컨펌요청"&&(
+              <div style={{marginTop:6,fontSize:11,color:"#d97706",fontWeight:600,
+                background:"#fffbeb",border:"1px solid #fde68a",borderRadius:7,padding:"6px 10px"}}>
+                📋 {task.assignedBy||task.createdBy}에게 컨펌 요청이 전송됩니다
+              </div>
+            )}
             {task.status==="완료"&&task.createdBy&&task.createdBy!==user.name&&(
               <div style={{marginTop:6,fontSize:11,color:"#16a34a",fontWeight:600}}>
                 ✅ {task.createdBy}에게 완료 알림이 전송됩니다
@@ -1913,8 +1951,8 @@ function TypeView({ tasks, onEdit, onDelete }) {
     { key:"협력사", label:"협력사", color:"#7c3aed", bg:"#f5f3ff", border:"#ddd6fe", icon:"🔗" },
   ];
   const today = todayStr();
-  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#d97706"};
-  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -2009,14 +2047,56 @@ function TypeView({ tasks, onEdit, onDelete }) {
   );
 }
 
-function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
+function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify }) {
   const today = todayStr();
 
   // 태스크를 4가지 버킷으로 분류
-  const myTasks     = tasks.filter(t => (t.assignee === user.name || (t.assignees||[]).includes(user.name)) && t.stage !== "ONAIR" && t.status !== "완료");
-  const waitingFor  = tasks.filter(t => t.assignedBy === user.name && !(t.assignees||[]).includes(user.name) && t.status !== "완료" && t.stage !== "ONAIR");
-  const doneForMe   = tasks.filter(t => t.createdBy === user.name && t.status === "완료" && t.assignedBy && t.assignedBy !== user.name);
-  const overdue     = tasks.filter(t => t.due && t.due < today && t.stage !== "ONAIR" && t.status !== "완료");
+  // 내 할 일: 내가 담당자이고 미완료 (컨펌요청 포함)
+  const myTasks = tasks.filter(t =>
+    (t.assignee === user.name || (t.assignees||[]).includes(user.name)) &&
+    t.status !== "완료"
+  );
+  // 컨펌 요청 받은 것: 내가 전달자(assignedBy)이고 담당자가 "컨펌요청" 상태로 올린 것
+  const confirmReqs = tasks.filter(t =>
+    t.status === "컨펌요청" &&
+    (t.assignedBy === user.name || t.createdBy === user.name) &&
+    !(t.assignees||[]).includes(user.name)
+  );
+  // 내가 전달한 것: 아직 진행 중
+  const waitingFor = tasks.filter(t =>
+    t.assignedBy === user.name &&
+    !(t.assignees||[]).includes(user.name) &&
+    t.status !== "완료" && t.status !== "컨펌요청"
+  );
+  // 기한 초과
+  const overdue = tasks.filter(t =>
+    t.due && t.due < today && t.status !== "완료" && t.status !== "컨펌요청"
+  );
+  // 최근 완료 (내가 관련된 것 — 담당자 또는 전달자)
+  const recentDone = tasks.filter(t =>
+    t.status === "완료" &&
+    (t.assignedBy === user.name || t.createdBy === user.name ||
+     (t.assignees||[]).includes(user.name) || t.assignee === user.name)
+  ).slice(-10).reverse();
+
+  // 컨펌 승인/반려 알림 함수
+  const onNotifyConfirmGlobal = (t, type) => {
+    const to = (t.assignees||[])[0] || t.assignee;
+    if (!to || !onNotify) return;
+    const isApproved = type === "approved";
+    onNotify({
+      id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+      type,
+      label: isApproved ? "컨펌 승인" : "컨펌 반려",
+      to,
+      from: user.name,
+      taskId: t.id,
+      fbTitle: t.title,
+      projName: "",
+      createdAt: new Date().toISOString(),
+      urgent: !isApproved,
+    });
+  };
 
   // 전체 멤버별 태스크 현황
   const memberMap = {};
@@ -2035,77 +2115,200 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
     return <span style={{width:8,height:8,borderRadius:"50%",background:colors[p]||"#94a3b8",display:"inline-block",flexShrink:0}}/>;
   };
 
-  const TaskCard = ({t, showAssignee=false}) => {
+  // 전달받은 뒤 아직 "대기" 상태인 태스크 = 미확인
+  const isNew = (t) => t.assignedBy && t.status === "대기" &&
+    (t.assignees||[]).includes(user.name);
+
+  const TaskCard = ({t, showAssignee=false, showActions=false, showConfirmActions=false, onNotifyConfirm}) => {
     const isOver = t.due && t.due < today;
     const stage  = STAGES[t.stage] || {};
+    const _new   = isNew(t);
+    const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+    const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
     return (
-      <div onClick={()=>onEdit(t)}
-        style={{padding:"10px 12px",background:"#fff",borderRadius:10,
-          border:`1px solid ${t.blocked?"#fca5a5":isOver?"#fcd34d":"#e2e8f0"}`,
-          cursor:"pointer",transition:"all .15s",
-          boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,.1)"}
-        onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,.05)"}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:4}}>
-          <PriorityDot p={t.priority}/>
-          <div style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b",lineHeight:1.3}}>{t.title}</div>
-        </div>
-        {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
-          <div style={{display:"flex",gap:4,marginBottom:5}}>
-            {(t.comments||[]).length>0&&(
-              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
-                background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
-                💬 {t.comments.length}
-              </span>
+      <div style={{background:"#fff",borderRadius:10,
+          border:`1px solid ${_new?"#fbbf24":t.blocked?"#fca5a5":isOver?"#fcd34d":"#e2e8f0"}`,
+          transition:"all .15s",boxShadow:_new?"0 0 0 2px #fde68a":"0 1px 4px rgba(0,0,0,.05)",
+          overflow:"hidden"}}>
+        {/* 미확인 뱃지 */}
+        {_new && (
+          <div style={{background:"#fef3c7",padding:"3px 12px",fontSize:10,fontWeight:700,
+            color:"#b45309",display:"flex",alignItems:"center",gap:6,borderBottom:"1px solid #fde68a"}}>
+            <span>📨</span>
+            <span>{t.assignedBy}님이 전달한 태스크 · 확인 필요</span>
+          </div>
+        )}
+        <div onClick={()=>onEdit(t)} style={{padding:"10px 12px",cursor:"pointer"}}
+          onMouseEnter={e=>e.currentTarget.style.background="#fafbfc"}
+          onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:4}}>
+            <PriorityDot p={t.priority}/>
+            <div style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b",lineHeight:1.3}}>{t.title}</div>
+            {/* 상태 뱃지 */}
+            <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,flexShrink:0,
+              background:STATUS_BG[t.status||"대기"],color:STATUS_COLOR[t.status||"대기"],fontWeight:700}}>
+              {t.status||"대기"}
+            </span>
+          </div>
+          {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
+            <div style={{display:"flex",gap:4,marginBottom:5}}>
+              {(t.comments||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                  💬 {t.comments.length}
+                </span>
+              )}
+              {(t.meetings||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                  📅 {t.meetings.length}
+                </span>
+              )}
+            </div>
+          )}
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+              background:stage.bg||"#f1f5f9",color:stage.color||"#64748b",fontWeight:600}}>
+              {t.stage}
+            </span>
+            {t.phase&&<span style={{fontSize:10,color:"#94a3b8"}}>· {t.phase}</span>}
+            {showAssignee && (t.assignees||[]).length>0 && (
+              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                {(t.assignees||[]).map(n=>(
+                  <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,color:"#64748b"}}>
+                    <Avatar name={n} size={14}/>{n}
+                  </span>
+                ))}
+              </div>
             )}
-            {(t.meetings||[]).length>0&&(
-              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
-                background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
-                📅 {t.meetings.length}
+            {t.due && (
+              <span style={{fontSize:10,color:isOver?"#ef4444":"#94a3b8",marginLeft:"auto"}}>
+                {isOver?"⚠ ":""}{t.due.slice(5,10)}
               </span>
             )}
           </div>
-        )}
-        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
-            background:stage.bg||"#f1f5f9",color:stage.color||"#64748b",fontWeight:600}}>
-            {t.stage}
-          </span>
-          {showAssignee && (
-            <span style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:"#64748b"}}>
-              <Avatar name={t.assignee} size={14}/>
-              {t.assignee}
-            </span>
-          )}
-          {t.due && (
-            <span style={{fontSize:10,color:isOver?"#ef4444":"#94a3b8",marginLeft:"auto"}}>
-              {isOver?"⚠ ":""}{t.due}
-            </span>
-          )}
-          {t.blocked && <span style={{fontSize:10,color:"#ef4444",fontWeight:700}}>🚫 블로킹</span>}
         </div>
+        {/* 빠른 액션 버튼 (내 할 일 섹션) */}
+        {showActions && (
+          <div style={{display:"flex",gap:0,borderTop:"1px solid #f1f5f9"}}>
+            {t.status==="대기" && (
+              <button type="button"
+                onClick={e=>{e.stopPropagation();onUpdateTask&&onUpdateTask({...t,status:"진행중"});}}
+                style={{flex:1,padding:"7px",border:"none",background:"#f8fafc",
+                  cursor:"pointer",fontSize:11,fontWeight:700,color:"#2563eb",
+                  borderRight:"1px solid #f1f5f9"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+                ▶ 진행 시작
+              </button>
+            )}
+            {t.status==="진행중" && (
+              <button type="button"
+                onClick={e=>{e.stopPropagation();onUpdateTask&&onUpdateTask({...t,status:"컨펌요청"});}}
+                style={{flex:1,padding:"7px",border:"none",background:"#fffbeb",
+                  cursor:"pointer",fontSize:11,fontWeight:700,color:"#d97706",
+                  borderRight:"1px solid #fde68a"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#fef3c7"}
+                onMouseLeave={e=>e.currentTarget.style.background="#fffbeb"}>
+                📋 컨펌 요청
+              </button>
+            )}
+            {t.status==="컨펌요청" && (
+              <div style={{flex:1,padding:"7px",textAlign:"center",
+                fontSize:11,fontWeight:700,color:"#d97706",background:"#fffbeb"}}>
+                📋 컨펌 요청 중
+              </div>
+            )}
+            {t.status==="완료" && (
+              <div style={{flex:1,padding:"7px",textAlign:"center",
+                fontSize:11,fontWeight:700,color:"#16a34a",background:"#f0fdf4"}}>
+                ✓ 완료됨
+              </div>
+            )}
+            <button type="button"
+              onClick={e=>{e.stopPropagation();onEdit(t);}}
+              style={{padding:"7px 14px",border:"none",background:"#f8fafc",
+                cursor:"pointer",fontSize:11,color:"#64748b"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+              onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+              상세 →
+            </button>
+          </div>
+        )}
+
+        {/* 컨펌 승인/반려 버튼 (컨펌요청 섹션) */}
+        {showConfirmActions && (
+          <div style={{display:"flex",gap:0,borderTop:"1px solid #fde68a"}}>
+            <button type="button"
+              onClick={e=>{
+                e.stopPropagation();
+                // 승인 → 완료 처리 + 알림
+                onUpdateTask&&onUpdateTask({...t,status:"완료",approvedBy:user.name,approvedAt:new Date().toISOString()});
+                onNotifyConfirm&&onNotifyConfirm(t,"approved");
+              }}
+              style={{flex:1,padding:"8px",border:"none",background:"#f0fdf4",
+                cursor:"pointer",fontSize:12,fontWeight:800,color:"#16a34a",
+                borderRight:"1px solid #dcfce7"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#dcfce7"}
+              onMouseLeave={e=>e.currentTarget.style.background="#f0fdf4"}>
+              ✅ 승인 완료
+            </button>
+            <button type="button"
+              onClick={e=>{
+                e.stopPropagation();
+                // 반려 → 진행중으로 돌리기 + 알림
+                onUpdateTask&&onUpdateTask({...t,status:"진행중",rejectedBy:user.name,rejectedAt:new Date().toISOString()});
+                onNotifyConfirm&&onNotifyConfirm(t,"rejected");
+              }}
+              style={{flex:1,padding:"8px",border:"none",background:"#fff1f2",
+                cursor:"pointer",fontSize:12,fontWeight:800,color:"#ef4444",
+                borderRight:"1px solid #fecaca"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#fecaca"}
+              onMouseLeave={e=>e.currentTarget.style.background="#fff1f2"}>
+              🔁 반려
+            </button>
+            <button type="button"
+              onClick={e=>{e.stopPropagation();onEdit(t);}}
+              style={{padding:"8px 14px",border:"none",background:"#f8fafc",
+                cursor:"pointer",fontSize:11,color:"#64748b"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+              onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+              상세 →
+            </button>
+          </div>
+        )}
       </div>
     );
   };
 
-  const Section = ({icon, title, color, bg, tasks, empty, showAssignee=false}) => (
-    <div style={{background:bg,borderRadius:14,padding:"16px",border:`1.5px solid ${color}20`}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-        <span style={{fontSize:18}}>{icon}</span>
-        <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{title}</span>
-        <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:color,
-          background:`${color}15`,padding:"2px 10px",borderRadius:99}}>
-          {tasks.length}건
-        </span>
+  const Section = ({icon, title, color, bg, tasks, empty, showAssignee=false, showActions=false, showConfirmActions=false}) => {
+    const newCount = showActions ? tasks.filter(t=>isNew(t)).length : 0;
+    return (
+      <div style={{background:bg,borderRadius:14,padding:"16px",border:`1.5px solid ${color}20`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{fontSize:18}}>{icon}</span>
+          <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{title}</span>
+          {newCount>0 && (
+            <span style={{fontSize:10,fontWeight:800,color:"#b45309",
+              background:"#fef3c7",border:"1px solid #fde68a",
+              padding:"1px 8px",borderRadius:99}}>
+              📨 {newCount}개 미확인
+            </span>
+          )}
+          <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:color,
+            background:`${color}15`,padding:"2px 10px",borderRadius:99}}>
+            {tasks.length}건
+          </span>
+        </div>
+        {tasks.length===0
+          ? <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"16px 0"}}>{empty}</div>
+          : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {tasks.map(t=><TaskCard key={t.id} t={t} showAssignee={showAssignee} showActions={showActions} showConfirmActions={showConfirmActions} onNotifyConfirm={onNotifyConfirmGlobal}/>)}
+            </div>
+        }
       </div>
-      {tasks.length===0
-        ? <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"16px 0"}}>{empty}</div>
-        : <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {tasks.map(t=><TaskCard key={t.id} t={t} showAssignee={showAssignee}/>)}
-          </div>
-      }
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
@@ -2141,12 +2344,26 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
         </div>
       </div>
 
-      {/* 4개 섹션 그리드 */}
+      {/* 섹션 그리드 */}
+
+      {/* 컨펌 요청 — 전체 너비 강조 */}
+      {confirmReqs.length>0 && (
+        <Section
+          icon="📋" title="컨펌 요청 받은 것"
+          color="#d97706" bg="#fffbeb"
+          tasks={confirmReqs}
+          showAssignee={true}
+          showConfirmActions={true}
+          empty=""
+        />
+      )}
+
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
         <Section
           icon="🙋" title={`내 할 일 (${user.name})`}
           color="#2563eb" bg="#eff6ff"
           tasks={myTasks}
+          showActions={true}
           empty="지금 처리해야 할 태스크가 없어요"
         />
         <Section
@@ -2164,11 +2381,11 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd }) {
           empty="기한 초과 태스크 없음 👍"
         />
         <Section
-          icon="✅" title="완료 보고 받은 것"
+          icon="✅" title="최근 완료"
           color="#16a34a" bg="#f0fdf4"
-          tasks={doneForMe}
+          tasks={recentDone}
           showAssignee={true}
-          empty="완료 보고가 없어요"
+          empty="완료된 태스크가 없어요"
         />
       </div>
 
@@ -5819,12 +6036,12 @@ return (
               <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
                 display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <span style={{fontWeight:700,fontSize:14}}>알림</span>
-                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||(n.to&&n.to===user.name)).length}건</span>
+                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||n.type==="confirm_req"||n.type==="approved"||n.type==="rejected"||(n.to&&n.to===user.name)).length}건</span>
               </div>
               {notifications.length===0
                 ? <div style={{padding:"24px",textAlign:"center",color:C.faint,fontSize:13}}>새 알림이 없습니다</div>
                 : <div style={{maxHeight:360,overflowY:"auto"}}>
-                    {notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||(n.to&&n.to===user.name)).map(n=>(
+                    {notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||n.type==="confirm_req"||n.type==="approved"||n.type==="rejected"||(n.to&&n.to===user.name)).map(n=>(
                       <div key={n.id} onClick={()=>{
                           setShowNotif(false);
                           setMainTab("tasks");
@@ -5835,17 +6052,17 @@ return (
                         }}
                         style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
                           cursor:"pointer",
-                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.urgent?"#fff5f5":"#fff",
+                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff",
                           transition:"background .1s"}}
                         onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.urgent?"#fff5f5":"#fff"}>
+                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff"}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                           <span style={{fontSize:13}}>
-                            {n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.urgent?"🔴":"🟡"}
+                            {n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.type==="confirm_req"?"📋":n.type==="approved"?"✅":n.type==="rejected"?"🔁":n.urgent?"🔴":"🟡"}
                           </span>
                           <span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:99,
-                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.urgent?"#ef4444":"#f59e0b",
-                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.urgent?"#fef2f2":"#fffbeb"}}>
+                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.type==="confirm_req"?"#d97706":n.type==="approved"?"#16a34a":n.type==="rejected"?"#ef4444":n.urgent?"#ef4444":"#f59e0b",
+                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.type==="confirm_req"?"#fef3c7":n.type==="approved"?"#dcfce7":n.type==="rejected"?"#fee2e2":n.urgent?"#fef2f2":"#fffbeb"}}>
                             {n.label}
                           </span>
                           {n.from&&<span style={{fontSize:11,color:C.faint}}>{n.from}{n.type==="assign"?" → "+((n.to)||""):" →"}</span>}
@@ -6040,7 +6257,7 @@ return (
   }}
 />
                 ):viewMode==="flow"?(
-                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskPanel({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:"내부",assignee:user.name,priority:"보통"});}}/>
+                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskPanel({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:"내부",assignee:user.name,priority:"보통"});}} onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}} onNotify={n=>setNotifications(p=>[n,...p])}/>
                 ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
                     {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskPanel({...t})}/>)}
