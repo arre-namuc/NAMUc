@@ -50,116 +50,142 @@ const ROLE_DRIVER  = "driver";   // 실행자
 const ROLE_SUPPORT = "support";  // 보조
 
 // 22단계 표준 워크플로우 템플릿
+// 단계별 추천 태스크 목록 (선택사항 - 담당자가 직접 고를 수 있음)
+const PHASE_SUGGESTIONS = {
+  "s01": ["스터디 및 관점 도출","R&R 설정","기획방향 정리 및 아이데이션","1차 내부 공유","문서화","외주 발주 (그래픽/콘티)","문서 취합","전달"],
+  "s02": ["스터디 및 관점 도출","R&R 설정","기획방향 정리 및 아이데이션","1차 내부 공유","수정 및 보완","2차 제안"],
+  "s03": ["R&R 설정","스터디 및 관점 도출","레퍼런스 서칭 및 콘티 구상","스토리보드 발주","문서 정리","제안"],
+  "s04": ["PPM 자료 준비","스태프 리스트 정리","로케이션 서칭","캐스팅 준비","PPM 문서 취합"],
+  "s05": ["견적 항목 구성","단가 산출","실행예산서 작성","내부 검토"],
+  "s06": ["PPM 미팅","견적 보고","클라이언트 피드백 수령","수정 반영"],
+  "s07": ["스태프 확정","장비 발주","로케이션 확정","캐스팅 확정","촬영 콘티 확정","촬영 콜시트 작성"],
+  "s08": ["확정 스태프 기준 예산 재산출","실행예산서 업데이트","내부 보고"],
+  "s09": ["촬영 현장 세팅","촬영 진행","소스 확인 및 백업","촬영 결과 보고"],
+  "s10": ["소스 정리 및 로깅","어셈블리 편집","파인 컷 편집","내부 검토"],
+  "s11": ["색보정 작업","내부 검토"],
+  "s12": ["시사 준비","클라이언트 시사","피드백 수령 및 정리","수정 방향 공유"],
+  "s13": ["집행 내역 취합","결산서 1차 작성","내부 검토"],
+  "s14": ["그래픽 소스 정리","그래픽 작업","내부 검토"],
+  "s15": ["시사 준비","클라이언트 시사","피드백 수령 및 정리","수정 방향 결정"],
+  "s16": ["피드백 반영 작업","내부 검토","수정 완료 보고"],
+  "s17": ["시사 준비","클라이언트 시사","피드백 수령 및 정리"],
+  "s18": ["2차 피드백 반영","내부 검토","수정 완료 보고"],
+  "s19": ["최종 시사 준비","클라이언트 최종 시사","최종 컨펌 수령"],
+  "s20": ["최종 집행 내역 취합","결산서 최종 작성","내부 결재"],
+  "s21": ["납품 파일 최종 확인","납품 패키징","납품 전달","클라이언트 수령 확인"],
+  "s22": ["투여 시간 집계","ROI 산출","결과 보고서 작성","사내 공유"],
+};
+
 const PROJECT_TEMPLATE = [
   {
     id:"s01", phase:"비딩", order:1,
     owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
-    steps: []
+    stage:"PLANNING", steps: []
   },
   {
     id:"s02", phase:"기획", order:2,
     owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
-    steps: []
+    stage:"PLANNING", steps: []
   },
   {
     id:"s03", phase:"트리트먼트", order:3,
     owner:"감독", driver:["감독"], support:["PD"],
-    steps: []
+    stage:"PRE", steps: []
   },
   {
     id:"s04", phase:"PPM 준비", order:4,
     owner:"EPD", driver:["감독","조감독"], support:["PD"],
-    steps: []
+    stage:"PRE", steps: []
   },
   {
     id:"s05", phase:"견적서 및 실행예산서 1차", order:5,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps: []
+    stage:"PRE", steps: []
   },
   {
     id:"s06", phase:"PPM 및 견적 보고", order:6,
     owner:"EPD", driver:["EPD","PD"], support:["감독"],
-    steps: []
+    stage:"PRE", steps: []
   },
   {
     id:"s07", phase:"촬영 준비", order:7,
     owner:"PD", driver:["PD","조감독"], support:["감독"],
-    steps: []
+    stage:"PRODUCTION", steps: []
   },
   {
     id:"s08", phase:"실행예산서 2차 (내부)", order:8,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps: []
+    stage:"PRODUCTION", steps: []
   },
   {
     id:"s09", phase:"PRODUCTION", order:9,
     owner:"감독", driver:["감독","조감독"], support:["PD"],
-    steps: []
+    stage:"PRODUCTION", steps: []
   },
   {
     id:"s10", phase:"편집", order:10,
     owner:"감독", driver:["감독"], support:["PD"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s11", phase:"색보정", order:11,
     owner:"감독", driver:["감독"], support:["PD"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s12", phase:"편집 시사", order:12,
     owner:"감독", driver:["PD"], support:["감독"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s13", phase:"실행 결산서 1차", order:13,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s14", phase:"그래픽 작업 1차", order:14,
     owner:"감독", driver:["AI작업자","감독"], support:["PD"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s15", phase:"1차 시사", order:15,
     owner:"감독", driver:["PD"], support:["감독"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s16", phase:"그래픽 작업 2차", order:16,
     owner:"PD", driver:["AI작업자","감독"], support:["PD"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s17", phase:"2차 시사", order:17,
     owner:"PD", driver:["PD"], support:["감독"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s18", phase:"그래픽 작업 3차", order:18,
     owner:"PD", driver:["AI작업자","감독"], support:["PD"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s19", phase:"최종 시사", order:19,
     owner:"PD", driver:["PD"], support:["감독","EPD"],
-    steps: []
+    stage:"POST", steps: []
   },
   {
     id:"s20", phase:"결산서 2차", order:20,
     owner:"PD", driver:["PD"], support:["경영지원"],
-    steps: []
+    stage:"ONAIR", steps: []
   },
   {
     id:"s21", phase:"납품", order:21,
     owner:"PD", driver:["PD","AI작업자"], support:["감독"],
-    steps: []
+    stage:"ONAIR", steps: []
   },
   {
     id:"s22", phase:"프로젝트 최종 보고", order:22,
     owner:"EPD", driver:["PD"], support:["경영지원"],
-    steps: []
+    stage:"ONAIR", steps: []
   },
 ];
 
@@ -1114,7 +1140,37 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
         </div>
       </div>
 
-      {template.map((phase) => {
+      {(() => {
+        const STAGE_GROUPS = [
+          { key:"PLANNING",  label:"PLANNING",  color:"#7c3aed", bg:"#f5f3ff", border:"#ddd6fe", phases:["s01","s02"] },
+          { key:"PRE",       label:"PRE",        color:"#0891b2", bg:"#ecfeff", border:"#a5f3fc", phases:["s03","s04","s05","s06"] },
+          { key:"PRODUCTION",label:"PRODUCTION", color:"#d97706", bg:"#fffbeb", border:"#fde68a", phases:["s07","s08","s09"] },
+          { key:"POST",      label:"POST",       color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", phases:["s10","s11","s12","s13","s14","s15","s16","s17","s18","s19"] },
+          { key:"ONAIR",     label:"ON AIR",     color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", phases:["s20","s21","s22"] },
+        ];
+        return STAGE_GROUPS.map(group => {
+          const groupPhases = template.filter(p=>group.phases.includes(p.id));
+          const groupTasks = tasks.filter(t=>groupPhases.some(p=>p.id===t.phaseId));
+          const groupDone = groupTasks.filter(t=>t.status==="완료").length;
+          const groupPct = groupTasks.length>0 ? Math.round(groupDone/groupTasks.length*100) : 0;
+          return (
+            <div key={group.key} style={{marginBottom:16}}>
+              {/* 스테이지 헤더 */}
+              <div style={{display:"flex",alignItems:"center",gap:10,
+                padding:"8px 14px",borderRadius:"8px 8px 0 0",
+                background:group.bg,border:`1px solid ${group.border}`,borderBottom:"none"}}>
+                <span style={{fontSize:11,fontWeight:800,color:group.color,
+                  letterSpacing:1.5,textTransform:"uppercase"}}>{group.label}</span>
+                <div style={{flex:1,height:4,background:group.border,borderRadius:99,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:groupPct+"%",background:group.color,borderRadius:99,transition:"width .3s"}}/>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,color:group.color}}>
+                  {groupDone}/{groupTasks.length}
+                </span>
+              </div>
+              {/* 해당 스테이지 단계들 */}
+              <div style={{border:`1px solid ${group.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                {groupPhases.map((phase) => {
         const prog = phaseProgress(phase.id);
         const isActive = phase.id === activePhase;
         const isOpen = expandedPhase === phase.id || (isActive && expandedPhase === null);
@@ -1311,7 +1367,12 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
             )}
           </div>
         );
-      })}
+        })}
+              </div>
+            </div>
+          );
+        });
+      })()} 
     </div>
 
     {roleModal && (
@@ -5890,8 +5951,48 @@ return (
       {taskModal && (
         <Modal title={taskModal.id?"태스크 수정":"새 태스크"} onClose={()=>setTaskModal(null)}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+
             <Field label="태스크명 *">
-              <input style={inp} autoFocus value={taskModal.title||""} onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))} placeholder="ex. 촬영 D-day 준비"/>
+              <div style={{display:"flex",gap:6}}>
+                <input style={{...inp,flex:1}} autoFocus value={taskModal.title||""}
+                  onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))}
+                  placeholder="ex. 촬영 D-day 준비"/>
+                {!taskModal.id && taskModal.phaseId && (PHASE_SUGGESTIONS[taskModal.phaseId]||[]).length>0 && (
+                  <div style={{position:"relative"}}>
+                    <button type="button"
+                      onClick={()=>setTaskModal(v=>({...v,_showSugg:!v._showSugg}))}
+                      style={{padding:"9px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                        background:taskModal._showSugg?"#eff6ff":"#f8fafc",
+                        color:taskModal._showSugg?"#2563eb":"#64748b",
+                        cursor:"pointer",fontSize:12,fontWeight:600,
+                        whiteSpace:"nowrap",flexShrink:0}}>
+                      📋 추천 항목
+                    </button>
+                    {taskModal._showSugg && (
+                      <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,
+                        background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,
+                        boxShadow:"0 8px 24px rgba(0,0,0,.12)",zIndex:100,
+                        minWidth:220,padding:6,display:"flex",flexDirection:"column",gap:2}}>
+                        <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",
+                          padding:"4px 8px",letterSpacing:.8}}>
+                          {taskModal.phase} — 추천 태스크
+                        </div>
+                        {(PHASE_SUGGESTIONS[taskModal.phaseId]||[]).map(name=>(
+                          <button key={name} type="button"
+                            onClick={()=>setTaskModal(v=>({...v,title:name,_showSugg:false}))}
+                            style={{textAlign:"left",padding:"7px 10px",borderRadius:7,
+                              border:"none",background:"transparent",cursor:"pointer",
+                              fontSize:12,color:"#1e293b",fontWeight:400}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </Field>
 
             {/* 단계 연결 */}
