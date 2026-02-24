@@ -9160,6 +9160,51 @@ function FigJamTab({ project, onChange }) {
 }
 
 
+// ── 비딩 태스크 목록 컴포넌트 ─────────────────────────────
+const TASK_STATUS_COLORS = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#f59e0b"};
+
+function BiddingTaskList({ tasks, onAdd, onOpen, accounts }) {
+  return (
+    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginTop:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>📋 태스크</div>
+        <Btn primary sm onClick={onAdd}>+ 태스크</Btn>
+      </div>
+      {tasks.length===0
+        ? <div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:12}}>
+            등록된 태스크가 없습니다
+          </div>
+        : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {tasks.map(t=>{
+              const sc = TASK_STATUS_COLORS[t.status||"대기"] || "#94a3b8";
+              return (
+                <div key={t.id} onClick={()=>onOpen(t)}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                    borderRadius:8,border:"1px solid #f1f5f9",cursor:"pointer",
+                    background:"#fafafa",transition:"background .1s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#fafafa"}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:sc,flexShrink:0}}/>
+                  <span style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b"}}>{t.title}</span>
+                  {(t.assignees||[]).length>0&&(
+                    <div style={{display:"flex",gap:2}}>
+                      {(t.assignees||[]).slice(0,3).map((n,i)=><Avatar key={i} name={n} size={18}/>)}
+                    </div>
+                  )}
+                  {t.due&&<span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{t.due}</span>}
+                  <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,fontWeight:700,
+                    background:sc+"22",color:sc}}>
+                    {t.status||"대기"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+      }
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 // 고객 요청 탭 (태스크 요청 + 공지사항 + 팩트북)
 // ═══════════════════════════════════════════════════════════
@@ -9910,6 +9955,11 @@ return (
                     </button>
                   </div>
                 )}
+              {/* ── 비딩 태스크 ── */}
+              <BiddingTaskList tasks={proj.tasks||[]}
+                onAdd={()=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통"})}
+                onOpen={t=>setTaskPanel(t)}
+                accounts={accounts}/>
               </div>
             )}
 
