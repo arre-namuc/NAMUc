@@ -9703,6 +9703,13 @@ return (
                     {proj.agency&&<span style={{background:C.slateLight,borderRadius:6,padding:"3px 9px",fontSize:12,color:C.sub}}>{proj.agency}</span>}
                     {proj.format&&!proj.isBidding&&<span style={{background:proj.color+"18",borderRadius:6,padding:"3px 9px",fontSize:12,color:proj.color,fontWeight:700}}>{proj.format}</span>}
                     {proj.isBidding&&proj.ptDate&&<span style={{fontSize:11,color:"#92400e",background:"#fef9c3",padding:"2px 7px",borderRadius:6}}>📅 PT {proj.ptDate}</span>}
+                    {proj.isBidding&&(proj.biddingMembers||[]).length>0&&accounts.filter(a=>(proj.biddingMembers||[]).includes(a.id)).map(a=>(
+                      <span key={a.id} style={{fontSize:11,padding:"2px 7px",borderRadius:6,
+                        background:(TEAM_BY_ID[a.team]?.bg||"#eff6ff"),
+                        color:(TEAM_BY_ID[a.team]?.color||"#2563eb"),fontWeight:600}}>
+                        {a.name}{a.jobTitle&&` · ${a.jobTitle}`}
+                      </span>
+                    ))}
                   </div>
                 </div>
                 {proj.isBidding ? (
@@ -9839,6 +9846,44 @@ return (
                       onChange={e=>patchProj(p=>({...p,estimatedBudget:e.target.value}))}/>
                   </div>
                 </div>
+                {/* 참여자 */}
+                <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+                  <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:10}}>👥 참여자</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {accounts.filter(a=>!a.resigned).map(a=>{
+                      const sel=(proj.biddingMembers||[]).includes(a.id);
+                      const team=TEAM_BY_ID[a.team];
+                      return (
+                        <button key={a.id} type="button"
+                          onClick={()=>patchProj(p=>{
+                            const cur=p.biddingMembers||[];
+                            return {...p, biddingMembers: sel?cur.filter(id=>id!==a.id):[...cur,a.id]};
+                          })}
+                          style={{display:"flex",alignItems:"center",gap:5,
+                            padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                            fontSize:12,fontWeight:sel?700:400,
+                            background:sel?(team?.bg||"#eff6ff"):"#f8fafc",
+                            color:sel?(team?.color||"#2563eb"):"#64748b",
+                            outline:sel?`2px solid ${team?.color||"#2563eb"}`:"1px solid #e2e8f0",
+                            transition:"all .1s"}}>
+                          <Avatar name={a.name} size={16}/>
+                          <span>{a.name}</span>
+                          {a.jobTitle&&<span style={{fontSize:10,opacity:.7}}>· {a.jobTitle}</span>}
+                          {sel&&<span style={{fontSize:10,marginLeft:1}}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(proj.biddingMembers||[]).length>0&&(
+                    <div style={{fontSize:11,color:"#64748b",marginTop:8,padding:"6px 10px",
+                      background:"#f8fafc",borderRadius:7}}>
+                      참여: {accounts.filter(a=>(proj.biddingMembers||[]).includes(a.id))
+                        .map(a=>`${a.name}${a.jobTitle?" ("+a.jobTitle+")":""}`)
+                        .join(" · ")}
+                    </div>
+                  )}
+                </div>
+
                 {/* 메모 */}
                 <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginBottom:20}}>
                   <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:8}}>📝 비딩 메모</div>
@@ -10328,7 +10373,7 @@ return (
           {pf.isBidding ? (
             <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
               <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,letterSpacing:.5}}>비딩 정보</div>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
                 <Field label="PT 날짜" half>
                   <input style={inp} type="date" value={pf.ptDate||""} onChange={e=>setPf(v=>({...v,ptDate:e.target.value}))}/>
                 </Field>
@@ -10341,6 +10386,43 @@ return (
                 <Field label="예상 규모" half>
                   <input style={inp} value={pf.estimatedBudget||""} onChange={e=>setPf(v=>({...v,estimatedBudget:e.target.value}))} placeholder="예: 5,000만원"/>
                 </Field>
+              </div>
+              {/* 참여자 토글 */}
+              <div style={{borderTop:"1px solid #fde68a",paddingTop:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>참여자</div>
+                {accounts.filter(a=>!a.resigned).length===0
+                  ? <div style={{fontSize:12,color:"#a16207"}}>등록된 구성원이 없습니다</div>
+                  : <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {accounts.filter(a=>!a.resigned).map(a=>{
+                        const sel=(pf.biddingMembers||[]).includes(a.id);
+                        const team=TEAM_BY_ID[a.team];
+                        return (
+                          <button key={a.id} type="button"
+                            onClick={()=>setPf(v=>{
+                              const cur=v.biddingMembers||[];
+                              return {...v, biddingMembers: sel?cur.filter(id=>id!==a.id):[...cur,a.id]};
+                            })}
+                            style={{display:"flex",alignItems:"center",gap:5,
+                              padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                              fontSize:12,fontWeight:sel?700:400,
+                              background:sel?(team?.bg||"#eff6ff"):"#fff",
+                              color:sel?(team?.color||"#2563eb"):"#64748b",
+                              outline:sel?`2px solid ${team?.color||"#2563eb"}`:"1px solid #e2e8f0",
+                              transition:"all .1s"}}>
+                            <Avatar name={a.name} size={16}/>
+                            <span>{a.name}</span>
+                            {a.jobTitle&&<span style={{fontSize:10,opacity:.7}}>· {a.jobTitle}</span>}
+                            {sel&&<span style={{fontSize:10}}>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                }
+                {(pf.biddingMembers||[]).length>0&&(
+                  <div style={{fontSize:11,color:"#92400e",marginTop:6}}>
+                    선택됨: {accounts.filter(a=>(pf.biddingMembers||[]).includes(a.id)).map(a=>a.name).join(", ")}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
