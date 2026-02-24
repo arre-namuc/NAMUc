@@ -9464,9 +9464,19 @@ function App() {
     const projMembers = accounts.filter(a=>
       [pf.pd, pf.director, pf.epd, pf.assistant].includes(a.name)
     );
-    // 비딩 프로젝트는 태스크/단계 없음
-    const initTasks = (!isBidding && pf.useTemplate!==false)
-      ? generateTasksFromTemplate(id, projMembers) : [];
+    // 비딩 템플릿 태스크 (3단계)
+    const BIDDING_TEMPLATE_TASKS = [
+      {title:"비딩 준비",description:"제안서 작성, 레퍼런스 수집, 전략 수립"},
+      {title:"PT 발표",description:"클라이언트 앞 PT 진행"},
+      {title:"결과 확인",description:"수주 여부 확인 및 후속 조치"},
+    ].map((t,i)=>({
+      id:`bt_${id}_${i}`, ...t,
+      status:"대기", priority:"보통", type:"내부",
+      assignees:[], stage:"PLANNING", createdAt:new Date().toISOString().slice(0,10),
+    }));
+    const initTasks = isBidding
+      ? (pf.useBiddingTemplate ? BIDDING_TEMPLATE_TASKS : [])
+      : (pf.useTemplate!==false ? generateTasksFromTemplate(id, projMembers) : []);
     const np = {
       id, ...pf,
       isBidding,
@@ -9849,6 +9859,8 @@ return (
               tabs={proj.isBidding ? [
                 {id:"tasks",icon:"🏆",label:"비딩"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
+                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessProjFinance},
+                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessProjFinance},
                 {id:"client-request",icon:"📨",label:"고객 요청"},
               ] : [
                 {id:"tasks",icon:"📋",label:"프로젝트"},
@@ -9890,51 +9902,6 @@ return (
                     <input style={inp} value={proj.estimatedBudget||""} placeholder="예: 5,000만원"
                       onChange={e=>patchProj(p=>({...p,estimatedBudget:e.target.value}))}/>
                   </div>
-                </div>
-                {/* 참여자 */}
-                <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-                  <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:10}}>👥 참여자</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {accounts.filter(a=>!a.resigned).map(a=>{
-                      const sel=(proj.biddingMembers||[]).includes(a.id);
-                      const team=TEAM_BY_ID[a.team];
-                      return (
-                        <button key={a.id} type="button"
-                          onClick={()=>patchProj(p=>{
-                            const cur=p.biddingMembers||[];
-                            return {...p, biddingMembers: sel?cur.filter(id=>id!==a.id):[...cur,a.id]};
-                          })}
-                          style={{display:"flex",alignItems:"center",gap:5,
-                            padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
-                            fontSize:12,fontWeight:sel?700:400,
-                            background:sel?(team?.bg||"#eff6ff"):"#f8fafc",
-                            color:sel?(team?.color||"#2563eb"):"#64748b",
-                            outline:sel?`2px solid ${team?.color||"#2563eb"}`:"1px solid #e2e8f0",
-                            transition:"all .1s"}}>
-                          <Avatar name={a.name} size={16}/>
-                          <span>{a.name}</span>
-                          {a.jobTitle&&<span style={{fontSize:10,opacity:.7}}>· {a.jobTitle}</span>}
-                          {sel&&<span style={{fontSize:10,marginLeft:1}}>✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {(proj.biddingMembers||[]).length>0&&(
-                    <div style={{fontSize:11,color:"#64748b",marginTop:8,padding:"6px 10px",
-                      background:"#f8fafc",borderRadius:7}}>
-                      참여: {accounts.filter(a=>(proj.biddingMembers||[]).includes(a.id))
-                        .map(a=>`${a.name}${a.jobTitle?" ("+a.jobTitle+")":""}`)
-                        .join(" · ")}
-                    </div>
-                  )}
-                </div>
-
-                {/* 메모 */}
-                <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginBottom:20}}>
-                  <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:8}}>📝 비딩 메모</div>
-                  <textarea style={{...inp,minHeight:100,resize:"vertical"}}
-                    value={proj.biddingNote||""} placeholder="전략, 특이사항, 담당자 요청사항 등"
-                    onChange={e=>patchProj(p=>({...p,biddingNote:e.target.value}))}/>
                 </div>
                 {/* 수주 전환 안내 */}
                 {proj.biddingStatus==="수주"&&(
@@ -10437,43 +10404,6 @@ return (
                   <input style={inp} value={pf.estimatedBudget||""} onChange={e=>setPf(v=>({...v,estimatedBudget:e.target.value}))} placeholder="예: 5,000만원"/>
                 </Field>
               </div>
-              {/* 참여자 토글 */}
-              <div style={{borderTop:"1px solid #fde68a",paddingTop:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>참여자</div>
-                {accounts.filter(a=>!a.resigned).length===0
-                  ? <div style={{fontSize:12,color:"#a16207"}}>등록된 구성원이 없습니다</div>
-                  : <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                      {accounts.filter(a=>!a.resigned).map(a=>{
-                        const sel=(pf.biddingMembers||[]).includes(a.id);
-                        const team=TEAM_BY_ID[a.team];
-                        return (
-                          <button key={a.id} type="button"
-                            onClick={()=>setPf(v=>{
-                              const cur=v.biddingMembers||[];
-                              return {...v, biddingMembers: sel?cur.filter(id=>id!==a.id):[...cur,a.id]};
-                            })}
-                            style={{display:"flex",alignItems:"center",gap:5,
-                              padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
-                              fontSize:12,fontWeight:sel?700:400,
-                              background:sel?(team?.bg||"#eff6ff"):"#fff",
-                              color:sel?(team?.color||"#2563eb"):"#64748b",
-                              outline:sel?`2px solid ${team?.color||"#2563eb"}`:"1px solid #e2e8f0",
-                              transition:"all .1s"}}>
-                            <Avatar name={a.name} size={16}/>
-                            <span>{a.name}</span>
-                            {a.jobTitle&&<span style={{fontSize:10,opacity:.7}}>· {a.jobTitle}</span>}
-                            {sel&&<span style={{fontSize:10}}>✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                }
-                {(pf.biddingMembers||[]).length>0&&(
-                  <div style={{fontSize:11,color:"#92400e",marginTop:6}}>
-                    선택됨: {accounts.filter(a=>(pf.biddingMembers||[]).includes(a.id)).map(a=>a.name).join(", ")}
-                  </div>
-                )}
-              </div>
             </div>
           ) : (
             <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
@@ -10487,35 +10417,42 @@ return (
             <Field label="담당자 연락처" half><input style={inp} value={pf.contactPhone||""} onChange={e=>setPf(v=>({...v,contactPhone:e.target.value}))} placeholder="010-0000-0000"/></Field>
             <Field label="담당자 이메일" half><input style={inp} value={pf.contactEmail||""} onChange={e=>setPf(v=>({...v,contactEmail:e.target.value}))} placeholder="name@agency.com"/></Field>
           </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="감독" half><input style={inp} value={pf.director||""} onChange={e=>setPf(v=>({...v,director:e.target.value}))} placeholder="이름"/></Field>
-            <Field label="EPD" half><input style={inp} value={pf.epd||""} onChange={e=>setPf(v=>({...v,epd:e.target.value}))} placeholder="이름"/></Field>
-            <Field label="조감독" half><input style={inp} value={pf.assistant||""} onChange={e=>setPf(v=>({...v,assistant:e.target.value}))} placeholder="이름"/></Field>
-            <Field label="PD" half><input style={inp} value={pf.pd||""} onChange={e=>setPf(v=>({...v,pd:e.target.value}))} placeholder="이름"/></Field>
-          </div>
           <Field label="프로젝트 색상">
             <div style={{display:"flex",gap:8,marginTop:2}}>
               {P_COLORS.map(c=><div key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",outline:pf.color===c?`3px solid ${c}`:"none",outlineOffset:2}}/>)}
             </div>
           </Field>
-          {!pf.isBidding && (<>
-            <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#16a34a"}}>🗂 워크플로우 템플릿</div>
-                <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:13}}>
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#16a34a",marginBottom:10}}>🗂 워크플로우 템플릿</div>
+            {pf.isBidding ? (
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"8px 10px",borderRadius:8,background:"#fef9c3",border:"1px solid #fde047"}}>
+                <input type="checkbox" checked={pf.useBiddingTemplate===true}
+                  onChange={e=>setPf(v=>({...v,useBiddingTemplate:e.target.checked}))}
+                  style={{accentColor:"#ca8a04",width:16,height:16}}/>
+                <div>
+                  <div style={{fontWeight:700,fontSize:12,color:"#92400e"}}>🏆 비딩 템플릿 적용</div>
+                  <div style={{fontSize:11,color:"#a16207",marginTop:1}}>비딩 준비 → PT 발표 → 결과 확인 3단계 기본 태스크 자동 생성</div>
+                </div>
+              </label>
+            ) : (
+              <>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"8px 10px",borderRadius:8,background:"#f0fdf4",border:"1px solid #86efac"}}>
                   <input type="checkbox" checked={pf.useTemplate!==false}
                     onChange={e=>setPf(v=>({...v,useTemplate:e.target.checked}))}
                     style={{accentColor:"#16a34a",width:16,height:16}}/>
-                  <span style={{color:"#16a34a",fontWeight:600}}>22단계 표준 템플릿 적용</span>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:12,color:"#16a34a"}}>22단계 표준 템플릿 적용</div>
+                    {pf.useTemplate!==false && (
+                      <div style={{fontSize:11,color:"#15803d",marginTop:1}}>
+                        비딩 → 기획 → 트리트먼트 → PPM → 촬영준비 → 촬영 → 편집 → 색보정 → 시사 × 3 → 납품 → 최종보고
+                      </div>
+                    )}
+                  </div>
                 </label>
-              </div>
-              {pf.useTemplate!==false && (
-                <div style={{fontSize:11,color:"#15803d"}}>
-                  비딩 → 기획 → 트리트먼트 → PPM → 촬영준비 → 촬영 → 편집 → 색보정 → 시사 × 3 → 납품 → 최종보고
-                  <div style={{marginTop:4,color:"#86efac"}}>총 22단계 · 65개 하위 태스크가 자동으로 생성됩니다</div>
-                </div>
-              )}
-            </div>
+              </>
+            )}
+          </div>
+          {!pf.isBidding && (<>
             <Field label="견적서 포맷">
               <div style={{display:"flex",gap:8}}>
                 {[{val:"A",label:"📄 표준형",desc:"대분류/중분류 계층"},{val:"B",label:"📋 상세형",desc:"부문별 소계 + 관리비/이윤"}].map(opt=>(
