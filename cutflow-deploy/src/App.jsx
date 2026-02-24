@@ -6379,7 +6379,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
   // ────────────────────────────────────────────────────────
   // 공지사항
   // ────────────────────────────────────────────────────────
-  const NoticeSection = () => {
+  const NoticeSection = ({ readIds=[], onRead=()=>{}, onReadAll=()=>{} }) => {
     const [modal, setModal] = useState(null);
     const [nf, setNf]       = useState({});
 
@@ -6413,7 +6413,10 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
 
     return (
       <div>
-        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:12}}>
+          {notices.length>0&&readIds.length<notices.length&&(
+            <Btn sm onClick={onReadAll}>모두 읽음</Btn>
+          )}
           {canManage && (
             <Btn primary sm onClick={()=>{setNf({importance:"normal",pinned:false,title:"",content:""});setModal({});}}>
               + 공지 작성
@@ -6432,16 +6435,23 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
           {sorted.map(n => {
             const imp = IMPORTANCE.find(i=>i.id===n.importance)||IMPORTANCE[0];
             return (
-              <div key={n.id} style={{background:"#fff",borderRadius:12,
-                border:`1px solid ${n.importance==="urgent"?"#fca5a5":n.importance==="important"?"#bfdbfe":"#e2e8f0"}`,
-                overflow:"hidden"}}>
+              <div key={n.id}
+                onClick={()=>onRead(n.id)}
+                style={{background:"#fff",borderRadius:12,cursor:"pointer",
+                  border:`1px solid ${n.importance==="urgent"?"#fca5a5":n.importance==="important"?"#bfdbfe":"#e2e8f0"}`,
+                  opacity:readIds.includes(n.id)?0.65:1,
+                  overflow:"hidden",transition:"opacity .2s"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",
                   background:n.pinned?"#fffbeb":"transparent",
-                  borderBottom:n.content?"1px solid #f8fafc":"none"}}>
+                  borderBottom:n.content?"1px solid #f8fafc":"none",
+                  borderLeft:!readIds.includes(n.id)?`3px solid ${imp.color}`:"3px solid transparent"}}>
                   {n.pinned && <span style={{fontSize:12}}>📌</span>}
                   <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
                     background:imp.bg,color:imp.color}}>{imp.label}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:"#1e293b",flex:1}}>{n.title}</span>
+                  <span style={{fontSize:13,fontWeight:readIds.includes(n.id)?500:700,
+                    color:readIds.includes(n.id)?"#94a3b8":"#1e293b",flex:1}}>{n.title}</span>
+                  {!readIds.includes(n.id)&&<span style={{width:7,height:7,borderRadius:"50%",
+                    background:"#ef4444",flexShrink:0}}/>}
                   <span style={{fontSize:11,color:"#94a3b8"}}>{fmtDate(n.createdAt)}</span>
                   <span style={{fontSize:11,color:"#64748b"}}>{n.author}</span>
                   {canManage && (
@@ -6850,52 +6860,76 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
           </div>
         </div>
 
-        {/* 결재 대기 섹션 */}
-        {overtimes.filter(o=>o.approval==="팀장결재대기"||o.approval==="대표결재대기").length>0&&(
-          <div style={{background:"#fffbeb",borderRadius:12,border:"1px solid #fde68a",
-            padding:"12px 16px",marginBottom:16}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>⏳ 결재 대기</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {overtimes.filter(o=>o.approval==="팀장결재대기"||o.approval==="대표결재대기")
-                .sort((a,b)=>b.date.localeCompare(a.date))
-                .map(o=>{
+        {/* 결재 대기 섹션 — 권한별 분리 표시 */}
+        {(()=>{
+          // 내가 볼 수 있는 결재 대기 항목만 필터
+          const myPending = overtimes.filter(o => {
+            if (o.approval === "팀장결재대기") return isTeamLeader; // 팀장 이상만
+            if (o.approval === "대표결재대기") return isCEO;        // 대표만
+            return false;
+          }).sort((a,b)=>b.date.localeCompare(a.date));
+
+          if (myPending.length === 0) return null;
+
+          return (
+            <div style={{background:"#fffbeb",borderRadius:12,border:"1px solid #fde68a",
+              padding:"12px 16px",marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>
+                ⏳ 결재 대기 ({myPending.length}건)
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {myPending.map(o=>{
                   const ap = approvalInfo(o.approval);
-                  const canTeam = isTeamLeader && o.approval==="팀장결재대기";
-                  const canCEO  = isCEO        && o.approval==="대표결재대기";
+                  const isTeamStep = o.approval === "팀장결재대기";
+                  const isCEOStep  = o.approval === "대표결재대기";
                   return (
                     <div key={o.id} style={{display:"flex",alignItems:"center",gap:8,
-                      padding:"8px 10px",borderRadius:8,background:"#fff",
-                      border:"1px solid #fde68a"}}>
-                      <Avatar name={o.name} size={24}/>
+                      padding:"10px 12px",borderRadius:8,background:"#fff",
+                      border:`1px solid ${isCEOStep?"#ddd6fe":"#fde68a"}`}}>
+                      <Avatar name={o.name} size={26}/>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#1e293b",marginBottom:2}}>
                           {o.name}
-                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:400,marginLeft:6}}>
-                            {o.date}({getDow(o.date)}) {o.until&&`~${o.until}`}
-                          </span>
+                          {o.project&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                            background:"#eff6ff",color:"#2563eb",fontWeight:600,marginLeft:6}}>
+                            {o.project}
+                          </span>}
                         </div>
-                        {o.reason&&<div style={{fontSize:10,color:"#64748b"}}>{o.reason}</div>}
+                        <div style={{fontSize:10,color:"#64748b",display:"flex",gap:8,flexWrap:"wrap"}}>
+                          <span>{o.date}({getDow(o.date)}){o.until&&` ~${o.until}`}</span>
+                          {o.reason&&<span>🎯 {o.reason}</span>}
+                          {o.meal==="필요"&&<span>🍱 식사</span>}
+                          {o.taxi&&<span>🚕 택시</span>}
+                        </div>
+                        {/* 팀장+대표 결재 건 → 단계 표시 */}
+                        {o.approvalType==="팀장+대표 결재"&&isCEOStep&&(
+                          <div style={{fontSize:9,marginTop:3,color:"#7c3aed",fontWeight:600}}>
+                            👔 팀장 승인 완료 → 👑 대표 결재 차례
+                          </div>
+                        )}
                       </div>
                       <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
-                        background:ap.bg,color:ap.color,flexShrink:0}}>{ap.icon} {ap.label}</span>
-                      {(canTeam||canCEO)&&(
-                        <div style={{display:"flex",gap:4,flexShrink:0}}>
-                          <button onClick={()=>doApprove(o.id, canTeam?"팀장승인":"대표승인")}
-                            style={{padding:"4px 10px",borderRadius:6,border:"none",
-                              background:"#16a34a",color:"#fff",fontSize:11,
-                              fontWeight:700,cursor:"pointer"}}>승인</button>
-                          <button onClick={()=>doApprove(o.id,"반려")}
-                            style={{padding:"4px 10px",borderRadius:6,border:"none",
-                              background:"#ef4444",color:"#fff",fontSize:11,
-                              fontWeight:700,cursor:"pointer"}}>반려</button>
-                        </div>
-                      )}
+                        background:ap.bg,color:ap.color,flexShrink:0,whiteSpace:"nowrap"}}>
+                        {ap.icon} {ap.label}
+                      </span>
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        <button
+                          onClick={()=>doApprove(o.id, isTeamStep?"팀장승인":"대표승인")}
+                          style={{padding:"5px 12px",borderRadius:6,border:"none",
+                            background:"#16a34a",color:"#fff",fontSize:11,
+                            fontWeight:700,cursor:"pointer"}}>승인</button>
+                        <button onClick={()=>doApprove(o.id,"반려")}
+                          style={{padding:"5px 10px",borderRadius:6,border:"none",
+                            background:"#ef4444",color:"#fff",fontSize:11,
+                            fontWeight:700,cursor:"pointer"}}>반려</button>
+                      </div>
                     </div>
                   );
                 })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 전체 야근 기록 목록 */}
         <div style={{marginBottom:8,fontSize:12,fontWeight:700,color:"#475569"}}>야근 기록</div>
@@ -7758,23 +7792,43 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
   const accounting  = officeData.accounting  || [];
   const board       = officeData.board       || [];
 
+  // 공지사항 읽음 목록 (로컬 — 세션 기준)
+  const [readNoticeIds, setReadNoticeIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("readNoticeIds_"+user?.id)||"[]"); } catch{ return []; }
+  });
+  const markNoticeRead = (id) => {
+    setReadNoticeIds(prev => {
+      const next = prev.includes(id) ? prev : [...prev, id];
+      try { localStorage.setItem("readNoticeIds_"+user?.id, JSON.stringify(next)); } catch{}
+      return next;
+    });
+  };
+  const markAllNoticesRead = () => {
+    const ids = notices.map(n=>n.id);
+    setReadNoticeIds(ids);
+    try { localStorage.setItem("readNoticeIds_"+user?.id, JSON.stringify(ids)); } catch{}
+  };
+
+  // 뱃지 계산
+  const unreadNotices   = notices.filter(n=>!readNoticeIds.includes(n.id)).length;
+  // 회계/비품: 내가 요청했거나 관리자면 미처리 건수
+  const pendingAcct     = accounting.filter(a=>a.status==="접수"||a.status==="검토중").length;
+  const pendingReq      = requests.filter(r=>r.status==="접수"||r.status==="검토중").length;
+  const todayOT         = overtimes.filter(o=>o.approval==="팀장결재대기"||o.approval==="대표결재대기").length;
+
   const TABS = [
-    { id:"notice",     icon:"📢", label:"공지사항",
-      badge: notices.filter(n=>n.importance==="urgent").length },
+    { id:"notice",     icon:"📢", label:"공지사항",   badge: unreadNotices },
     { id:"rooms",      icon:"🚪", label:"회의실 예약" },
-    { id:"overtime",   icon:"🌙", label:"야근 공유",
-      badge: overtimes.filter(o=>o.date===new Date().toISOString().slice(0,10)).length },
-    { id:"accounting", icon:"💳", label:"회계 요청",
-      badge: accounting.filter(a=>a.status==="접수"||a.status==="검토중").length },
-    { id:"request",    icon:"📦", label:"비품 요청",
-      badge: requests.filter(r=>r.status==="접수"||r.status==="검토중").length },
+    { id:"overtime",   icon:"🌙", label:"야근 공유",   badge: todayOT },
+    { id:"accounting", icon:"💳", label:"회계 요청",   badge: pendingAcct },
+    { id:"request",    icon:"📦", label:"비품 요청",   badge: pendingReq },
     { id:"board",      icon:"💬", label:"자유게시판" },
   ];
 
   return (
     <div>
       {/* 탭 */}
-      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e2e8f0",paddingBottom:0}}>
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e2e8f0",paddingBottom:0,flexWrap:"wrap"}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{padding:"8px 16px",borderRadius:"8px 8px 0 0",border:"none",cursor:"pointer",
@@ -7784,7 +7838,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
               borderBottom:tab===t.id?"2px solid #2563eb":"2px solid transparent",
               marginBottom:-2,position:"relative",display:"flex",alignItems:"center",gap:5}}>
             {t.icon} {t.label}
-            {t.badge>0&&(
+            {(t.badge||0)>0&&(
               <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99,
                 background:"#ef4444",color:"#fff",minWidth:14,textAlign:"center"}}>
                 {t.badge}
@@ -7795,7 +7849,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
       </div>
 
       {tab==="rooms"      && <RoomsSection/>}
-      {tab==="notice"     && <NoticeSection/>}
+      {tab==="notice"     && <NoticeSection readIds={readNoticeIds} onRead={markNoticeRead} onReadAll={markAllNoticesRead}/>}
       {tab==="overtime"   && <OvertimeSection/>}
       {tab==="accounting" && <AccountingSection/>}
       {tab==="request"    && <RequestSection/>}
