@@ -6720,17 +6720,61 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
     const fmtDate = d => { const [,m,dd] = d.split("-"); return `${Number(m)}/${Number(dd)}`; };
     const DOW = ["일","월","화","수","목","금","토"];
     const getDow = d => DOW[new Date(d).getDay()];
-    const MEAL = ["미정","식사 제공","개인 해결","불필요"];
+    const MEAL = ["필요","불필요"];
+
+    // ── 결재 단계 ──────────────────────────────────────────
+    // approval: "팀장결재대기" | "팀장승인" | "대표결재대기" | "확정" | "반려"
+    const APPROVAL_FLOW = [
+      { id:"팀장결재대기", label:"팀장 결재 대기", color:"#d97706", bg:"#fffbeb", icon:"⏳" },
+      { id:"팀장승인",     label:"팀장 승인",      color:"#2563eb", bg:"#eff6ff", icon:"👔" },
+      { id:"대표결재대기", label:"대표 결재 대기", color:"#7c3aed", bg:"#f5f3ff", icon:"⏳" },
+      { id:"확정",         label:"확정",           color:"#16a34a", bg:"#f0fdf4", icon:"✅" },
+      { id:"반려",         label:"반려",           color:"#ef4444", bg:"#fff1f2", icon:"❌" },
+    ];
+    const approvalInfo = (id) => APPROVAL_FLOW.find(a=>a.id===id) || APPROVAL_FLOW[0];
+
+    // 결재 타입: 팀장만 / 팀장+대표
+    const APPROVAL_TYPE = ["팀장 결재", "팀장+대표 결재"];
 
     const save = () => {
       if (!of_.date) return;
-      const entry = { ...of_, id: modal.id||"ot"+Date.now(),
-        name: modal.id ? of_.name : user.name };
+      const isNew = !modal.id;
+      const entry = {
+        ...of_,
+        id: modal.id || "ot"+Date.now(),
+        name: modal.id ? of_.name : user.name,
+        // 신규 등록 시 결재 상태 초기화
+        approval: modal.id ? of_.approval : "팀장결재대기",
+        approvalLog: modal.id ? (of_.approvalLog||[]) : [],
+      };
       const next = modal.id ? overtimes.map(o=>o.id===modal.id?entry:o) : [...overtimes, entry];
       patch("overtimes", next);
       setModal(null);
     };
+
+    // 결재 처리 (팀장/대표)
+    const doApprove = (id, action) => {
+      const ot = overtimes.find(o=>o.id===id);
+      if (!ot) return;
+      const log = [...(ot.approvalLog||[]), {
+        action, by: user.name, role: user.role, at: new Date().toISOString()
+      }];
+      let nextApproval = ot.approval;
+      if (action === "팀장승인") {
+        nextApproval = ot.approvalType==="팀장+대표 결재" ? "대표결재대기" : "확정";
+      } else if (action === "대표승인") {
+        nextApproval = "확정";
+      } else if (action === "반려") {
+        nextApproval = "반려";
+      }
+      patch("overtimes", overtimes.map(o=>o.id===id?{...o,approval:nextApproval,approvalLog:log}:o));
+    };
+
     const del = (id) => { patch("overtimes", overtimes.filter(o=>o.id!==id)); setModal(null); };
+
+    // 결재 권한 체크
+    const isTeamLeader = ["팀장","PD","EPD","대표"].includes(user.role);
+    const isCEO       = ["대표"].includes(user.role);
 
     const todayOTs = overtimes.filter(o=>o.date===todayStr);
     const weekOTs  = overtimes.filter(o=>weekDays.includes(o.date));
@@ -6755,13 +6799,14 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                     background:"#fef3c7",color:"#92400e",fontWeight:600}}>
                     <Avatar name={o.name} size={14}/>{o.name}
                     {o.until&&<span style={{opacity:.7}}>~{o.until}</span>}
-                    {o.meal&&o.meal!=="미정"&&<span style={{fontSize:9,opacity:.8}}>({o.meal})</span>}
+                    {o.meal&&<span style={{fontSize:9,opacity:.8}}>{o.meal==="필요"?"🍱":""}{o.meal}</span>}
+                    {o.taxi&&<span style={{fontSize:9,opacity:.8}}>🚕</span>}
                   </span>
                 ))}
               </div>
             )}
           </div>
-          <Btn primary sm onClick={()=>{ setOf_({date:todayStr,meal:"미정"}); setModal({}); }}>
+          <Btn primary sm onClick={()=>{ setOf_({date:todayStr,meal:"불필요",taxi:false}); setModal({}); }}>
             + 야근 등록
           </Btn>
         </div>
@@ -6805,35 +6850,94 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
           </div>
         </div>
 
+        {/* 결재 대기 섹션 */}
+        {overtimes.filter(o=>o.approval==="팀장결재대기"||o.approval==="대표결재대기").length>0&&(
+          <div style={{background:"#fffbeb",borderRadius:12,border:"1px solid #fde68a",
+            padding:"12px 16px",marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>⏳ 결재 대기</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {overtimes.filter(o=>o.approval==="팀장결재대기"||o.approval==="대표결재대기")
+                .sort((a,b)=>b.date.localeCompare(a.date))
+                .map(o=>{
+                  const ap = approvalInfo(o.approval);
+                  const canTeam = isTeamLeader && o.approval==="팀장결재대기";
+                  const canCEO  = isCEO        && o.approval==="대표결재대기";
+                  return (
+                    <div key={o.id} style={{display:"flex",alignItems:"center",gap:8,
+                      padding:"8px 10px",borderRadius:8,background:"#fff",
+                      border:"1px solid #fde68a"}}>
+                      <Avatar name={o.name} size={24}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>
+                          {o.name}
+                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:400,marginLeft:6}}>
+                            {o.date}({getDow(o.date)}) {o.until&&`~${o.until}`}
+                          </span>
+                        </div>
+                        {o.reason&&<div style={{fontSize:10,color:"#64748b"}}>{o.reason}</div>}
+                      </div>
+                      <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                        background:ap.bg,color:ap.color,flexShrink:0}}>{ap.icon} {ap.label}</span>
+                      {(canTeam||canCEO)&&(
+                        <div style={{display:"flex",gap:4,flexShrink:0}}>
+                          <button onClick={()=>doApprove(o.id, canTeam?"팀장승인":"대표승인")}
+                            style={{padding:"4px 10px",borderRadius:6,border:"none",
+                              background:"#16a34a",color:"#fff",fontSize:11,
+                              fontWeight:700,cursor:"pointer"}}>승인</button>
+                          <button onClick={()=>doApprove(o.id,"반려")}
+                            style={{padding:"4px 10px",borderRadius:6,border:"none",
+                              background:"#ef4444",color:"#fff",fontSize:11,
+                              fontWeight:700,cursor:"pointer"}}>반려</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
         {/* 전체 야근 기록 목록 */}
         <div style={{marginBottom:8,fontSize:12,fontWeight:700,color:"#475569"}}>야근 기록</div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {[...overtimes].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20).map(o=>(
-            <div key={o.id} style={{padding:"10px 14px",borderRadius:10,background:"#fff",
-              border:"1px solid #e2e8f0",display:"flex",gap:10,alignItems:"center"}}>
-              <Avatar name={o.name} size={28}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                  <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{o.name}</span>
-                  {o.project&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
-                    background:"#eff6ff",color:"#2563eb",fontWeight:600}}>{o.project}</span>}
-                  {o.meal&&o.meal!=="미정"&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
-                    background:"#fef3c7",color:"#d97706",fontWeight:600}}>{o.meal}</span>}
+          {[...overtimes].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(o=>{
+            const ap = approvalInfo(o.approval||"팀장결재대기");
+            return (
+              <div key={o.id} style={{padding:"10px 14px",borderRadius:10,background:"#fff",
+                border:`1px solid ${o.approval==="반려"?"#fca5a5":o.approval==="확정"?"#bbf7d0":"#e2e8f0"}`,
+                display:"flex",gap:10,alignItems:"center"}}>
+                <Avatar name={o.name} size={28}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{o.name}</span>
+                    {/* 결재 상태 뱃지 */}
+                    <span style={{fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:99,
+                      background:ap.bg,color:ap.color}}>{ap.icon} {ap.label}</span>
+                    {o.project&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+                      background:"#eff6ff",color:"#2563eb",fontWeight:600}}>{o.project}</span>}
+                    {o.meal==="필요"&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                      background:"#fef3c7",color:"#d97706",fontWeight:600}}>🍱 식사</span>}
+                    {o.taxi&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                      background:"#f5f3ff",color:"#7c3aed",fontWeight:600}}>🚕 택시</span>}
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:10,color:"#64748b"}}>{o.date}({getDow(o.date)})</span>
+                    {o.until&&<span style={{fontSize:10,color:"#d97706",fontWeight:600}}>~{o.until}</span>}
+                    {o.workDetail&&<span style={{fontSize:10,color:"#475569",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>
+                      📋 {o.workDetail}
+                    </span>}
+                  </div>
+                  {o.reason&&<div style={{fontSize:10,color:"#64748b",marginTop:1}}>🎯 {o.reason}</div>}
                 </div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <span style={{fontSize:10,color:"#64748b"}}>{o.date}({getDow(o.date)})</span>
-                  {o.until&&<span style={{fontSize:10,color:"#d97706",fontWeight:600}}>~{o.until}</span>}
-                  {o.workDetail&&<span style={{fontSize:10,color:"#475569"}}>📋 {o.workDetail}</span>}
-                </div>
-                {o.reason&&<div style={{fontSize:11,color:"#64748b",marginTop:2}}>🎯 {o.reason}</div>}
+                {(o.name===user.name||canManage)&&(
+                  <button onClick={()=>{setOf_({...o});setModal({id:o.id});}}
+                    style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                      background:"#f8fafc",cursor:"pointer",color:"#64748b",flexShrink:0}}>수정</button>
+                )}
               </div>
-              {(o.name===user.name||canManage)&&(
-                <button onClick={()=>{setOf_({...o});setModal({id:o.id});}}
-                  style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
-                    background:"#f8fafc",cursor:"pointer",color:"#64748b",flexShrink:0}}>수정</button>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {overtimes.length===0&&(
             <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12,
               background:"#f8fafc",borderRadius:8,border:"1px dashed #e2e8f0"}}>
@@ -6845,14 +6949,14 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
         {/* 등록/수정 모달 */}
         {modal&&(
           <Modal title={modal.id?"야근 수정":"야근 등록"} onClose={()=>setModal(null)}>
+
             {/* 야근자 */}
             <Field label="야근자">
               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {(accounts||[]).map(a=>{
                   const sel=(of_.name||user.name)===a.name;
                   return (
-                    <button key={a.id} type="button"
-                      onClick={()=>setOf_(v=>({...v,name:a.name}))}
+                    <button key={a.id} type="button" onClick={()=>setOf_(v=>({...v,name:a.name}))}
                       style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
                         borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
                         background:sel?"#2563eb":"#f1f5f9",
@@ -6863,6 +6967,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                 })}
               </div>
             </Field>
+
             <div style={{display:"flex",gap:10}}>
               <Field label="날짜" style={{flex:1}}>
                 <input style={inp} type="date" value={of_.date||""}
@@ -6873,6 +6978,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                   onChange={e=>setOf_(v=>({...v,until:e.target.value}))} placeholder="22:00"/>
               </Field>
             </div>
+
             {/* 프로젝트 */}
             <Field label="프로젝트">
               <select style={inp} value={of_.project||""} onChange={e=>setOf_(v=>({...v,project:e.target.value}))}>
@@ -6882,32 +6988,79 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                 <option value="기타">기타</option>
               </select>
             </Field>
+
             {/* 근무 내역 */}
             <Field label="근무 내역">
               <textarea style={{...inp,minHeight:60,resize:"vertical",lineHeight:1.6}}
                 value={of_.workDetail||""} placeholder="오늘 진행한 작업 내용"
                 onChange={e=>setOf_(v=>({...v,workDetail:e.target.value}))}/>
             </Field>
-            {/* 야근 사유(목표) */}
+
+            {/* 야근 사유 */}
             <Field label="야근 사유 / 목표">
               <input style={inp} value={of_.reason||""} placeholder="마감, 긴급 수정, 촬영 준비 등"
                 onChange={e=>setOf_(v=>({...v,reason:e.target.value}))}/>
             </Field>
+
             {/* 식사 여부 */}
-            <Field label="식사 여부">
+            <Field label="🍱 식사 여부">
               <div style={{display:"flex",gap:6}}>
                 {MEAL.map(m=>(
                   <button key={m} type="button" onClick={()=>setOf_(v=>({...v,meal:m}))}
-                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
-                      fontSize:11,fontWeight:(of_.meal||"미정")===m?700:400,
-                      background:(of_.meal||"미정")===m?"#fef3c7":"#f8fafc",
-                      color:(of_.meal||"미정")===m?"#92400e":"#94a3b8",
-                      outline:(of_.meal||"미정")===m?"2px solid #f59e0b":"1px solid #f1f5f9"}}>
-                    {m}
+                    style={{flex:1,padding:"9px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:(of_.meal||"불필요")===m?700:400,
+                      background:(of_.meal||"불필요")===m
+                        ?(m==="필요"?"#fef3c7":"#f1f5f9"):"#f8fafc",
+                      color:(of_.meal||"불필요")===m
+                        ?(m==="필요"?"#d97706":"#475569"):"#94a3b8",
+                      outline:(of_.meal||"불필요")===m
+                        ?(m==="필요"?"2px solid #f59e0b":"2px solid #e2e8f0"):"1px solid #f1f5f9"}}>
+                    {m==="필요"?"🍱 필요":"불필요"}
                   </button>
                 ))}
               </div>
             </Field>
+
+            {/* 야근 택시 */}
+            <Field label="🚕 야근 택시">
+              <label style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                borderRadius:8,border:`1px solid ${of_.taxi?"#7c3aed":"#e2e8f0"}`,
+                background:of_.taxi?"#f5f3ff":"#f8fafc",cursor:"pointer",userSelect:"none"}}>
+                <input type="checkbox" checked={!!of_.taxi}
+                  onChange={e=>setOf_(v=>({...v,taxi:e.target.checked}))}
+                  style={{width:16,height:16,accentColor:"#7c3aed",cursor:"pointer"}}/>
+                <span style={{fontSize:12,fontWeight:of_.taxi?700:400,
+                  color:of_.taxi?"#7c3aed":"#94a3b8"}}>
+                  {of_.taxi?"🚕 택시 이용":"택시 미이용"}
+                </span>
+              </label>
+            </Field>
+
+            {/* 결재 구분 */}
+            <Field label="🔏 야근 결재 구분">
+              <div style={{display:"flex",gap:6}}>
+                {APPROVAL_TYPE.map(t=>(
+                  <button key={t} type="button"
+                    onClick={()=>setOf_(v=>({...v,approvalType:t}))}
+                    style={{flex:1,padding:"9px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:(of_.approvalType||"팀장 결재")===t?700:400,
+                      background:(of_.approvalType||"팀장 결재")===t
+                        ?(t==="팀장 결재"?"#eff6ff":"#f5f3ff"):"#f8fafc",
+                      color:(of_.approvalType||"팀장 결재")===t
+                        ?(t==="팀장 결재"?"#2563eb":"#7c3aed"):"#94a3b8",
+                      outline:(of_.approvalType||"팀장 결재")===t
+                        ?`2px solid ${t==="팀장 결재"?"#2563eb":"#7c3aed"}`:"1px solid #f1f5f9"}}>
+                    {t==="팀장 결재"?"👔 팀장 결재":"👔→👑 팀장+대표 결재"}
+                  </button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>
+                {(of_.approvalType||"팀장 결재")==="팀장 결재"
+                  ?"팀장 승인 후 확정됩니다"
+                  :"팀장 승인 → 대표 승인 후 확정됩니다"}
+              </div>
+            </Field>
+
             <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
               {modal.id&&(of_.name===user.name||canManage)&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
               <div style={{flex:1}}/>
