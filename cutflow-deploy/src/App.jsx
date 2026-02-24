@@ -4020,6 +4020,48 @@ function OrgChart({ accounts }) {
   );
 }
 
+function ResignModal({ member, onClose, onConfirm }) {
+  const [resignDate,   setResignDate]   = useState(new Date().toISOString().slice(0,10));
+  const [resignReason, setResignReason] = useState("");
+  return (
+    <Modal title="퇴사 처리" onClose={onClose}>
+      <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:12}}>
+        {member.name} ({member.jobTitle||member.role}) 퇴사 처리
+      </div>
+      <Field label="퇴사일">
+        <input style={inp} type="date" value={resignDate}
+          onChange={e=>setResignDate(e.target.value)}/>
+      </Field>
+      <Field label="퇴사 사유">
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+          {["자진퇴사","계약만료","권고사직","해고","기타"].map(r=>(
+            <button key={r} type="button" onClick={()=>setResignReason(r)}
+              style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                fontSize:11,fontWeight:resignReason===r?700:400,
+                background:resignReason===r?"#ef4444":"#f1f5f9",
+                color:resignReason===r?"#fff":"#64748b"}}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <input style={inp} value={resignReason} placeholder="사유 직접 입력"
+          onChange={e=>setResignReason(e.target.value)}/>
+      </Field>
+      {member.joinDate&&resignDate&&(
+        <div style={{fontSize:12,color:"#64748b",padding:"8px 12px",
+          background:"#f8fafc",borderRadius:8,marginBottom:4}}>
+          근속기간: <strong>{calcTenure_between(member.joinDate, resignDate)}</strong>
+        </div>
+      )}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+        <Btn onClick={onClose}>취소</Btn>
+        <Btn danger onClick={()=>onConfirm(resignDate,resignReason)}
+          disabled={!resignDate}>퇴사 처리</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 function MemberManagement({ accounts, onSave, onDelete }) {
   const [viewMode, setViewMode] = useState("list"); // "list" | "org" | "resigned"
   const [modal, setModal] = useState(false);
@@ -4401,48 +4443,13 @@ function MemberManagement({ accounts, onSave, onDelete }) {
         </Modal>
       )}
       {/* 퇴사 처리 모달 */}
-      {resignConf&&(()=>{
-        const [resignDate, setResignDate] = React.useState(new Date().toISOString().slice(0,10));
-        const [resignReason, setResignReason] = React.useState("");
-        return (
-          <Modal title="퇴사 처리" onClose={()=>setResignConf(null)}>
-            <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:12}}>
-              {resignConf.name} ({resignConf.jobTitle||resignConf.role}) 퇴사 처리
-            </div>
-            <Field label="퇴사일">
-              <input style={inp} type="date" value={resignDate}
-                onChange={e=>setResignDate(e.target.value)}/>
-            </Field>
-            <Field label="퇴사 사유">
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-                {["자진퇴사","계약만료","권고사직","해고","기타"].map(r=>(
-                  <button key={r} type="button" onClick={()=>setResignReason(r)}
-                    style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
-                      fontSize:11,fontWeight:resignReason===r?700:400,
-                      background:resignReason===r?"#ef4444":"#f1f5f9",
-                      color:resignReason===r?"#fff":"#64748b"}}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <input style={inp} value={resignReason}
-                placeholder="사유 직접 입력"
-                onChange={e=>setResignReason(e.target.value)}/>
-            </Field>
-            {resignConf.joinDate&&resignDate&&(
-              <div style={{fontSize:12,color:"#64748b",padding:"8px 12px",
-                background:"#f8fafc",borderRadius:8,marginBottom:4}}>
-                근속기간: <strong>{calcTenure_between(resignConf.joinDate, resignDate)}</strong>
-              </div>
-            )}
-            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <Btn onClick={()=>setResignConf(null)}>취소</Btn>
-              <Btn danger onClick={()=>doResign(resignConf, resignDate, resignReason)}
-                disabled={!resignDate}>퇴사 처리</Btn>
-            </div>
-          </Modal>
-        );
-      })()}
+      {resignConf&&(
+        <ResignModal
+          member={resignConf}
+          onClose={()=>setResignConf(null)}
+          onConfirm={(date,reason)=>doResign(resignConf,date,reason)}
+        />
+      )}
 
       {conf && (
         <Modal title="구성원 삭제" onClose={()=>setConf(null)}>
