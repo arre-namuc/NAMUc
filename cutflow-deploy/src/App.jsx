@@ -8998,7 +8998,7 @@ function ProjectSelector({ projects, selId, setSelId, proj, setAddProjModal }) {
               const tasks = p.tasks || [];
               const done = tasks.filter(t => t.status === "done").length;
               return (
-                <div key={p.id} onClick={() => { setSelId(p.id); setOpen(false); }}
+                <div key={p.id} onClick={() => { setSelId(p.id); setOpen(false); setBiddingView("tasks"); }}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
                     cursor:"pointer",background:sel?"#eff6ff":C.white,
                     borderBottom:`1px solid ${C.border}`}}
@@ -9641,7 +9641,7 @@ function App() {
     setSelId(id);
     setAddProjModal(false);
     if(isConfigured) saveProject(np).catch(console.error);
-    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0],useTemplate:true,isBidding:false});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",color:P_COLORS[0],useTemplate:true,isBidding:false});
   };
 
   const openEditProj = () => {
@@ -9655,7 +9655,7 @@ function App() {
     if(!pf.name.trim()||!pf.client.trim()) return;
     patchProj(p=>({...p,...pf}));
     setEditProjModal(false);
-    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0],useTemplate:true});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",color:P_COLORS[0],useTemplate:true});
   };
 
   const deleteProjectById = (id) => {
@@ -9667,15 +9667,21 @@ function App() {
 
   const saveTask = (tf) => {
     if (!tf.title?.trim()) return;
-    const tasks = tf.id
-      ? proj.tasks.map(t=>t.id===tf.id?tf:t)
-      : [...proj.tasks, {...tf, id:"t"+Date.now(), createdBy:user.name, createdAt:new Date().toISOString()}];
-    updateTasks(tasks);
+    patchProj(p => {
+      const cur = p.tasks || [];
+      const tasks = tf.id
+        ? cur.map(t => t.id===tf.id ? tf : t)
+        : [...cur, {...tf, id:"t"+Date.now(), createdBy:user.name, createdAt:new Date().toISOString()}];
+      return {...p, tasks};
+    });
     setTaskModal(null);
   };
-  const deleteTask = (id) => { updateTasks(proj.tasks.filter(t=>t.id!==id)); setTaskModal(null); };
+  const deleteTask = (id) => {
+    patchProj(p => ({...p, tasks:(p.tasks||[]).filter(t=>t.id!==id)}));
+    setTaskModal(null);
+  };
 
-  const filteredTasks = proj.tasks.filter(t=>{
+  const filteredTasks = (proj.tasks||[]).filter(t=>{
     if (tf.q&&!t.title.toLowerCase().includes(tf.q.toLowerCase())) return false;
     if (tf.type&&t.type!==tf.type) return false;
     if (tf.assignee&&t.assignee!==tf.assignee) return false;
@@ -9937,15 +9943,37 @@ return (
                     </div>
                     {/* 수주 시 일반 프로젝트 전환 */}
                     {proj.biddingStatus==="수주"&&(
-                      <button
-                        onClick={()=>{if(window.confirm("일반 프로젝트로 전환하시겠습니까? 단계·태스크가 생성됩니다."))
-                          patchProj(p=>({...p,isBidding:false,stage:"PLANNING",
-                            tasks:generateTasksFromTemplate(p.id, accounts.filter(a=>[p.pd,p.director,p.epd,p.assistant].includes(a.name)))}));
+                      proj.isBidding ? (
+                        <button
+                          onClick={()=>{if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 정보(PT날짜·경쟁사 등)는 그대로 보존됩니다\n• 기존 태스크도 유지되며 22단계 워크플로우가 추가됩니다\n• 설정 탭에서 다시 비딩으로 되돌릴 수 있습니다")) {
+                            patchProj(p=>({
+                              ...p,
+                              isBidding: false,
+                              stage: "PLANNING",
+                              // 기존 비딩 태스크 유지 + 22단계 신규 태스크 추가
+                              tasks: [
+                                ...(p.tasks||[]),
+                                ...generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                                  .filter(nt => !(p.tasks||[]).some(et => et.phase===nt.phase && et.title===nt.title))
+                              ]
+                            }));
+                            setBiddingView("tasks");
+                          }
                         }}
-                        style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
-                          background:"#2563eb",color:"#fff",cursor:"pointer",fontWeight:700}}>
-                        ➡ 일반 프로젝트로 전환
-                      </button>
+                          style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
+                            background:"#2563eb",color:"#fff",cursor:"pointer",fontWeight:700}}>
+                          ➡ 일반 프로젝트로 전환
+                        </button>
+                      ) : (
+                        <button
+                          onClick={()=>{if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n\n• 일반 태스크는 유지됩니다\n• 비딩 정보가 다시 활성화됩니다"))
+                            patchProj(p=>({...p,isBidding:true}));
+                          }}
+                          style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
+                            background:"#f59e0b",color:"#fff",cursor:"pointer",fontWeight:700}}>
+                          ↩ 비딩으로 되돌리기
+                        </button>
+                      )
                     )}
                   </div>
                 ) : (
@@ -10052,14 +10080,27 @@ return (
                     padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                     <div>
                       <div style={{fontWeight:700,fontSize:13,color:"#16a34a",marginBottom:2}}>🎉 수주 확정!</div>
-                      <div style={{fontSize:11,color:"#15803d"}}>일반 프로젝트로 전환하면 22단계 워크플로우가 자동 생성됩니다.</div>
+                      <div style={{fontSize:11,color:"#15803d"}}>
+                        비딩 데이터와 기존 태스크는 그대로 유지되며, 22단계 워크플로우가 추가됩니다.
+                      </div>
                     </div>
-                    <button onClick={()=>{if(window.confirm("일반 프로젝트로 전환하시겠습니까?"))
-                      patchProj(p=>({...p,isBidding:false,stage:"PLANNING",
-                        tasks:generateTasksFromTemplate(p.id,accounts.filter(a=>[p.pd,p.director,p.epd,p.assistant].includes(a.name)))}));}}
+                    <button onClick={()=>{
+                      if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 정보(PT날짜·경쟁사 등) 보존\n• 기존 태스크 유지 + 22단계 워크플로우 추가\n• 수주 상태에서 언제든 되돌리기 가능"))
+                        patchProj(p=>({
+                          ...p,
+                          isBidding: false,
+                          stage: "PLANNING",
+                          tasks: [
+                            ...(p.tasks||[]),
+                            ...generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                              .filter(nt => !(p.tasks||[]).some(et => et.phase===nt.phase && et.title===nt.title))
+                          ]
+                        }));
+                        setBiddingView("tasks");
+                    }}
                       style={{padding:"8px 16px",borderRadius:8,border:"none",
-                        background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
-                      ➡ 프로젝트 전환
+                        background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+                      ➡ 일반 프로젝트 전환
                     </button>
                   </div>
                 )}
@@ -10512,7 +10553,7 @@ return (
                 if(window.confirm("22단계 표준 템플릿을 적용합니다.\n기존 템플릿 태스크는 유지되고 누락된 단계만 추가됩니다.")) {
                   const existing = (proj.tasks||[]).filter(t=>t.phaseId);
                   const existingPhaseSteps = new Set(existing.map(t=>t.id));
-                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>[pf.pd,pf.director,pf.epd,pf.assistant].includes(a.name)));
+                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>a.name));
                   const toAdd = newTasks.filter(t => !existing.some(e=>e.phaseId===t.phaseId && e.title===t.title));
                   updateTasks([...(proj.tasks||[]), ...toAdd]);
                 }
@@ -10522,7 +10563,7 @@ return (
               <button onClick={()=>{
                 if(window.confirm("템플릿 태스크를 모두 초기화하고 새로 생성합니다.\n진행 상태가 초기화됩니다. 계속하시겠습니까?")) {
                   const nonTemplate = (proj.tasks||[]).filter(t=>!t.phaseId);
-                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>[pf.pd,pf.director,pf.epd,pf.assistant].includes(a.name)));
+                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>a.name));
                   updateTasks([...nonTemplate, ...newTasks]);
                 }
               }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #fca5a5",background:"#fee2e2",color:"#ef4444",cursor:"pointer",fontSize:12,fontWeight:600}}>
@@ -10530,6 +10571,31 @@ return (
               </button>
             </div>
           </div>
+
+          {/* 비딩 전환 상태 토글 — 비딩 데이터 있는 일반 프로젝트만 표시 */}
+          {!proj.isBidding && proj.biddingStatus && (
+            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,
+              padding:"12px 14px",marginBottom:4}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>
+                🏆 비딩 이력 있음 ({proj.biddingStatus})
+              </div>
+              <div style={{fontSize:11,color:"#a16207",marginBottom:10}}>
+                이 프로젝트는 비딩에서 전환되었습니다. 비딩 탭으로 되돌릴 수 있습니다.<br/>
+                되돌려도 현재 태스크·데이터는 모두 유지됩니다.
+              </div>
+              <button
+                onClick={()=>{
+                  if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n현재 태스크·데이터는 모두 유지됩니다.")) {
+                    patchProj(p=>({...p, isBidding:true}));
+                    setEditProjModal(false);
+                  }
+                }}
+                style={{padding:"6px 14px",borderRadius:8,border:"none",
+                  background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                ↩ 비딩 프로젝트로 되돌리기
+              </button>
+            </div>
+          )}
 
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
