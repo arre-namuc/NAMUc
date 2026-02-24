@@ -2666,17 +2666,24 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify
                 const pct       = all>0 ? Math.round(done/all*100) : 0;
                 const isMe      = m.name===user.name;
 
-                // 활성 태스크 (미완료) — 우선순위 높은 것 먼저
-                const activeTasks = m.tasks
+                const STATUS_COLOR2  = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+                const STATUS_BG2     = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+                const PRIORITY_COLOR = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
+
+                // 전체 태스크 id 세트
+                const allIds    = new Set(m.tasks.map(t=>t.id));
+                // 하위 태스크: parentId가 있고 그 부모도 이 멤버의 태스크 목록 안에 있는 것
+                const subTasks  = m.tasks.filter(t=>t.parentId && allIds.has(t.parentId));
+                // 단독 태스크: 하위 태스크가 없는 상위 (자식이 아예 없는 루트)
+                const hasChild  = new Set(m.tasks.filter(t=>t.parentId).map(t=>t.parentId));
+                const soloTasks = m.tasks.filter(t=>!t.parentId && !hasChild.has(t.id));
+                // 표시할 활성 태스크 = 하위 태스크 + 단독 태스크, 미완료, 우선순위 순
+                const activeTasks = [...subTasks, ...soloTasks]
                   .filter(t=>t.status!=="완료")
                   .sort((a,b)=>{
                     const p = {긴급:0,높음:1,보통:2,낮음:3};
                     return (p[a.priority]||2)-(p[b.priority]||2);
                   });
-
-                const STATUS_COLOR2 = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
-                const STATUS_BG2    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
-                const PRIORITY_COLOR = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
 
                 return (
                   <div key={m.name} style={{
@@ -2732,41 +2739,53 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify
                     {/* 활성 태스크 목록 */}
                     {activeTasks.length>0&&(
                       <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:3}}>
-                        {activeTasks.slice(0,4).map(t=>(
-                          <div key={t.id} onClick={()=>onEdit(t)}
-                            style={{display:"flex",alignItems:"center",gap:8,
-                              padding:"6px 8px",borderRadius:7,cursor:"pointer",
-                              background:"#fafbfc",borderLeft:`3px solid ${PRIORITY_COLOR[t.priority]||"#e2e8f0"}`}}
-                            onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
-                            onMouseLeave={e=>e.currentTarget.style.background="#fafbfc"}>
-                            {/* 태스크명 */}
-                            <span style={{fontSize:11,flex:1,overflow:"hidden",
-                              textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#1e293b",
-                              fontWeight:t.priority==="긴급"?700:400}}>
-                              {t.priority==="긴급"&&"🔴 "}{t.title}
-                            </span>
-                            {/* 단계 */}
-                            {t.phase&&<span style={{fontSize:9,color:"#94a3b8",flexShrink:0,whiteSpace:"nowrap"}}>
-                              {t.phase}
-                            </span>}
-                            {/* 상태 */}
-                            <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,flexShrink:0,
-                              background:STATUS_BG2[t.status||"대기"],
-                              color:STATUS_COLOR2[t.status||"대기"],fontWeight:700}}>
-                              {t.status||"대기"}
-                            </span>
-                            {/* 마감일 */}
-                            {t.due&&<span style={{fontSize:9,flexShrink:0,
-                              color:t.due<today?"#ef4444":"#94a3b8",
-                              fontWeight:t.due<today?700:400,whiteSpace:"nowrap"}}>
-                              {t.due<today?"⚠":"📅"}{t.due.slice(5,10).replace("-","/")}
-                            </span>}
-                          </div>
-                        ))}
-                        {activeTasks.length>4&&(
+                        {activeTasks.slice(0,5).map(t=>{
+                          const parentTask = t.parentId ? m.tasks.find(p=>p.id===t.parentId) : null;
+                          return (
+                            <div key={t.id} onClick={()=>onEdit(t)}
+                              style={{display:"flex",alignItems:"center",gap:8,
+                                padding:"6px 8px",borderRadius:7,cursor:"pointer",
+                                background:"#fafbfc",
+                                borderLeft:`3px solid ${PRIORITY_COLOR[t.priority]||"#e2e8f0"}`}}
+                              onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                              onMouseLeave={e=>e.currentTarget.style.background="#fafbfc"}>
+                              {/* 태스크명 + 상위명 */}
+                              <div style={{flex:1,minWidth:0}}>
+                                {parentTask&&(
+                                  <div style={{fontSize:9,color:"#94a3b8",marginBottom:1,
+                                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    └ {parentTask.title}
+                                  </div>
+                                )}
+                                <div style={{fontSize:11,overflow:"hidden",
+                                  textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#1e293b",
+                                  fontWeight:t.priority==="긴급"?700:500}}>
+                                  {t.priority==="긴급"&&"🔴 "}{t.title}
+                                </div>
+                              </div>
+                              {/* 단계 */}
+                              {t.phase&&<span style={{fontSize:9,color:"#94a3b8",flexShrink:0,whiteSpace:"nowrap"}}>
+                                {t.phase}
+                              </span>}
+                              {/* 상태 */}
+                              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,flexShrink:0,
+                                background:STATUS_BG2[t.status||"대기"],
+                                color:STATUS_COLOR2[t.status||"대기"],fontWeight:700}}>
+                                {t.status||"대기"}
+                              </span>
+                              {/* 마감일 */}
+                              {t.due&&<span style={{fontSize:9,flexShrink:0,
+                                color:t.due<today?"#ef4444":"#94a3b8",
+                                fontWeight:t.due<today?700:400,whiteSpace:"nowrap"}}>
+                                {t.due<today?"⚠":"📅"}{t.due.slice(5,10).replace("-","/")}
+                              </span>}
+                            </div>
+                          );
+                        })}
+                        {activeTasks.length>5&&(
                           <div style={{fontSize:10,color:"#94a3b8",textAlign:"center",
                             padding:"4px 0",borderTop:"1px solid #f1f5f9",marginTop:2}}>
-                            + {activeTasks.length-4}개 더 진행 중
+                            + {activeTasks.length-5}개 더 진행 중
                           </div>
                         )}
                       </div>
