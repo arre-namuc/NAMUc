@@ -9163,73 +9163,181 @@ function FigJamTab({ project, onChange }) {
 // ── 비딩 태스크 목록 컴포넌트 ─────────────────────────────
 const TASK_STATUS_COLORS = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#f59e0b"};
 
-function BiddingTaskList({ tasks, onAdd, onAddSub, onOpen }) {
+function BiddingTaskList({ tasks, onAdd, onAddSub, onOpen, onDelete, onUpdate, accounts }) {
   const roots = tasks.filter(t => !t.parentId);
   const kids  = pid => tasks.filter(t => t.parentId === pid);
+  const today = todayStr();
+
+  const STATUS_OPTS = ["대기","진행중","완료","보류"];
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#f59e0b"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
 
   const TaskRow = ({ t, isChild }) => {
-    const sc = TASK_STATUS_COLORS[t.status||"대기"] || "#94a3b8";
+    const sc  = STATUS_COLOR[t.status||"대기"];
+    const sbg = STATUS_BG[t.status||"대기"];
+    const overdue = t.due && t.due < today && t.status !== "완료";
     const childCount = kids(t.id).length;
+
     return (
-      <div style={{marginLeft: isChild ? 24 : 0}}>
-        {/* 행 */}
-        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
-          borderRadius:8,border:`1px solid ${isChild?"#f1f5f9":"#e8edf2"}`,
-          cursor:"pointer",background:isChild?"#fafcff":"#fff",
-          marginBottom:4,transition:"background .1s"}}
-          onClick={()=>onOpen(t)}
-          onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
-          onMouseLeave={e=>e.currentTarget.style.background=isChild?"#fafcff":"#fff"}>
-          {/* 인덴트 아이콘 */}
-          {isChild && <span style={{color:"#cbd5e1",fontSize:11,flexShrink:0}}>↳</span>}
-          <span style={{width:7,height:7,borderRadius:"50%",background:sc,flexShrink:0}}/>
-          <span style={{flex:1,fontSize:isChild?12:13,fontWeight:isChild?500:700,color:"#1e293b",
-            lineHeight:1.3}}>{t.title}</span>
-          {(t.assignees||[]).length>0&&(
-            <div style={{display:"flex",gap:1}}>
-              {(t.assignees||[]).slice(0,3).map((n,i)=><Avatar key={i} name={n} size={16}/>)}
+      <div style={{marginLeft: isChild ? 20 : 0, marginBottom: isChild ? 2 : 4}}>
+        <div style={{
+          display:"grid",
+          gridTemplateColumns: isChild
+            ? "14px 14px 1fr 100px 110px 80px 26px 26px"
+            : "14px 1fr 100px 110px 80px 52px 26px",
+          alignItems:"center", gap:6,
+          padding:"7px 10px",
+          borderRadius:8,
+          border:`1px solid ${isChild?"#f1f5f9":"#e2e8f0"}`,
+          borderLeft:`3px solid ${isChild?"#bfdbfe":sc}`,
+          background: t.status==="완료" ? "#f8fafc" : (isChild?"#fafcff":"#fff"),
+          opacity: t.status==="완료" ? .7 : 1,
+        }}>
+          {/* 인덴트 화살표 (하위만) */}
+          {isChild && <span style={{color:"#bfdbfe",fontSize:10,textAlign:"center"}}>└</span>}
+
+          {/* 상태 도트 */}
+          <div style={{width:12,height:12,borderRadius:"50%",flexShrink:0,
+            background:sbg,border:`2px solid ${sc}`,
+            display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+            onClick={()=>{
+              const next=STATUS_OPTS[(STATUS_OPTS.indexOf(t.status||"대기")+1)%STATUS_OPTS.length];
+              onUpdate({...t,status:next});
+            }}
+            title="클릭하여 상태 변경">
+            {t.status==="완료"&&<span style={{fontSize:7,color:"#16a34a",lineHeight:1}}>✓</span>}
+          </div>
+
+          {/* 태스크명 (클릭 → 상세 패널) */}
+          <div onClick={()=>onOpen(t)} style={{cursor:"pointer",minWidth:0}}>
+            <div style={{fontSize: isChild?12:13,
+              fontWeight: isChild?400:600,
+              color: t.status==="완료"?"#94a3b8":"#1e293b",
+              textDecoration: t.status==="완료"?"line-through":"none",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {t.title}
             </div>
-          )}
-          {t.due&&<span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{t.due.slice(5)}</span>}
-          <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,fontWeight:700,
-            background:sc+"22",color:sc,flexShrink:0}}>{t.status||"대기"}</span>
-          {/* 하위 추가 버튼 (상위 태스크에만) */}
+            {childCount>0&&!isChild&&(
+              <span style={{fontSize:9,color:"#64748b"}}>하위 {childCount}개</span>
+            )}
+          </div>
+
+          {/* 담당자 */}
+          <div style={{display:"flex",gap:2,flexWrap:"wrap",minWidth:0}}>
+            {(t.assignees||[]).length>0
+              ? (t.assignees||[]).slice(0,2).map(n=>(
+                  <span key={n} style={{fontSize:10,background:"#eff6ff",color:"#2563eb",
+                    padding:"1px 5px",borderRadius:99,fontWeight:600,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:72}}>
+                    {n}
+                  </span>
+                ))
+              : <span style={{fontSize:10,color:"#cbd5e1",cursor:"pointer"}}
+                  onClick={e=>{e.stopPropagation();onOpen(t);}}>담당자</span>
+            }
+          </div>
+
+          {/* 상태 셀렉트 */}
+          <select value={t.status||"대기"}
+            onClick={e=>e.stopPropagation()}
+            onChange={e=>onUpdate({...t,status:e.target.value})}
+            style={{fontSize:10,padding:"2px 4px",borderRadius:6,
+              border:`1px solid ${sc}40`,
+              background:sbg,color:sc,fontWeight:700,cursor:"pointer",
+              outline:"none",width:"100%"}}>
+            {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
+          </select>
+
+          {/* 마감일 */}
+          <input type="date" value={t.due||""}
+            onClick={e=>e.stopPropagation()}
+            onChange={e=>onUpdate({...t,due:e.target.value})}
+            style={{fontSize:10,padding:"2px 4px",borderRadius:6,
+              border:`1px solid ${overdue?"#fca5a5":"#e2e8f0"}`,
+              color:overdue?"#ef4444":"#64748b",
+              fontWeight:overdue?700:400,
+              background:overdue?"#fff1f2":"#fff",
+              width:"100%",outline:"none"}}/>
+
+          {/* 하위 추가 버튼 (상위만) */}
           {!isChild&&(
             <button type="button"
-              title="하위 태스크 추가"
               onClick={e=>{e.stopPropagation();onAddSub(t.id);}}
-              style={{border:"1px dashed #cbd5e1",background:"none",borderRadius:6,
-                cursor:"pointer",fontSize:10,color:"#94a3b8",padding:"1px 6px",
-                flexShrink:0,lineHeight:1.5}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor="#2563eb"}
-              onMouseLeave={e=>e.currentTarget.style.borderColor="#cbd5e1"}>
-              + 하위
+              title="하위 태스크 추가"
+              style={{width:24,height:24,borderRadius:6,border:"1px dashed #bfdbfe",
+                background:"#f8faff",color:"#93c5fd",fontSize:13,fontWeight:700,
+                cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                flexShrink:0}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.color="#2563eb";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="#bfdbfe";e.currentTarget.style.color="#93c5fd";}}>
+              ↳
             </button>
           )}
+          {isChild&&<span/>}
+
+          {/* 삭제 버튼 */}
+          <button type="button"
+            onClick={e=>{e.stopPropagation();if(window.confirm("삭제하시겠습니까?"))onDelete(t.id);}}
+            style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
+              background:"#fff1f2",color:"#ef4444",fontSize:14,fontWeight:700,
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+              flexShrink:0}}>
+            −
+          </button>
         </div>
-        {/* 하위 태스크 */}
+
+        {/* 하위 태스크 목록 */}
         {!isChild && kids(t.id).map(child=>(
           <TaskRow key={child.id} t={child} isChild={true}/>
         ))}
+        {/* 하위 추가 인라인 힌트 */}
+        {!isChild && childCount===0 && (
+          <div
+            onClick={e=>{e.stopPropagation();onAddSub(t.id);}}
+            style={{marginLeft:20,marginBottom:2,padding:"4px 10px",
+              fontSize:11,color:"#bfdbfe",cursor:"pointer",borderRadius:6,
+              border:"1px dashed transparent"}}
+            onMouseEnter={e=>{e.currentTarget.style.border="1px dashed #bfdbfe";e.currentTarget.style.color="#2563eb";}}
+            onMouseLeave={e=>{e.currentTarget.style.border="1px dashed transparent";e.currentTarget.style.color="#bfdbfe";}}>
+            + 하위 태스크 추가
+          </div>
+        )}
       </div>
     );
   };
 
+  const totalDone = tasks.filter(t=>t.status==="완료").length;
+  const pct = tasks.length ? Math.round(totalDone/tasks.length*100) : 0;
+
   return (
     <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,
-      padding:"14px 16px",marginTop:14}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>
-          📋 태스크
-          <span style={{fontSize:11,fontWeight:400,color:"#94a3b8",marginLeft:6}}>
-            {roots.length}개 상위 · {tasks.length - roots.length}개 하위
-          </span>
+      padding:"16px 18px",marginTop:14}}>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>📋 태스크</span>
+          {tasks.length>0&&(
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:80,height:5,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:pct+"%",background:"#16a34a",borderRadius:99,transition:"width .3s"}}/>
+              </div>
+              <span style={{fontSize:10,color:"#64748b"}}>{totalDone}/{tasks.length}</span>
+            </div>
+          )}
         </div>
         <Btn primary sm onClick={()=>onAdd(null)}>+ 상위 태스크</Btn>
       </div>
+      {/* 컬럼 헤더 */}
+      {roots.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"14px 1fr 100px 110px 80px 52px 26px",
+          padding:"3px 10px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6,marginBottom:2}}>
+          <span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span style={{textAlign:"center"}}>하위</span><span/>
+        </div>
+      )}
+      {/* 태스크 행 */}
       {roots.length===0
-        ? <div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:12}}>
-            + 상위 태스크 버튼으로 태스크를 추가하세요
+        ? <div style={{textAlign:"center",padding:"24px 0",color:"#94a3b8",fontSize:12}}>
+            + 상위 태스크 버튼으로 추가하세요
           </div>
         : roots.map(t=><TaskRow key={t.id} t={t} isChild={false}/>)
       }
@@ -9949,6 +10057,8 @@ return (
                 onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
                 onAddSub={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId})}
                 onOpen={t=>setTaskPanel(t)}
+                onDelete={id=>updateTasks(proj.tasks.filter(t=>t.id!==id))}
+                onUpdate={t=>updateTasks(proj.tasks.map(x=>x.id===t.id?t:x))}
                 accounts={accounts}/>
               </div>
             )}
