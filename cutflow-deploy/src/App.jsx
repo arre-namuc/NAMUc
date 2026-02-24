@@ -9945,7 +9945,7 @@ return (
                     {proj.biddingStatus==="수주"&&proj.isBidding&&(
                       <button
                         onClick={()=>{
-                          if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 데이터가 단계별(비딩) 항목으로 자동 추가됩니다\n• 기존 태스크 유지 + 22단계 워크플로우 추가\n• 수정 모달에서 언제든 비딩으로 되돌릴 수 있습니다")) {
+                          if(window.confirm("일반 프로젝트로 전환하시겠습니까?")) {
                             patchProj(p=>{
                               const existing = p.tasks||[];
                               const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
@@ -10071,14 +10071,13 @@ return (
                       </div>
                     </div>
                     <button onClick={()=>{
-                      if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 데이터가 단계별(비딩) 항목으로 자동 추가됩니다\n• 기존 태스크 유지 + 22단계 워크플로우 추가\n• 수정 모달에서 언제든 비딩으로 되돌릴 수 있습니다")) {
+                      if(window.confirm("일반 프로젝트로 전환하시겠습니까?")) {
                         patchProj(p=>{
-                              const existing = p.tasks||[];
-                              const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                                .filter(nt => !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
-                              return {...p, isBidding:false, stage:"PLANNING",
-                                tasks:[...existing, ...templateTasks]};
-                            });
+                          const existing = p.tasks||[];
+                          const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                            .filter(nt => !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                          return {...p, isBidding:false, stage:"PLANNING", tasks:[...existing, ...templateTasks]};
+                        });
                         setBiddingView("tasks");
                       }
                     }}
