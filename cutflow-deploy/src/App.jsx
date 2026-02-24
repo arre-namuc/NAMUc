@@ -10060,8 +10060,8 @@ return (
                     <input style={inp} value={proj.estimatedBudget||""} placeholder="예: 5,000만원" onChange={e=>patchProj(p=>({...p,estimatedBudget:e.target.value}))}/>
                   </div>
                 </div>
-                {/* 수주 전환 안내 */}
-                {proj.biddingStatus==="수주"&&(
+                {/* 수주 전환 안내 — 비딩 프로젝트일 때만 */}
+                {proj.biddingStatus==="수주"&&proj.isBidding&&(
                   <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:12,
                     padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                     <div>
@@ -10555,31 +10555,6 @@ return (
               </button>
             </div>
           </div>
-
-          {/* 비딩 되돌리기 — 비딩에서 전환된 일반 프로젝트만 표시 */}
-          {!proj.isBidding && proj.biddingStatus && (
-            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,
-              padding:"12px 14px",marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:4}}>
-                🏆 비딩 이력 있음 — {proj.biddingStatus}
-              </div>
-              <div style={{fontSize:11,color:"#a16207",marginBottom:10}}>
-                이 프로젝트는 비딩에서 전환되었습니다. 비딩 탭으로 되돌릴 수 있습니다.
-                되돌려도 현재 태스크·데이터는 모두 유지됩니다.
-              </div>
-              <button
-                onClick={()=>{
-                  if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n현재 태스크·데이터는 모두 유지됩니다.")) {
-                    patchProj(p=>({...p, isBidding:true}));
-                    setEditProjModal(false);
-                  }
-                }}
-                style={{padding:"6px 14px",borderRadius:8,border:"none",
-                  background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                ↩ 비딩 프로젝트로 되돌리기
-              </button>
-            </div>
-          )}
 
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
