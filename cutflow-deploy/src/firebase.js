@@ -3,6 +3,13 @@
 
 import { initializeApp } from "firebase/app";
 import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import {
   getFirestore,
   collection, doc,
   getDocs, getDoc, setDoc, updateDoc, deleteDoc,
@@ -27,14 +34,38 @@ const firebaseConfig = {
 // 환경변수가 없으면 로컬 메모리 모드로 동작 (개발/테스트용)
 const isConfigured = !!import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
-let app, db, storage;
+let app, db, storage, auth;
 if (isConfigured) {
   app     = initializeApp(firebaseConfig);
   db      = getFirestore(app);
   storage = getStorage(app);
+  auth    = getAuth(app);
 }
 
-export { db, storage, isConfigured };
+export { db, storage, auth, isConfigured };
+
+// ── Google 로그인 ─────────────────────────────────────────
+
+/** Google 팝업 로그인 */
+export async function signInWithGoogle() {
+  if (!isConfigured) throw new Error("Firebase 미설정");
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  const result = await signInWithPopup(auth, provider);
+  return result.user; // { uid, email, displayName, photoURL }
+}
+
+/** 로그아웃 */
+export async function signOutUser() {
+  if (!isConfigured) return;
+  await signOut(auth);
+}
+
+/** 인증 상태 구독 */
+export function onAuthChange(callback) {
+  if (!isConfigured) { callback(null); return () => {}; }
+  return onAuthStateChanged(auth, callback);
+}
 
 // ── 프로젝트 CRUD ────────────────────────────────────────
 
