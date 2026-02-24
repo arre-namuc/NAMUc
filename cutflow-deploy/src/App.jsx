@@ -1497,7 +1497,7 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
 }
 
 
-function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName, projTasks }) {
+function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName, projTasks, officeData, onBookRoom }) {
   if (!task) return null;
 
   const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
@@ -2071,6 +2071,110 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
                           border:"1px solid #e2e8f0",fontSize:12,outline:"none",
                           fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",
                           lineHeight:1.5}}/>
+
+                      {/* ── 회의실 예약 연동 ── */}
+                      {(()=>{
+                        const meetDate = m.date ? m.date.slice(0,10) : null;
+                        const rooms    = officeData?.rooms?.length>0
+                          ? officeData.rooms
+                          : [{id:"r1",name:"회의실 A"},{id:"r2",name:"회의실 B"}];
+                        const bookings = officeData?.bookings || [];
+                        const meetHour = m.date&&m.date.length>=13 ? Number(m.date.slice(11,13)) : null;
+                        const linkedBooking = bookings.find(b=>b.linkedMeetingId===m.id);
+                        const startH = meetHour??9;
+                        const endH   = startH+1;
+                        const isOccupied = (roomId,hour) =>
+                          bookings.some(b=>
+                            b.id!==linkedBooking?.id &&
+                            b.roomId===roomId && b.date===meetDate &&
+                            b.startHour<=hour && hour<b.endHour
+                          );
+
+                        if (!meetDate) return (
+                          <div style={{marginTop:8,padding:"7px 12px",borderRadius:8,
+                            background:"#f8fafc",border:"1px dashed #e2e8f0",
+                            fontSize:11,color:"#94a3b8",textAlign:"center"}}>
+                            🚪 날짜를 입력하면 회의실을 바로 예약할 수 있어요
+                          </div>
+                        );
+
+                        return (
+                          <div style={{marginTop:8,padding:"10px 12px",borderRadius:8,
+                            background:linkedBooking?"#f0fdf4":"#f8fafc",
+                            border:`1px solid ${linkedBooking?"#86efac":"#e2e8f0"}`}}>
+                            <div style={{fontSize:11,fontWeight:700,
+                              color:linkedBooking?"#16a34a":"#475569",
+                              marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
+                              🚪 회의실 예약
+                              {linkedBooking&&<span style={{fontSize:9,padding:"1px 6px",
+                                borderRadius:99,background:"#dcfce7",color:"#16a34a"}}>예약됨</span>}
+                            </div>
+
+                            {linkedBooking ? (
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>
+                                  {rooms.find(r=>r.id===linkedBooking.roomId)?.name||linkedBooking.roomId}
+                                </span>
+                                <span style={{fontSize:11,color:"#64748b"}}>
+                                  {linkedBooking.startHour}:00 ~ {linkedBooking.endHour}:00
+                                </span>
+                                <button type="button"
+                                  onClick={()=>{
+                                    onBookRoom&&onBookRoom("delete",linkedBooking.id);
+                                    updateMeeting(m.id,{roomBookingId:null,location:""});
+                                  }}
+                                  style={{marginLeft:"auto",fontSize:10,padding:"2px 8px",
+                                    borderRadius:6,border:"1px solid #fca5a5",
+                                    background:"#fff1f2",color:"#ef4444",
+                                    cursor:"pointer",fontWeight:600}}>
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:5}}>
+                                  {rooms.map(room=>{
+                                    const busy = isOccupied(room.id, startH);
+                                    return (
+                                      <button key={room.id} type="button"
+                                        disabled={busy}
+                                        onClick={()=>{
+                                          const bk = {
+                                            id:"bk"+Date.now(),
+                                            roomId:room.id, date:meetDate,
+                                            startHour:startH, endHour:endH,
+                                            title:m.title||task.title||"회의",
+                                            attendees:Array.isArray(m.attendees)?m.attendees:[],
+                                            bookedBy:user.name,
+                                            linkedMeetingId:m.id,
+                                            memo:m.memo||"",
+                                          };
+                                          onBookRoom&&onBookRoom("add",bk);
+                                          updateMeeting(m.id,{roomBookingId:bk.id,location:room.name});
+                                        }}
+                                        style={{padding:"5px 12px",borderRadius:8,border:"none",
+                                          fontSize:11,fontWeight:600,
+                                          cursor:busy?"not-allowed":"pointer",
+                                          background:busy?"#f1f5f9":"#eff6ff",
+                                          color:busy?"#cbd5e1":"#2563eb",opacity:busy?0.6:1}}>
+                                        {room.name}
+                                        <span style={{fontSize:9,marginLeft:3,
+                                          color:busy?"#94a3b8":"#93c5fd"}}>
+                                          {busy?"사용중":"예약 가능"}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div style={{fontSize:10,color:"#94a3b8"}}>
+                                  {meetDate} {startH}:00~{endH}:00 기준
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                     </div>
                   </div>
                 );
@@ -8281,6 +8385,18 @@ return (
           }}
           onNotify={(notif)=>setNotifications(prev=>[notif,...prev])}
           projTasks={proj?.tasks||[]}
+          officeData={officeData}
+          onBookRoom={(action, payload) => {
+            const saveOD = (next) => {
+              setOfficeData(next);
+              if(isConfigured) saveOffice(next).catch(console.error);
+            };
+            if (action==="add") {
+              saveOD({...officeData, bookings:[...(officeData.bookings||[]), payload]});
+            } else if (action==="delete") {
+              saveOD({...officeData, bookings:(officeData.bookings||[]).filter(b=>b.id!==payload)});
+            }
+          }}
         />
       )}
 
