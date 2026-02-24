@@ -2159,10 +2159,15 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify
   };
 
   // 전체 멤버별 태스크 현황
+  // assignees(복수) 기준 멤버별 태스크 집계
   const memberMap = {};
-  tasks.filter(t=>t.stage!=="ONAIR").forEach(t=>{
-    if(!memberMap[t.assignee]) memberMap[t.assignee] = {name:t.assignee, tasks:[]};
-    memberMap[t.assignee].tasks.push(t);
+  tasks.forEach(t=>{
+    const names = (t.assignees&&t.assignees.length>0) ? t.assignees : (t.assignee?[t.assignee]:[]);
+    names.forEach(name=>{
+      if(!name) return;
+      if(!memberMap[name]) memberMap[name] = {name, tasks:[]};
+      memberMap[name].tasks.push(t);
+    });
   });
 
   // 스테이지 진행 흐름
@@ -2579,49 +2584,151 @@ function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify
         })()}
       </div>
 
-      {/* 팀원별 현황 */}
+      {/* 팀원별 워크로드 현황 */}
       <div>
-        <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>👥 팀원별 진행 현황</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
-          {Object.values(memberMap).map(m=>{
-            const urgent = m.tasks.filter(t=>t.priority==="긴급").length;
-            const over   = m.tasks.filter(t=>t.due&&t.due<today).length;
-            return (
-              <div key={m.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"12px 14px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                  <Avatar name={m.name} size={28}/>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{m.name}</div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>{m.tasks.length}개 태스크</div>
-                  </div>
-                  <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-                    {urgent>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#fee2e2",color:"#ef4444",fontWeight:700}}>긴급 {urgent}</span>}
-                    {over>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#fef3c7",color:"#d97706",fontWeight:700}}>초과 {over}</span>}
-                  </div>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {m.tasks.slice(0,3).map(t=>(
-                    <div key={t.id} onClick={()=>onEdit(t)}
-                      style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                        padding:"5px 8px",borderRadius:7,background:"#f8fafc"}}
-                      onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
-                      onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
-                      <PriorityDot p={t.priority}/>
-                      <span style={{fontSize:11,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#334155"}}>{t.title}</span>
-                      <span style={{fontSize:9,color:STAGES[t.stage]?.color||"#94a3b8",flexShrink:0}}>{t.stage}</span>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>👥 팀원별 워크로드</div>
+        {Object.keys(memberMap).length===0 ? (
+          <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12,
+            background:"#f8fafc",borderRadius:12,border:"1px solid #e2e8f0"}}>
+            담당자가 지정된 태스크가 없어요
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {Object.values(memberMap)
+              .sort((a,b)=>{
+                // 긴급+초과 많은 순 정렬
+                const scoreA = a.tasks.filter(t=>t.priority==="긴급").length*3 + a.tasks.filter(t=>t.due&&t.due<today&&t.status!=="완료").length*2;
+                const scoreB = b.tasks.filter(t=>t.priority==="긴급").length*3 + b.tasks.filter(t=>t.due&&t.due<today&&t.status!=="완료").length*2;
+                return scoreB - scoreA;
+              })
+              .map(m=>{
+                const all       = m.tasks.length;
+                const done      = m.tasks.filter(t=>t.status==="완료").length;
+                const inProg    = m.tasks.filter(t=>t.status==="진행중").length;
+                const confirm   = m.tasks.filter(t=>t.status==="컨펌요청").length;
+                const waiting   = m.tasks.filter(t=>t.status==="대기").length;
+                const urgent    = m.tasks.filter(t=>t.priority==="긴급"&&t.status!=="완료").length;
+                const over      = m.tasks.filter(t=>t.due&&t.due<today&&t.status!=="완료").length;
+                const pct       = all>0 ? Math.round(done/all*100) : 0;
+                const isMe      = m.name===user.name;
+
+                // 활성 태스크 (미완료) — 우선순위 높은 것 먼저
+                const activeTasks = m.tasks
+                  .filter(t=>t.status!=="완료")
+                  .sort((a,b)=>{
+                    const p = {긴급:0,높음:1,보통:2,낮음:3};
+                    return (p[a.priority]||2)-(p[b.priority]||2);
+                  });
+
+                const STATUS_COLOR2 = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+                const STATUS_BG2    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+                const PRIORITY_COLOR = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
+
+                return (
+                  <div key={m.name} style={{
+                    background:"#fff",
+                    border:`1px solid ${isMe?"#93c5fd":"#e2e8f0"}`,
+                    borderRadius:12,overflow:"hidden",
+                    boxShadow:isMe?"0 0 0 2px #dbeafe":urgent>0||over>0?"0 0 0 1px #fca5a530":"none"
+                  }}>
+                    {/* 카드 헤더 */}
+                    <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,
+                      background:isMe?"#f0f7ff":over>0?"#fffbeb":urgent>0?"#fff5f5":"#fafbfc",
+                      borderBottom:"1px solid #f1f5f9"}}>
+                      <Avatar name={m.name} size={32}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{m.name}</span>
+                          {isMe&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#dbeafe",color:"#2563eb",fontWeight:700}}>나</span>}
+                          {urgent>0&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#fee2e2",color:"#ef4444",fontWeight:700}}>🔴 긴급 {urgent}</span>}
+                          {over>0&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#fef3c7",color:"#b45309",fontWeight:700}}>⚠ 초과 {over}</span>}
+                          {confirm>0&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#fffbeb",color:"#d97706",fontWeight:700}}>📋 컨펌 {confirm}</span>}
+                        </div>
+                        {/* 진행률 바 */}
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}>
+                          <div style={{flex:1,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:pct+"%",
+                              background:pct===100?"#16a34a":isMe?"#2563eb":"#60a5fa",
+                              borderRadius:99,transition:"width .3s"}}/>
+                          </div>
+                          <span style={{fontSize:10,fontWeight:700,color:"#475569",whiteSpace:"nowrap"}}>
+                            {done}/{all} ({pct}%)
+                          </span>
+                        </div>
+                      </div>
+                      {/* 상태별 카운트 요약 */}
+                      <div style={{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                        {[["진행중",inProg,"#eff6ff","#2563eb"],
+                          ["대기",waiting,"#f8fafc","#94a3b8"],
+                          ["완료",done,"#f0fdf4","#16a34a"]
+                        ].map(([label,cnt,bg,color])=>cnt>0?(
+                          <div key={label} style={{textAlign:"center",padding:"3px 8px",
+                            borderRadius:7,background:bg,minWidth:36}}>
+                            <div style={{fontSize:14,fontWeight:800,color,lineHeight:1.1}}>{cnt}</div>
+                            <div style={{fontSize:9,color:"#94a3b8",marginTop:1}}>{label}</div>
+                          </div>
+                        ):null)}
+                      </div>
                     </div>
-                  ))}
-                  {m.tasks.length>3&&<div style={{fontSize:10,color:"#94a3b8",textAlign:"center",paddingTop:2}}>+{m.tasks.length-3}개 더</div>}
-                </div>
-              </div>
-            );
-          })}
-          {Object.keys(memberMap).length===0&&(
-            <div style={{gridColumn:"1/-1",textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>
-              태스크를 추가하면 팀원별 현황이 표시됩니다
-            </div>
-          )}
-        </div>
+
+                    {/* 활성 태스크 목록 */}
+                    {activeTasks.length>0&&(
+                      <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:3}}>
+                        {activeTasks.slice(0,4).map(t=>(
+                          <div key={t.id} onClick={()=>onEdit(t)}
+                            style={{display:"flex",alignItems:"center",gap:8,
+                              padding:"6px 8px",borderRadius:7,cursor:"pointer",
+                              background:"#fafbfc",borderLeft:`3px solid ${PRIORITY_COLOR[t.priority]||"#e2e8f0"}`}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fafbfc"}>
+                            {/* 태스크명 */}
+                            <span style={{fontSize:11,flex:1,overflow:"hidden",
+                              textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#1e293b",
+                              fontWeight:t.priority==="긴급"?700:400}}>
+                              {t.priority==="긴급"&&"🔴 "}{t.title}
+                            </span>
+                            {/* 단계 */}
+                            {t.phase&&<span style={{fontSize:9,color:"#94a3b8",flexShrink:0,whiteSpace:"nowrap"}}>
+                              {t.phase}
+                            </span>}
+                            {/* 상태 */}
+                            <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,flexShrink:0,
+                              background:STATUS_BG2[t.status||"대기"],
+                              color:STATUS_COLOR2[t.status||"대기"],fontWeight:700}}>
+                              {t.status||"대기"}
+                            </span>
+                            {/* 마감일 */}
+                            {t.due&&<span style={{fontSize:9,flexShrink:0,
+                              color:t.due<today?"#ef4444":"#94a3b8",
+                              fontWeight:t.due<today?700:400,whiteSpace:"nowrap"}}>
+                              {t.due<today?"⚠":"📅"}{t.due.slice(5,10).replace("-","/")}
+                            </span>}
+                          </div>
+                        ))}
+                        {activeTasks.length>4&&(
+                          <div style={{fontSize:10,color:"#94a3b8",textAlign:"center",
+                            padding:"4px 0",borderTop:"1px solid #f1f5f9",marginTop:2}}>
+                            + {activeTasks.length-4}개 더 진행 중
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {activeTasks.length===0&&(
+                      <div style={{padding:"10px 16px",fontSize:11,color:"#94a3b8",
+                        textAlign:"center"}}>
+                        ✅ 모든 태스크 완료
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
       </div>
 
     </div>
