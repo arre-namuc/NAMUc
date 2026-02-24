@@ -29,7 +29,7 @@ const C = {
 // ═══════════════════════════════════════════════════════════
 const DEFAULT_COMPANY = {
   name:"NAMUc", ceo:"", bizNo:"", address:"", phone:"", email:"",
-  logoUrl:"https://i.imgur.com/ONdvF5Q.jpeg",
+  logoUrl:"/logo-square.png",
   bankName:"", bankAccount:"", bankHolder:"",
   quoteNote:"· 본 견적은 협의된 내용을 기준으로 작성되었습니다.\n· 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.\n· 계약금 50% 선입금 후 제작 착수합니다.",
   validDays:30,
