@@ -3871,6 +3871,7 @@ const calcProbationEnd = (joinDate) => {
   if (!joinDate) return "";
   const d = new Date(joinDate);
   d.setMonth(d.getMonth() + 3);
+  d.setDate(d.getDate() - 1); // 3개월 후 - 1일
   return d.toISOString().slice(0,10);
 };
 
