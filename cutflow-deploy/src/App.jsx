@@ -9947,25 +9947,11 @@ return (
                         onClick={()=>{
                           if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 데이터가 단계별(비딩) 항목으로 자동 추가됩니다\n• 기존 태스크 유지 + 22단계 워크플로우 추가\n• 수정 모달에서 언제든 비딩으로 되돌릴 수 있습니다")) {
                             patchProj(p=>{
-                              const now = new Date().toISOString().slice(0,10);
                               const existing = p.tasks||[];
-                              // 비딩 데이터 → s01(비딩) 단계 태스크
-                              const biddingPhaseTasks = [
-                                {title:"비딩 수주 완료", status:"완료"},
-                                p.ptDate          && {title:"PT 날짜: "+p.ptDate},
-                                p.resultDate      && {title:"결과 발표일: "+p.resultDate},
-                                p.competitors     && {title:"경쟁사: "+p.competitors},
-                                p.estimatedBudget && {title:"예상 규모: "+p.estimatedBudget},
-                              ].filter(Boolean).map((t,i)=>({
-                                id:"bs"+p.id+i, phaseId:"s01", phase:"비딩",
-                                type:"내부", status:"완료", priority:"보통",
-                                assignees:[], stage:"PLANNING", createdAt:now, ...t,
-                              }));
-                              // 22단계 (s01 제외, 중복 제외)
                               const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                                .filter(nt => nt.phaseId!=="s01" && !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                                .filter(nt => !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
                               return {...p, isBidding:false, stage:"PLANNING",
-                                tasks:[...biddingPhaseTasks, ...existing, ...templateTasks]};
+                                tasks:[...existing, ...templateTasks]};
                             });
                             setBiddingView("tasks");
                           }
@@ -10087,25 +10073,11 @@ return (
                     <button onClick={()=>{
                       if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 데이터가 단계별(비딩) 항목으로 자동 추가됩니다\n• 기존 태스크 유지 + 22단계 워크플로우 추가\n• 수정 모달에서 언제든 비딩으로 되돌릴 수 있습니다")) {
                         patchProj(p=>{
-                              const now = new Date().toISOString().slice(0,10);
                               const existing = p.tasks||[];
-                              // 비딩 데이터 → s01(비딩) 단계 태스크
-                              const biddingPhaseTasks = [
-                                {title:"비딩 수주 완료", status:"완료"},
-                                p.ptDate          && {title:"PT 날짜: "+p.ptDate},
-                                p.resultDate      && {title:"결과 발표일: "+p.resultDate},
-                                p.competitors     && {title:"경쟁사: "+p.competitors},
-                                p.estimatedBudget && {title:"예상 규모: "+p.estimatedBudget},
-                              ].filter(Boolean).map((t,i)=>({
-                                id:"bs"+p.id+i, phaseId:"s01", phase:"비딩",
-                                type:"내부", status:"완료", priority:"보통",
-                                assignees:[], stage:"PLANNING", createdAt:now, ...t,
-                              }));
-                              // 22단계 (s01 제외, 중복 제외)
                               const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                                .filter(nt => nt.phaseId!=="s01" && !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                                .filter(nt => !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
                               return {...p, isBidding:false, stage:"PLANNING",
-                                tasks:[...biddingPhaseTasks, ...existing, ...templateTasks]};
+                                tasks:[...existing, ...templateTasks]};
                             });
                         setBiddingView("tasks");
                       }
