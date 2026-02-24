@@ -955,11 +955,11 @@ function Avatar({ name, size=28 }) {
 
 function TabBar({ tabs, active, onChange }) {
   return (
-    <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,marginBottom:24}}>
+    <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,marginBottom:24,overflowX:"auto",overflowY:"hidden",scrollbarWidth:"none",msOverflowStyle:"none"}}>
       {tabs.map(t=>(
         <button key={t.id} onClick={()=>!t.locked&&onChange(t.id)}
           title={t.locked?"접근 권한이 없습니다":""}
-          style={{padding:"10px 20px",border:"none",background:"none",cursor:t.locked?"not-allowed":"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:t.locked?C.faint:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6,opacity:t.locked?0.5:1}}>
+          style={{padding:"10px 20px",border:"none",background:"none",cursor:t.locked?"not-allowed":"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:t.locked?C.faint:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6,opacity:t.locked?0.5:1,whiteSpace:"nowrap",flexShrink:0}}>
           {t.icon} {t.label}{t.locked?" 🔒":""}
         </button>
       ))}
@@ -8454,7 +8454,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
   return (
     <div>
       {/* 탭 */}
-      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e2e8f0",paddingBottom:0,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e2e8f0",paddingBottom:0,overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{padding:"8px 16px",borderRadius:"8px 8px 0 0",border:"none",cursor:"pointer",
@@ -8462,7 +8462,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
               background:tab===t.id?"#fff":"transparent",
               color:tab===t.id?"#1e293b":"#64748b",
               borderBottom:tab===t.id?"2px solid #2563eb":"2px solid transparent",
-              marginBottom:-2,position:"relative",display:"flex",alignItems:"center",gap:5}}>
+              marginBottom:-2,position:"relative",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
             {t.icon} {t.label}
             {(t.badge||0)>0&&(
               <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99,
@@ -8560,11 +8560,11 @@ function CRMPage({ projects }) {
       </div>
 
       {/* 탭 */}
-      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:20}}>
-        <button style={TAB_STYLE("client")} onClick={()=>setCrmTab("client")}>
+      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:20,overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+        <button style={{...TAB_STYLE("client"),whiteSpace:"nowrap",flexShrink:0}} onClick={()=>setCrmTab("client")}>
           🏢 고객사 <span style={{fontSize:11,marginLeft:4,opacity:.7}}>{clientList.length}</span>
         </button>
-        <button style={TAB_STYLE("outsource")} onClick={()=>setCrmTab("outsource")}>
+        <button style={{...TAB_STYLE("outsource"),whiteSpace:"nowrap",flexShrink:0}} onClick={()=>setCrmTab("outsource")}>
           🔧 외주 관리 <span style={{fontSize:11,marginLeft:4,opacity:.7}}>{vendors.length}</span>
         </button>
       </div>
@@ -9470,9 +9470,9 @@ function ClientRequestTab({ project, patchProj, user, accounts, setNotifications
   return (
     <div>
       {/* 서브 탭 바 */}
-      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:16}}>
+      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:16,overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
         {SUB.map(t=>(
-          <button key={t.id} onClick={()=>setSubTab(t.id)} style={TAB_BTN(t)}>
+          <button key={t.id} onClick={()=>setSubTab(t.id)} style={{...TAB_BTN(t),whiteSpace:"nowrap",flexShrink:0}}>
             {t.icon} {t.label}
           </button>
         ))}
