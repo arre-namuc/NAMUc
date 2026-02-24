@@ -3694,7 +3694,39 @@ function MonthCalendar({ project, onChange, user }) {
 
   const events = project.calEvents || [];
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  // 피드백 마감일을 가상 이벤트로 생성
+
+  // ── 프로젝트에서 자동 수집되는 읽기전용 이벤트 ──
+
+  // 태스크 마감일
+  const taskDueEvents = (project.tasks||[])
+    .filter(t => t.due && t.title)
+    .map(t => ({
+      id: "td-"+t.id,
+      title: "📋 "+t.title,
+      start: t.due.slice(0,10),
+      end:   t.due.slice(0,10),
+      color: t.status==="완료" ? "#94a3b8" : t.due.slice(0,10) < new Date().toISOString().slice(0,10) ? "#ef4444" : "#2563eb",
+      isAuto: true, autoType: "task",
+      taskId: t.id,
+      note: (t.assignees||[]).join(", ") || t.assignee || "",
+    }));
+
+  // 태스크 회의 일정
+  const meetingEvents = (project.tasks||[]).flatMap(t =>
+    (t.meetings||[])
+      .filter(m => m.date && m.title)
+      .map(m => ({
+        id: "mt-"+m.id,
+        title: "📅 "+m.title,
+        start: m.date.slice(0,10),
+        end:   m.date.slice(0,10),
+        color: "#7c3aed",
+        isAuto: true, autoType: "meeting",
+        note: m.attendees || "",
+      }))
+  );
+
+  // 피드백 마감일
   const feedbackEvents = (project.feedbacks||[])
     .filter(fb => fb.dueDate && fb.taskStatus !== "done")
     .map(fb => ({
@@ -3703,9 +3735,12 @@ function MonthCalendar({ project, onChange, user }) {
       start: fb.dueDate,
       end: fb.dueDate,
       color: "#8b5cf6",
+      isAuto: true, autoType: "feedback",
       isFeedback: true,
     }));
-  const allEvents = [...events, ...feedbackEvents];
+
+  // 전체: 수동 생성 + 자동 수집
+  const allEvents = [...events, ...taskDueEvents, ...meetingEvents, ...feedbackEvents];
   const eventsOn = (date) => allEvents.filter(e => e.start <= date && date <= (e.end||e.start));
   const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -3724,8 +3759,11 @@ function MonthCalendar({ project, onChange, user }) {
     setEf({title:"",start:date,end:date,color:"#2563eb",note:""});
     setModal({mode:"add"});
   };
+  const [autoModal, setAutoModal] = useState(null); // 자동 이벤트 상세
+
   const openEdit = (ev, e) => {
     e.stopPropagation();
+    if(ev.isAuto) { setAutoModal(ev); return; }
     if(!canEdit) return;
     setEf({...ev});
     setModal({mode:"edit",id:ev.id});
@@ -3741,6 +3779,33 @@ function MonthCalendar({ project, onChange, user }) {
     setModal(null);
   };
   const del = (id) => { onChange(p=>({...p,calEvents:(p.calEvents||[]).filter(e=>e.id!==id)})); setModal(null); };
+
+  // 자동 이벤트 → 종합 캘린더 포함/제외 토글
+  const toggleMaster = (ev) => {
+    const masterId = "master-"+ev.id;
+    onChange(p => {
+      const prev = p.calEvents||[];
+      const already = prev.find(e=>e.id===masterId);
+      if(already) {
+        // 이미 포함됨 → 제거
+        return {...p, calEvents: prev.filter(e=>e.id!==masterId)};
+      } else {
+        // 새로 포함
+        const entry = {
+          ...ev,
+          id: masterId,
+          isAuto: false,
+          includeInMaster: true,
+          sourceAutoId: ev.id,
+        };
+        return {...p, calEvents: [...prev, entry]};
+      }
+    });
+  };
+
+  const isMasterIncluded = (ev) => {
+    return (project.calEvents||[]).some(e=>e.sourceAutoId===ev.id || e.id==="master-"+ev.id);
+  };
 
   const exportICal = () => {
     const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CutFlow//KR","CALSCALE:GREGORIAN","METHOD:PUBLISH",`X-WR-CALNAME:${project.name}`];
@@ -4125,13 +4190,18 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
                   {d}
                 </div>
                 {dayEvs.slice(0,3).map(ev=>(
-                  <div key={ev.id} onClick={e=>{if(!ev.isFeedback) openEdit(ev,e); else e.stopPropagation();}}
+                  <div key={ev.id}
+                    onClick={e=>{ e.stopPropagation(); openEdit(ev,e); }}
                     style={{fontSize:11,padding:"2px 5px",borderRadius:4,
-                      background:ev.isFeedback?"#f5f3ff":ev.color+"22",
-                      color:ev.isFeedback?"#8b5cf6":ev.color,
+                      background:ev.isAuto?ev.color+"15":ev.color+"22",
+                      color:ev.color,
                       fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
-                      cursor:ev.isFeedback?"default":canEdit?"pointer":"default",
-                      lineHeight:1.5,borderLeft:ev.isFeedback?"2px solid #8b5cf6":"none"}}>
+                      cursor:"pointer",
+                      lineHeight:1.5,
+                      borderLeft:`2px solid ${ev.color}`,
+                      fontStyle:ev.isAuto?"italic":"normal",
+                      opacity:ev.isAuto?0.8:1}}>
+                    {isMasterIncluded&&isMasterIncluded(ev)&&<span style={{fontSize:8,marginRight:2}}>🗓</span>}
                     {ev.title}
                   </div>
                 ))}
@@ -4173,6 +4243,74 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
         {months.map(({year,month})=><MiniCal key={`${year}-${month}`} year={year} month={month}/>)}
       </div>
 
+      {/* 전체 일정 목록 */}
+      {allEvents.length>0&&(
+        <div style={{marginTop:24}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10,
+            display:"flex",alignItems:"center",gap:8}}>
+            📋 전체 일정 목록
+            <span style={{fontSize:11,color:"#94a3b8",fontWeight:400}}>
+              — 이탤릭체: 프로젝트에서 자동 수집  /  🗓: 종합 캘린더에 포함됨
+            </span>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {[...allEvents].sort((a,b)=>a.start.localeCompare(b.start)).map(ev=>{
+              const inMaster = isMasterIncluded(ev);
+              return (
+                <div key={ev.id}
+                  style={{display:"flex",alignItems:"center",gap:10,
+                    padding:"7px 12px",borderRadius:8,
+                    background:ev.isAuto?"#fafbfc":"#fff",
+                    border:`1px solid ${ev.isAuto?"#f1f5f9":"#e2e8f0"}`,
+                    opacity:ev.isAuto?0.9:1}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",
+                    background:ev.color,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:ev.isAuto?400:600,
+                      color:"#1e293b",fontStyle:ev.isAuto?"italic":"normal",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {ev.title}
+                    </div>
+                    {ev.note&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>{ev.note}</div>}
+                  </div>
+                  {/* 날짜 */}
+                  <span style={{fontSize:11,color:"#64748b",flexShrink:0,whiteSpace:"nowrap"}}>
+                    {ev.start}{ev.end&&ev.end!==ev.start&&" ~ "+ev.end}
+                  </span>
+                  {/* 구분 뱃지 */}
+                  {ev.isAuto&&(
+                    <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,flexShrink:0,
+                      background:ev.autoType==="task"?"#eff6ff":ev.autoType==="meeting"?"#f5f3ff":"#faf5ff",
+                      color:ev.autoType==="task"?"#2563eb":ev.autoType==="meeting"?"#7c3aed":"#8b5cf6",
+                      fontWeight:700}}>
+                      {ev.autoType==="task"?"태스크":ev.autoType==="meeting"?"회의":"피드백"}
+                    </span>
+                  )}
+                  {/* 종합 포함 토글 */}
+                  {ev.isAuto ? (
+                    <button type="button"
+                      onClick={()=>toggleMaster(ev)}
+                      title={inMaster?"종합 캘린더에서 제거":"종합 캘린더에 포함"}
+                      style={{padding:"3px 8px",borderRadius:6,border:"none",cursor:"pointer",
+                        fontSize:10,fontWeight:700,flexShrink:0,
+                        background:inMaster?"#f0fdf4":"#f8fafc",
+                        color:inMaster?"#16a34a":"#94a3b8"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=inMaster?"#dcfce7":"#f1f5f9"}
+                      onMouseLeave={e=>e.currentTarget.style.background=inMaster?"#f0fdf4":"#f8fafc"}>
+                      {inMaster?"🗓 포함됨":"+ 종합에 추가"}
+                    </button>
+                  ) : (
+                    <span style={{fontSize:10,color:"#94a3b8",flexShrink:0,padding:"3px 8px"}}>
+                      {ev.includeInMaster?"🗓 종합 포함":"수동 생성"}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 모달 */}
       {modal && (
         <Modal title={modal.mode==="add"?"일정 추가":"일정 수정"} onClose={()=>setModal(null)}>
@@ -4188,11 +4326,74 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
               {COLORS.map(c=><button key={c} onClick={()=>setEf(v=>({...v,color:c}))} style={{width:24,height:24,borderRadius:"50%",background:c,border:ef.color===c?"3px solid #1e293b":"2px solid transparent",cursor:"pointer"}}/>)}
             </div>
           </div>
+          {/* 수동 생성 일정도 종합 포함 여부 선택 */}
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+            background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0",marginBottom:8}}>
+            <span style={{fontSize:13}}>🗓</span>
+            <span style={{fontSize:12,color:"#475569",flex:1}}>종합 캘린더에 포함</span>
+            <button type="button"
+              onClick={()=>setEf(v=>({...v,includeInMaster:!v.includeInMaster}))}
+              style={{width:40,height:22,borderRadius:99,border:"none",cursor:"pointer",
+                background:ef.includeInMaster?"#2563eb":"#e2e8f0",
+                position:"relative",transition:"background .2s"}}>
+              <div style={{position:"absolute",top:3,left:ef.includeInMaster?20:3,
+                width:16,height:16,borderRadius:"50%",background:"#fff",
+                transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/>
+            </button>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
             {modal.mode==="edit"&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
             <Btn primary onClick={save} disabled={!ef.title?.trim()}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 자동 생성 이벤트 상세 모달 */}
+      {autoModal && (
+        <Modal title="일정 상세" onClose={()=>setAutoModal(null)}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+            <div style={{width:12,height:12,borderRadius:"50%",background:autoModal.color,flexShrink:0}}/>
+            <span style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{autoModal.title}</span>
+            <span style={{marginLeft:"auto",fontSize:11,padding:"2px 8px",borderRadius:99,
+              background: autoModal.autoType==="task"?"#eff6ff":autoModal.autoType==="meeting"?"#f5f3ff":"#faf5ff",
+              color: autoModal.autoType==="task"?"#2563eb":autoModal.autoType==="meeting"?"#7c3aed":"#8b5cf6",
+              fontWeight:700}}>
+              {autoModal.autoType==="task"?"태스크 마감":autoModal.autoType==="meeting"?"회의":autoModal.autoType==="feedback"?"피드백 마감":""}
+            </span>
+          </div>
+          <div style={{display:"flex",gap:12,marginBottom:12}}>
+            <div style={{flex:1,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+              <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>날짜</div>
+              <div style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{autoModal.start}</div>
+            </div>
+            {autoModal.note&&(
+              <div style={{flex:2,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+                <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>담당자 / 참석자</div>
+                <div style={{fontSize:13,color:"#1e293b"}}>{autoModal.note}</div>
+              </div>
+            )}
+          </div>
+          <div style={{padding:"12px 14px",background:"#fffbeb",border:"1px solid #fde68a",
+            borderRadius:10,marginBottom:12}}>
+            <div style={{fontSize:11,color:"#92400e",marginBottom:8,fontWeight:600}}>
+              🗓 종합 캘린더에 포함
+            </div>
+            <div style={{fontSize:11,color:"#b45309",marginBottom:10}}>
+              이 일정을 종합 캘린더에 포함시키면 다른 프로젝트 일정과 함께 볼 수 있어요.
+            </div>
+            <button type="button"
+              onClick={()=>{ toggleMaster(autoModal); setAutoModal(null); }}
+              style={{width:"100%",padding:"8px",borderRadius:8,border:"none",cursor:"pointer",
+                fontSize:12,fontWeight:700,
+                background:isMasterIncluded(autoModal)?"#fecaca":"#2563eb",
+                color:isMasterIncluded(autoModal)?"#dc2626":"#fff"}}>
+              {isMasterIncluded(autoModal)?"✕ 종합 캘린더에서 제거":"+ 종합 캘린더에 포함"}
+            </button>
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end"}}>
+            <Btn onClick={()=>setAutoModal(null)}>닫기</Btn>
           </div>
         </Modal>
       )}
@@ -5493,14 +5694,16 @@ function MasterCalendar({ projects, user, onCalName }) {
   // 프로젝트 캘린더 표시명 (calName 우선, 없으면 프로젝트명)
   const projLabel = (p) => p.calName || p.name;
 
-  // 전체 이벤트 수집 (프로젝트 정보 포함)
+  // 종합 캘린더: 수동 생성이거나 includeInMaster가 true인 것만
   const allEvents = projects.flatMap(p =>
-    (p.calEvents||[]).map(ev => ({
-      ...ev,
-      projId:    p.id,
-      projLabel: projLabel(p),
-      projColor: p.color || "#2563eb",
-    }))
+    (p.calEvents||[])
+      .filter(ev => !ev.isAuto || ev.includeInMaster)
+      .map(ev => ({
+        ...ev,
+        projId:    p.id,
+        projLabel: projLabel(p),
+        projColor: p.color || "#2563eb",
+      }))
   );
 
   const filtered = filterProj==="all" ? allEvents : allEvents.filter(e=>e.projId===filterProj);
