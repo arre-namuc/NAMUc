@@ -6711,82 +6711,91 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
     const [of_, setOf_] = useState({});
 
     const todayStr = new Date().toISOString().slice(0,10);
-
-    // 이번 주 월~금
     const getWeekDays = () => {
       const d = new Date(); const day = d.getDay();
-      const mon = new Date(d); mon.setDate(d.getDate() - (day===0?6:day-1));
+      const mon = new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
       return Array.from({length:5},(_,i)=>{ const x=new Date(mon); x.setDate(mon.getDate()+i); return x.toISOString().slice(0,10); });
     };
     const weekDays = getWeekDays();
+    const fmtDate = d => { const [,m,dd] = d.split("-"); return `${Number(m)}/${Number(dd)}`; };
+    const DOW = ["일","월","화","수","목","금","토"];
+    const getDow = d => DOW[new Date(d).getDay()];
+    const MEAL = ["미정","식사 제공","개인 해결","불필요"];
 
     const save = () => {
       if (!of_.date) return;
-      const entry = { ...of_, id: modal.id||"ot"+Date.now(), name: user.name };
+      const entry = { ...of_, id: modal.id||"ot"+Date.now(),
+        name: modal.id ? of_.name : user.name };
       const next = modal.id ? overtimes.map(o=>o.id===modal.id?entry:o) : [...overtimes, entry];
       patch("overtimes", next);
       setModal(null);
     };
     const del = (id) => { patch("overtimes", overtimes.filter(o=>o.id!==id)); setModal(null); };
 
-    const todayOTs = overtimes.filter(o => o.date === todayStr);
-    const weekOTs  = overtimes.filter(o => weekDays.includes(o.date));
-
-    const fmtDate = d => { const [,m,dd] = d.split("-"); return `${Number(m)}/${Number(dd)}`; };
-    const DOW = ["일","월","화","수","목","금","토"];
-    const getDow = d => DOW[new Date(d).getDay()];
+    const todayOTs = overtimes.filter(o=>o.date===todayStr);
+    const weekOTs  = overtimes.filter(o=>weekDays.includes(o.date));
 
     return (
       <div>
         {/* 오늘 야근 현황 배너 */}
-        <div style={{background: todayOTs.length>0?"#fffbeb":"#f0fdf4", borderRadius:12,
-          padding:"14px 18px", marginBottom:16, border:`1px solid ${todayOTs.length>0?"#fde68a":"#bbf7d0"}`,
-          display:"flex", alignItems:"center", gap:12}}>
+        <div style={{background:todayOTs.length>0?"#fffbeb":"#f0fdf4",borderRadius:12,
+          padding:"14px 18px",marginBottom:16,
+          border:`1px solid ${todayOTs.length>0?"#fde68a":"#bbf7d0"}`,
+          display:"flex",alignItems:"center",gap:12}}>
           <span style={{fontSize:22}}>{todayOTs.length>0?"🌙":"🌅"}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:4}}>
               오늘 야근 {todayOTs.length>0?`${todayOTs.length}명`:"없음"}
             </div>
-            {todayOTs.length>0 && (
+            {todayOTs.length>0&&(
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 {todayOTs.map(o=>(
                   <span key={o.id} style={{display:"flex",alignItems:"center",gap:4,
                     fontSize:11,padding:"2px 8px",borderRadius:99,
                     background:"#fef3c7",color:"#92400e",fontWeight:600}}>
                     <Avatar name={o.name} size={14}/>{o.name}
-                    {o.until && <span style={{opacity:.7}}>~{o.until}</span>}
+                    {o.until&&<span style={{opacity:.7}}>~{o.until}</span>}
+                    {o.meal&&o.meal!=="미정"&&<span style={{fontSize:9,opacity:.8}}>({o.meal})</span>}
                   </span>
                 ))}
               </div>
             )}
           </div>
-          <Btn primary sm onClick={()=>{ setOf_({date:todayStr,until:"",reason:""}); setModal({}); }}>
+          <Btn primary sm onClick={()=>{ setOf_({date:todayStr,meal:"미정"}); setModal({}); }}>
             + 야근 등록
           </Btn>
         </div>
 
-        {/* 이번 주 야근 달력 */}
+        {/* 이번 주 달력 */}
         <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
           padding:"14px 16px",marginBottom:16}}>
           <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:10}}>이번 주 야근 현황</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
             {weekDays.map(d=>{
-              const dayOTs = weekOTs.filter(o=>o.date===d);
-              const isToday2 = d===todayStr;
+              const dayOTs=weekOTs.filter(o=>o.date===d);
+              const isToday2=d===todayStr;
               return (
                 <div key={d} style={{borderRadius:8,padding:"8px 6px",textAlign:"center",
                   background:isToday2?"#eff6ff":"#f8fafc",
                   border:`1px solid ${isToday2?"#bfdbfe":"#f1f5f9"}`}}>
-                  <div style={{fontSize:10,fontWeight:700,color:isToday2?"#2563eb":"#94a3b8",marginBottom:4}}>
-                    {fmtDate(d)} ({getDow(d)})
+                  <div style={{fontSize:10,fontWeight:700,
+                    color:isToday2?"#2563eb":"#94a3b8",marginBottom:4}}>
+                    {fmtDate(d)}({getDow(d)})
                   </div>
                   {dayOTs.length===0
                     ? <div style={{fontSize:9,color:"#cbd5e1"}}>-</div>
                     : dayOTs.map(o=>(
-                        <div key={o.id} style={{fontSize:9,padding:"1px 4px",borderRadius:4,
+                        <div key={o.id} style={{fontSize:9,padding:"2px 4px",borderRadius:4,
                           background:"#fef3c7",color:"#92400e",fontWeight:600,
-                          marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {o.name}{o.until&&` ~${o.until}`}
+                          marginBottom:2,textAlign:"left",lineHeight:1.4}}>
+                          <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {o.name}
+                          </div>
+                          {o.until&&<div style={{opacity:.7}}>~{o.until}</div>}
+                          {o.project&&<div style={{fontSize:8,color:"#b45309",opacity:.8,
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {o.project}
+                          </div>}
                         </div>
                       ))
                   }
@@ -6796,43 +6805,111 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
           </div>
         </div>
 
-        {/* 내 야근 기록 */}
-        <div style={{marginBottom:8,fontSize:12,fontWeight:700,color:"#475569"}}>최근 내 야근 기록</div>
+        {/* 전체 야근 기록 목록 */}
+        <div style={{marginBottom:8,fontSize:12,fontWeight:700,color:"#475569"}}>야근 기록</div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {overtimes.filter(o=>o.name===user.name).slice(-10).reverse().map(o=>(
-            <div key={o.id} style={{display:"flex",alignItems:"center",gap:10,
-              padding:"8px 12px",borderRadius:8,background:"#fff",
-              border:"1px solid #e2e8f0"}}>
-              <span style={{fontSize:12,color:"#64748b",minWidth:60}}>{fmtDate(o.date)}({getDow(o.date)})</span>
-              {o.until&&<span style={{fontSize:11,color:"#d97706",fontWeight:600}}>~{o.until}</span>}
-              <span style={{fontSize:11,color:"#475569",flex:1}}>{o.reason||""}</span>
-              <button onClick={()=>{setOf_({...o});setModal({id:o.id});}}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:6,border:"1px solid #e2e8f0",
-                  background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+          {[...overtimes].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20).map(o=>(
+            <div key={o.id} style={{padding:"10px 14px",borderRadius:10,background:"#fff",
+              border:"1px solid #e2e8f0",display:"flex",gap:10,alignItems:"center"}}>
+              <Avatar name={o.name} size={28}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{o.name}</span>
+                  {o.project&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+                    background:"#eff6ff",color:"#2563eb",fontWeight:600}}>{o.project}</span>}
+                  {o.meal&&o.meal!=="미정"&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+                    background:"#fef3c7",color:"#d97706",fontWeight:600}}>{o.meal}</span>}
+                </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontSize:10,color:"#64748b"}}>{o.date}({getDow(o.date)})</span>
+                  {o.until&&<span style={{fontSize:10,color:"#d97706",fontWeight:600}}>~{o.until}</span>}
+                  {o.workDetail&&<span style={{fontSize:10,color:"#475569"}}>📋 {o.workDetail}</span>}
+                </div>
+                {o.reason&&<div style={{fontSize:11,color:"#64748b",marginTop:2}}>🎯 {o.reason}</div>}
+              </div>
+              {(o.name===user.name||canManage)&&(
+                <button onClick={()=>{setOf_({...o});setModal({id:o.id});}}
+                  style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                    background:"#f8fafc",cursor:"pointer",color:"#64748b",flexShrink:0}}>수정</button>
+              )}
             </div>
           ))}
-          {overtimes.filter(o=>o.name===user.name).length===0&&(
-            <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12,
-              background:"#f8fafc",borderRadius:8,border:"1px dashed #e2e8f0"}}>야근 기록이 없어요 🎉</div>
+          {overtimes.length===0&&(
+            <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12,
+              background:"#f8fafc",borderRadius:8,border:"1px dashed #e2e8f0"}}>
+              야근 기록이 없어요 🎉
+            </div>
           )}
         </div>
 
+        {/* 등록/수정 모달 */}
         {modal&&(
           <Modal title={modal.id?"야근 수정":"야근 등록"} onClose={()=>setModal(null)}>
-            <Field label="날짜">
-              <input style={inp} type="date" value={of_.date||""}
-                onChange={e=>setOf_(v=>({...v,date:e.target.value}))}/>
+            {/* 야근자 */}
+            <Field label="야근자">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {(accounts||[]).map(a=>{
+                  const sel=(of_.name||user.name)===a.name;
+                  return (
+                    <button key={a.id} type="button"
+                      onClick={()=>setOf_(v=>({...v,name:a.name}))}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+                        borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                        background:sel?"#2563eb":"#f1f5f9",
+                        color:sel?"#fff":"#475569",fontWeight:sel?700:400}}>
+                      <Avatar name={a.name} size={14}/>{a.name}{sel&&" ✓"}
+                    </button>
+                  );
+                })}
+              </div>
             </Field>
-            <Field label="퇴근 예정 시간">
-              <input style={inp} type="time" value={of_.until||""}
-                onChange={e=>setOf_(v=>({...v,until:e.target.value}))} placeholder="예: 22:00"/>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="날짜" style={{flex:1}}>
+                <input style={inp} type="date" value={of_.date||""}
+                  onChange={e=>setOf_(v=>({...v,date:e.target.value}))}/>
+              </Field>
+              <Field label="예상 퇴근 시간" style={{flex:1}}>
+                <input style={inp} type="time" value={of_.until||""}
+                  onChange={e=>setOf_(v=>({...v,until:e.target.value}))} placeholder="22:00"/>
+              </Field>
+            </div>
+            {/* 프로젝트 */}
+            <Field label="프로젝트">
+              <select style={inp} value={of_.project||""} onChange={e=>setOf_(v=>({...v,project:e.target.value}))}>
+                <option value="">- 선택 -</option>
+                {(officeData._projects||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                <option value="사내업무">사내업무</option>
+                <option value="기타">기타</option>
+              </select>
             </Field>
-            <Field label="사유">
-              <input style={inp} value={of_.reason||""} placeholder="야근 사유"
+            {/* 근무 내역 */}
+            <Field label="근무 내역">
+              <textarea style={{...inp,minHeight:60,resize:"vertical",lineHeight:1.6}}
+                value={of_.workDetail||""} placeholder="오늘 진행한 작업 내용"
+                onChange={e=>setOf_(v=>({...v,workDetail:e.target.value}))}/>
+            </Field>
+            {/* 야근 사유(목표) */}
+            <Field label="야근 사유 / 목표">
+              <input style={inp} value={of_.reason||""} placeholder="마감, 긴급 수정, 촬영 준비 등"
                 onChange={e=>setOf_(v=>({...v,reason:e.target.value}))}/>
             </Field>
+            {/* 식사 여부 */}
+            <Field label="식사 여부">
+              <div style={{display:"flex",gap:6}}>
+                {MEAL.map(m=>(
+                  <button key={m} type="button" onClick={()=>setOf_(v=>({...v,meal:m}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:(of_.meal||"미정")===m?700:400,
+                      background:(of_.meal||"미정")===m?"#fef3c7":"#f8fafc",
+                      color:(of_.meal||"미정")===m?"#92400e":"#94a3b8",
+                      outline:(of_.meal||"미정")===m?"2px solid #f59e0b":"1px solid #f1f5f9"}}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </Field>
             <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
-              {modal.id&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              {modal.id&&(of_.name===user.name||canManage)&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
               <div style={{flex:1}}/>
               <Btn onClick={()=>setModal(null)}>취소</Btn>
               <Btn primary onClick={save} disabled={!of_.date}>저장</Btn>
@@ -6844,106 +6921,250 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
   };
 
   // ────────────────────────────────────────────────────────
-  // 회계 요청
+  // 회계 처리 요청
   // ────────────────────────────────────────────────────────
   const AccountingSection = () => {
     const accts = officeData.accounting || [];
     const [modal, setModal] = useState(null);
-    const [af, setAf] = useState({});
+    const [af, setAf]       = useState({});
+    const [fileNames, setFileNames] = useState([]); // 첨부파일 표시용
 
-    const TYPES = ["경비 청구", "법인카드 사용", "세금계산서 발행", "급여 관련", "기타"];
-    const STATUS = [
-      { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
-      { id:"검토중", color:"#d97706", bg:"#fffbeb" },
-      { id:"처리중", color:"#2563eb", bg:"#eff6ff" },
-      { id:"완료",   color:"#16a34a", bg:"#f0fdf4" },
+    // 유형: 프로젝트 결제 / AI 크레딧 / 기타
+    const TYPES = ["프로젝트 결제","AI 크레딧","경비 청구","법인카드","세금계산서","기타"];
+    const TYPE_COLOR = {
+      "프로젝트 결제":"#2563eb","AI 크레딧":"#7c3aed",
+      "경비 청구":"#d97706","법인카드":"#16a34a",
+      "세금계산서":"#64748b","기타":"#94a3b8",
+    };
+
+    // 긴급도
+    const URGENCY = [
+      { id:"긴급", color:"#ef4444", bg:"#fff1f2", icon:"🔴" },
+      { id:"보통", color:"#d97706", bg:"#fffbeb", icon:"🟡" },
+      { id:"여유", color:"#16a34a", bg:"#f0fdf4", icon:"🟢" },
     ];
+
+    // 처리 상태 (경영지원 워크플로우)
+    const STATUS = [
+      { id:"접수",    color:"#94a3b8", bg:"#f8fafc" },
+      { id:"검토중",  color:"#d97706", bg:"#fffbeb" },
+      { id:"처리완료",color:"#2563eb", bg:"#eff6ff" },
+      { id:"완료회신",color:"#16a34a", bg:"#f0fdf4" },
+    ];
+
+    const fmtDate = iso => {
+      if(!iso) return "";
+      const d=new Date(iso);
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
 
     const save = () => {
       if (!af.title?.trim()) return;
-      const entry = { ...af, id: modal.id||"ac"+Date.now(),
+      const entry = {
+        ...af,
+        id: modal.id || "ac"+Date.now(),
         requestedBy: modal.id ? af.requestedBy : user.name,
-        status: af.status||"접수",
-        createdAt: modal.id ? af.createdAt : new Date().toISOString() };
-      const next = modal.id ? accts.map(a=>a.id===modal.id?entry:a) : [...accts, entry];
+        status:  af.status  || "접수",
+        urgency: af.urgency || "보통",
+        createdAt: modal.id ? af.createdAt : new Date().toISOString(),
+      };
+      const next = modal.id
+        ? accts.map(a=>a.id===modal.id?entry:a)
+        : [...accts, entry];
       patch("accounting", next);
       setModal(null);
+      setFileNames([]);
     };
-    const del = (id) => { patch("accounting", accts.filter(a=>a.id!==id)); setModal(null); };
-    const patchStatus = (id, status) => patch("accounting", accts.map(a=>a.id===id?{...a,status}:a));
 
-    const fmtDate = iso => { if(!iso) return ""; const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}`; };
-    const myAccts = accts.filter(a=>a.requestedBy===user.name);
-    const otherAccts = accts.filter(a=>a.requestedBy!==user.name);
+    const del = (id) => {
+      patch("accounting", accts.filter(a=>a.id!==id));
+      setModal(null);
+    };
+
+    const patchStatus = (id, status) =>
+      patch("accounting", accts.map(a=>a.id===id?{...a,status}:a));
+
+    const patchProcessMemo = (id, memo) =>
+      patch("accounting", accts.map(a=>a.id===id?{...a,processMemo:memo}:a));
+
+    // 파일 첨부 (base64)
+    const handleFiles = (e) => {
+      const files = Array.from(e.target.files);
+      const names = files.map(f=>f.name);
+      setFileNames(prev=>[...prev,...names]);
+      Promise.all(files.map(f=>new Promise(res=>{
+        const r=new FileReader();
+        r.onload=()=>res({name:f.name,url:r.result,type:f.type,size:f.size});
+        r.readAsDataURL(f);
+      }))).then(attachments=>{
+        setAf(v=>({...v,attachments:[...(v.attachments||[]),...attachments]}));
+      });
+    };
+
+    const removeAttachment = (idx) => {
+      setAf(v=>({...v,attachments:(v.attachments||[]).filter((_,i)=>i!==idx)}));
+      setFileNames(prev=>prev.filter((_,i)=>i!==idx));
+    };
+
+    // 긴급도 순 정렬
+    const URGENCY_ORDER = {"긴급":0,"보통":1,"여유":2};
+    const sorted = [...accts].sort((a,b)=>{
+      const uDiff = (URGENCY_ORDER[a.urgency]??1)-(URGENCY_ORDER[b.urgency]??1);
+      if(uDiff!==0) return uDiff;
+      return new Date(b.createdAt)-new Date(a.createdAt);
+    });
+    const myAccts    = sorted.filter(a=>a.requestedBy===user.name);
+    const otherAccts = sorted.filter(a=>a.requestedBy!==user.name);
+
+    // 상태 요약 카운트
+    const statusCounts = STATUS.map(s=>({
+      ...s, cnt: accts.filter(a=>a.status===s.id).length
+    }));
+
+    const AcctCard = ({a}) => {
+      const st  = STATUS.find(s=>s.id===a.status)||STATUS[0];
+      const urg = URGENCY.find(u=>u.id===a.urgency)||URGENCY[1];
+      const tc  = TYPE_COLOR[a.type]||"#94a3b8";
+      const canEdit2 = a.requestedBy===user.name||canManage;
+      const [editMemo, setEditMemo] = useState(false);
+      const [memoVal, setMemoVal]   = useState(a.processMemo||"");
+
+      return (
+        <div style={{background:"#fff",borderRadius:12,
+          border:`1px solid ${a.urgency==="긴급"?"#fca5a5":"#e2e8f0"}`,
+          overflow:"hidden"}}>
+          {/* 카드 헤더 */}
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",
+            background:urg.bg,borderBottom:"1px solid #f1f5f9"}}>
+            <span style={{fontSize:11}}>{urg.icon}</span>
+            <span style={{fontSize:11,fontWeight:700,color:urg.color}}>{a.urgency}</span>
+            <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,fontWeight:700,
+              background:tc+"15",color:tc,marginLeft:2}}>{a.type}</span>
+            <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1e293b",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.title}</span>
+            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+              background:st.bg,color:st.color,flexShrink:0}}>{a.status}</span>
+          </div>
+
+          <div style={{padding:"10px 14px"}}>
+            {/* 메타 정보 */}
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontSize:11,color:"#64748b"}}>👤 {a.requestedBy}</span>
+              {a.amount&&<span style={{fontSize:11,color:"#1e293b",fontWeight:600}}>
+                💰 {Number(a.amount).toLocaleString()}원
+              </span>}
+              {a.dueDate&&<span style={{fontSize:11,color:a.urgency==="긴급"?"#ef4444":"#64748b",fontWeight:600}}>
+                📅 기한 {a.dueDate}
+              </span>}
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(a.createdAt)}</span>
+            </div>
+
+            {/* 상세 내용 */}
+            {a.memo&&<div style={{fontSize:11,color:"#475569",lineHeight:1.6,
+              padding:"6px 8px",background:"#f8fafc",borderRadius:6,marginBottom:6}}>
+              {a.memo}
+            </div>}
+
+            {/* 첨부 파일 */}
+            {(a.attachments||[]).length>0&&(
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+                {a.attachments.map((att,i)=>(
+                  <a key={i} href={att.url} download={att.name} target="_blank" rel="noreferrer"
+                    style={{display:"flex",alignItems:"center",gap:4,fontSize:10,
+                      padding:"3px 8px",borderRadius:6,background:"#eff6ff",
+                      color:"#2563eb",textDecoration:"none",border:"1px solid #bfdbfe"}}>
+                    📎 {att.name}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {/* 처리 메모 (완료 회신) */}
+            {a.processMemo&&!editMemo&&(
+              <div style={{padding:"6px 8px",background:"#f0fdf4",borderRadius:6,
+                fontSize:11,color:"#16a34a",marginBottom:6}}>
+                ✅ {a.processMemo}
+                {canManage&&<button onClick={()=>setEditMemo(true)}
+                  style={{marginLeft:6,fontSize:9,color:"#94a3b8",background:"none",
+                    border:"none",cursor:"pointer"}}>수정</button>}
+              </div>
+            )}
+            {canManage&&editMemo&&(
+              <div style={{display:"flex",gap:6,marginBottom:6}}>
+                <input value={memoVal} onChange={e=>setMemoVal(e.target.value)}
+                  placeholder="처리 내용 / 완료 회신 메모"
+                  style={{flex:1,...inp,padding:"5px 8px",fontSize:11}}/>
+                <button onClick={()=>{patchProcessMemo(a.id,memoVal);setEditMemo(false);}}
+                  style={{padding:"5px 10px",borderRadius:6,border:"none",
+                    background:"#2563eb",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600}}>저장</button>
+                <button onClick={()=>setEditMemo(false)}
+                  style={{padding:"5px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                    background:"#f8fafc",fontSize:11,cursor:"pointer",color:"#64748b"}}>취소</button>
+              </div>
+            )}
+
+            {/* 액션 영역 */}
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+              {canManage&&(
+                <div style={{display:"flex",gap:4}}>
+                  {STATUS.map(s=>(
+                    <button key={s.id} onClick={()=>patchStatus(a.id,s.id)}
+                      style={{padding:"3px 8px",borderRadius:6,border:"none",cursor:"pointer",
+                        fontSize:10,fontWeight:a.status===s.id?700:400,
+                        background:a.status===s.id?s.bg:"#f8fafc",
+                        color:a.status===s.id?s.color:"#94a3b8",
+                        outline:a.status===s.id?`1.5px solid ${s.color}`:"none"}}>
+                      {s.id}
+                    </button>
+                  ))}
+                  {!a.processMemo&&!editMemo&&(
+                    <button onClick={()=>setEditMemo(true)}
+                      style={{padding:"3px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                        background:"#f8fafc",fontSize:10,cursor:"pointer",color:"#64748b"}}>
+                      완료 회신
+                    </button>
+                  )}
+                </div>
+              )}
+              <div style={{flex:1}}/>
+              {canEdit2&&(
+                <button onClick={()=>{setAf({...a});setModal({id:a.id});setFileNames((a.attachments||[]).map(x=>x.name));}}
+                  style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                    background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
 
     return (
       <div>
-        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-          <Btn primary sm onClick={()=>{setAf({type:"경비 청구",status:"접수"});setModal({});}}>
+        {/* 상단 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+          {/* 상태 요약 */}
+          <div style={{display:"flex",gap:6,flex:1,flexWrap:"wrap"}}>
+            {statusCounts.map(s=>(
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:5,
+                padding:"4px 12px",borderRadius:99,background:s.bg,
+                border:`1px solid ${s.color}33`}}>
+                <span style={{fontSize:16,fontWeight:800,color:s.color}}>{s.cnt}</span>
+                <span style={{fontSize:10,color:s.color,fontWeight:600}}>{s.id}</span>
+              </div>
+            ))}
+          </div>
+          <Btn primary sm onClick={()=>{setAf({type:"프로젝트 결제",urgency:"보통",status:"접수"});setModal({});setFileNames([]);}}>
             + 회계 요청
           </Btn>
         </div>
 
-        {/* 요약 카드 */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
-          {STATUS.map(s=>{
-            const cnt = accts.filter(a=>a.status===s.id).length;
-            return (
-              <div key={s.id} style={{background:s.bg,borderRadius:10,padding:"10px 14px",
-                border:`1px solid ${s.color}22`,textAlign:"center"}}>
-                <div style={{fontSize:18,fontWeight:800,color:s.color}}>{cnt}</div>
-                <div style={{fontSize:10,color:s.color,fontWeight:600,marginTop:2}}>{s.id}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {[{title:"내 요청",list:myAccts},{title:"팀 전체",list:otherAccts}].map(({title,list})=>
+        {/* 요청 목록 */}
+        {[{title:"내 요청",list:myAccts},{title:"팀 전체 요청",list:otherAccts}].map(({title,list})=>
           list.length>0&&(
             <div key={title} style={{marginBottom:14}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:6}}>{title}</div>
-              <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                {list.map(a=>{
-                  const st=STATUS.find(s=>s.id===a.status)||STATUS[0];
-                  return (
-                    <div key={a.id} style={{background:"#fff",borderRadius:10,
-                      border:"1px solid #e2e8f0",padding:"10px 14px",
-                      display:"flex",gap:10,alignItems:"center"}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
-                          <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700,
-                            background:"#f1f5f9",color:"#475569"}}>{a.type}</span>
-                          <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{a.title}</span>
-                        </div>
-                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                          <span style={{fontSize:10,color:"#94a3b8"}}>요청: {a.requestedBy}</span>
-                          {a.amount&&<span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
-                            💰 {Number(a.amount).toLocaleString()}원
-                          </span>}
-                          {a.dueDate&&<span style={{fontSize:10,color:"#94a3b8"}}>필요일: {a.dueDate}</span>}
-                          <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(a.createdAt)}</span>
-                        </div>
-                        {a.memo&&<div style={{fontSize:11,color:"#64748b",marginTop:3}}>{a.memo}</div>}
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
-                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
-                          background:st.bg,color:st.color}}>{a.status}</span>
-                        {(a.requestedBy===user.name||canManage)&&(
-                          <button onClick={()=>{setAf({...a});setModal({id:a.id});}}
-                            style={{fontSize:10,padding:"2px 8px",borderRadius:6,
-                              border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
-                        )}
-                        {canManage&&a.status!=="완료"&&(
-                          <select value={a.status} onChange={e=>patchStatus(a.id,e.target.value)}
-                            style={{fontSize:10,padding:"2px 5px",borderRadius:6,
-                              border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",outline:"none"}}>
-                            {STATUS.map(s=><option key={s.id}>{s.id}</option>)}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>{title}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {list.map(a=><AcctCard key={a.id} a={a}/>)}
               </div>
             </div>
           )
@@ -6955,51 +7176,96 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
           </div>
         )}
 
+        {/* 등록/수정 모달 */}
         {modal&&(
-          <Modal title={modal.id?"회계 요청 수정":"회계 요청 등록"} onClose={()=>setModal(null)}>
+          <Modal title={modal.id?"회계 요청 수정":"회계 처리 요청"} onClose={()=>{setModal(null);setFileNames([]);}}>
+            {/* 긴급도 */}
+            <Field label="긴급도">
+              <div style={{display:"flex",gap:6}}>
+                {URGENCY.map(u=>(
+                  <button key={u.id} type="button" onClick={()=>setAf(v=>({...v,urgency:u.id}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:(af.urgency||"보통")===u.id?700:400,
+                      background:(af.urgency||"보통")===u.id?u.bg:"#f8fafc",
+                      color:(af.urgency||"보통")===u.id?u.color:"#94a3b8",
+                      outline:(af.urgency||"보통")===u.id?`2px solid ${u.color}`:"1px solid #f1f5f9"}}>
+                    {u.icon} {u.id}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* 유형 */}
             <Field label="유형">
-              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {TYPES.map(t=>(
                   <button key={t} type="button" onClick={()=>setAf(v=>({...v,type:t}))}
                     style={{padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
-                      fontSize:11,fontWeight:af.type===t?700:400,
-                      background:af.type===t?"#1e293b":"#f1f5f9",
-                      color:af.type===t?"#fff":"#475569"}}>
+                      fontSize:11,fontWeight:(af.type||"프로젝트 결제")===t?700:400,
+                      background:(af.type||"프로젝트 결제")===t?(TYPE_COLOR[t]+"20"||"#f8fafc"):"#f1f5f9",
+                      color:(af.type||"프로젝트 결제")===t?(TYPE_COLOR[t]||"#475569"):"#475569",
+                      outline:(af.type||"프로젝트 결제")===t?`2px solid ${TYPE_COLOR[t]||"#94a3b8"}`:"none"}}>
                     {t}
                   </button>
                 ))}
               </div>
             </Field>
-            <Field label="제목 *">
-              <input style={inp} autoFocus value={af.title||""} placeholder="요청 내용 요약"
+
+            {/* 회계처리 사항 */}
+            <Field label="회계처리 사항 *">
+              <input style={inp} autoFocus value={af.title||""} placeholder="예: 3월 촬영 장비 렌탈비 결제 요청"
                 onChange={e=>setAf(v=>({...v,title:e.target.value}))}/>
             </Field>
+
             <div style={{display:"flex",gap:10}}>
               <Field label="금액" style={{flex:1}}>
                 <input style={inp} type="number" value={af.amount||""} placeholder="원"
                   onChange={e=>setAf(v=>({...v,amount:e.target.value}))}/>
               </Field>
-              <Field label="처리 필요일" style={{flex:1}}>
+              <Field label="처리 기한" style={{flex:1}}>
                 <input style={inp} type="date" value={af.dueDate||""}
                   onChange={e=>setAf(v=>({...v,dueDate:e.target.value}))}/>
               </Field>
             </div>
+
+            {/* 상세 내용 */}
             <Field label="상세 내용">
               <textarea style={{...inp,minHeight:70,resize:"vertical",lineHeight:1.6}}
-                value={af.memo||""} placeholder="영수증 첨부 방법, 계좌 정보 등 상세 내용"
+                value={af.memo||""} placeholder="결제 방법, 계좌 정보, 기타 요청 사항 등"
                 onChange={e=>setAf(v=>({...v,memo:e.target.value}))}/>
             </Field>
-            {canManage&&modal.id&&(
-              <Field label="처리 메모">
-                <input style={inp} value={af.processMemo||""} placeholder="처리 내용 기록"
-                  onChange={e=>setAf(v=>({...v,processMemo:e.target.value}))}/>
-              </Field>
-            )}
+
+            {/* 견적서 및 영수증 첨부 */}
+            <Field label="📎 견적서 / 영수증 첨부">
+              <label style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                borderRadius:8,border:"2px dashed #bfdbfe",background:"#f8fbff",
+                cursor:"pointer",fontSize:12,color:"#2563eb",fontWeight:600}}>
+                <span>+ 파일 선택</span>
+                <input type="file" multiple accept="image/*,.pdf,.xlsx,.xls,.docx"
+                  onChange={handleFiles}
+                  style={{display:"none"}}/>
+              </label>
+              {(af.attachments||[]).length>0&&(
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
+                  {af.attachments.map((att,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,
+                      padding:"3px 8px",borderRadius:6,background:"#eff6ff",
+                      border:"1px solid #bfdbfe",color:"#2563eb"}}>
+                      📎 {att.name}
+                      <button onClick={()=>removeAttachment(i)}
+                        style={{background:"none",border:"none",cursor:"pointer",
+                          color:"#94a3b8",fontSize:10,padding:0,marginLeft:2}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Field>
+
             <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
               {modal.id&&(af.requestedBy===user.name||canManage)&&
                 <Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
               <div style={{flex:1}}/>
-              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn onClick={()=>{setModal(null);setFileNames([]);}}>취소</Btn>
               <Btn primary onClick={save} disabled={!af.title?.trim()}>저장</Btn>
             </div>
           </Modal>
@@ -8124,7 +8390,7 @@ return (
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
         ) : mainTab==="office" ? (
-          <OfficeTab user={user} accounts={accounts} company={company} officeData={officeData} setOfficeData={d=>{ const next=typeof d==="function"?d(officeData):d; setOfficeData(next); if(isConfigured) saveOffice(next).catch(console.error); }}/>
+          <OfficeTab user={user} accounts={accounts} company={company} officeData={{...officeData, _projects:projects.map(p=>({id:p.id,name:p.name}))}} setOfficeData={d=>{ const next=typeof d==="function"?d(officeData):d; setOfficeData(next); if(isConfigured) saveOffice(next).catch(console.error); }}/>
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
         ) : mainTab==="daily-todo" ? (
