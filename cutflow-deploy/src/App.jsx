@@ -9941,39 +9941,45 @@ return (
                         </button>
                       ))}
                     </div>
-                    {/* 수주 시 일반 프로젝트 전환 */}
-                    {proj.biddingStatus==="수주"&&(
-                      proj.isBidding ? (
-                        <button
-                          onClick={()=>{if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 정보(PT날짜·경쟁사 등)는 그대로 보존됩니다\n• 기존 태스크도 유지되며 22단계 워크플로우가 추가됩니다\n• 설정 탭에서 다시 비딩으로 되돌릴 수 있습니다")) {
-                            patchProj(p=>({
-                              ...p,
-                              isBidding: false,
-                              stage: "PLANNING",
-                              // 기존 비딩 태스크 유지 + 22단계 신규 태스크 추가
-                              tasks: [
-                                ...(p.tasks||[]),
-                                ...generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                                  .filter(nt => !(p.tasks||[]).some(et => et.phase===nt.phase && et.title===nt.title))
-                              ]
-                            }));
+                    {/* 수주 시 일반 프로젝트 전환 — 비딩 프로젝트일 때만 */}
+                    {proj.biddingStatus==="수주"&&proj.isBidding&&(
+                      <button
+                        onClick={()=>{
+                          if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 정보가 [비딩 요약] 태스크로 자동 생성됩니다\n• 기존 태스크 유지 + 22단계 워크플로우 추가")) {
+                            patchProj(p=>{
+                              const biddingTasks = p.tasks||[];
+                              // 비딩 데이터 → 상위 태스크 1개 + 하위 태스크들
+                              const biddingParentId = "bidding-summary-"+p.id;
+                              const biddingParent = {
+                                id: biddingParentId,
+                                title: "🏆 비딩 요약",
+                                type: "내부", status: "완료", priority: "보통",
+                                assignees: [], stage: "PLANNING",
+                                createdAt: new Date().toISOString().slice(0,10),
+                                description: "비딩 프로젝트 전환 시 자동 생성",
+                              };
+                              const biddingChildren = [
+                                p.ptDate       && {title:"PT 날짜: "+p.ptDate,       type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                                p.resultDate   && {title:"결과 발표일: "+p.resultDate, type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                                p.competitors  && {title:"경쟁사: "+p.competitors,    type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                                p.estimatedBudget && {title:"예상 규모: "+p.estimatedBudget, type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                              ].filter(Boolean).map((t,i)=>({...t, id:"bc-"+p.id+"-"+i, createdAt:new Date().toISOString().slice(0,10)}));
+                              const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                                .filter(nt => !biddingTasks.some(et=>et.phase===nt.phase&&et.title===nt.title));
+                              return {
+                                ...p,
+                                isBidding: false,
+                                stage: "PLANNING",
+                                tasks: [biddingParent, ...biddingChildren, ...biddingTasks, ...templateTasks],
+                              };
+                            });
                             setBiddingView("tasks");
                           }
                         }}
-                          style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
-                            background:"#2563eb",color:"#fff",cursor:"pointer",fontWeight:700}}>
-                          ➡ 일반 프로젝트로 전환
-                        </button>
-                      ) : (
-                        <button
-                          onClick={()=>{if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n\n• 일반 태스크는 유지됩니다\n• 비딩 정보가 다시 활성화됩니다"))
-                            patchProj(p=>({...p,isBidding:true}));
-                          }}
-                          style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
-                            background:"#f59e0b",color:"#fff",cursor:"pointer",fontWeight:700}}>
-                          ↩ 비딩으로 되돌리기
-                        </button>
-                      )
+                        style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
+                          background:"#2563eb",color:"#fff",cursor:"pointer",fontWeight:700}}>
+                        ➡ 일반 프로젝트로 전환
+                      </button>
                     )}
                   </div>
                 ) : (
@@ -10085,18 +10091,34 @@ return (
                       </div>
                     </div>
                     <button onClick={()=>{
-                      if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 정보(PT날짜·경쟁사 등) 보존\n• 기존 태스크 유지 + 22단계 워크플로우 추가\n• 수주 상태에서 언제든 되돌리기 가능"))
-                        patchProj(p=>({
-                          ...p,
-                          isBidding: false,
-                          stage: "PLANNING",
-                          tasks: [
-                            ...(p.tasks||[]),
-                            ...generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                              .filter(nt => !(p.tasks||[]).some(et => et.phase===nt.phase && et.title===nt.title))
-                          ]
-                        }));
+                      if(window.confirm("일반 프로젝트로 전환하시겠습니까?\n\n• 비딩 정보가 [비딩 요약] 태스크로 자동 생성됩니다\n• 기존 태스크 유지 + 22단계 워크플로우 추가")) {
+                        patchProj(p=>{
+                          const biddingTasks = p.tasks||[];
+                          const biddingParentId = "bidding-summary-"+p.id;
+                          const biddingParent = {
+                            id: biddingParentId, title:"🏆 비딩 요약",
+                            type:"내부", status:"완료", priority:"보통",
+                            assignees:[], stage:"PLANNING",
+                            createdAt: new Date().toISOString().slice(0,10),
+                            description:"비딩 프로젝트 전환 시 자동 생성",
+                          };
+                          const biddingChildren = [
+                            p.ptDate       && {title:"PT 날짜: "+p.ptDate,        type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                            p.resultDate   && {title:"결과 발표일: "+p.resultDate,  type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                            p.competitors  && {title:"경쟁사: "+p.competitors,     type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                            p.estimatedBudget && {title:"예상 규모: "+p.estimatedBudget, type:"내부",status:"완료",priority:"보통",assignees:[],stage:"PLANNING",parentId:biddingParentId},
+                          ].filter(Boolean).map((t,i)=>({...t, id:"bc-"+p.id+"-"+i, createdAt:new Date().toISOString().slice(0,10)}));
+                          const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                            .filter(nt => !biddingTasks.some(et=>et.phase===nt.phase&&et.title===nt.title));
+                          return {
+                            ...p,
+                            isBidding: false,
+                            stage: "PLANNING",
+                            tasks: [biddingParent, ...biddingChildren, ...biddingTasks, ...templateTasks],
+                          };
+                        });
                         setBiddingView("tasks");
+                      }
                     }}
                       style={{padding:"8px 16px",borderRadius:8,border:"none",
                         background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
@@ -10571,31 +10593,6 @@ return (
               </button>
             </div>
           </div>
-
-          {/* 비딩 전환 상태 토글 — 비딩 데이터 있는 일반 프로젝트만 표시 */}
-          {!proj.isBidding && proj.biddingStatus && (
-            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,
-              padding:"12px 14px",marginBottom:4}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>
-                🏆 비딩 이력 있음 ({proj.biddingStatus})
-              </div>
-              <div style={{fontSize:11,color:"#a16207",marginBottom:10}}>
-                이 프로젝트는 비딩에서 전환되었습니다. 비딩 탭으로 되돌릴 수 있습니다.<br/>
-                되돌려도 현재 태스크·데이터는 모두 유지됩니다.
-              </div>
-              <button
-                onClick={()=>{
-                  if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n현재 태스크·데이터는 모두 유지됩니다.")) {
-                    patchProj(p=>({...p, isBidding:true}));
-                    setEditProjModal(false);
-                  }
-                }}
-                style={{padding:"6px 14px",borderRadius:8,border:"none",
-                  background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                ↩ 비딩 프로젝트로 되돌리기
-              </button>
-            </div>
-          )}
 
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
