@@ -9249,9 +9249,12 @@ function BiddingTaskList({ tasks, onAdd, onAddSub, onOpen, onDelete, onUpdate, a
           </select>
 
           {/* 마감일 */}
-          <input type="date" value={t.due||""}
+          <input type="date"
+            key={t.id+"-due-"+(t.due||"")}
+            defaultValue={t.due||""}
             onClick={e=>e.stopPropagation()}
-            onChange={e=>onUpdate({...t,due:e.target.value})}
+            onChange={e=>{e.stopPropagation();if(e.target.value)onUpdate({...t,due:e.target.value});}}
+            onBlur={e=>{e.stopPropagation();onUpdate({...t,due:e.target.value||null});}}
             style={{fontSize:10,padding:"2px 4px",borderRadius:6,
               border:`1px solid ${overdue?"#fca5a5":"#e2e8f0"}`,
               color:overdue?"#ef4444":"#64748b",
@@ -10057,8 +10060,8 @@ return (
                 onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
                 onAddSub={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId})}
                 onOpen={t=>setTaskPanel(t)}
-                onDelete={id=>updateTasks(proj.tasks.filter(t=>t.id!==id))}
-                onUpdate={t=>updateTasks(proj.tasks.map(x=>x.id===t.id?t:x))}
+                onDelete={id=>patchProj(p=>({...p,tasks:(p.tasks||[]).filter(x=>x.id!==id)}))}
+                onUpdate={t=>patchProj(p=>({...p,tasks:(p.tasks||[]).map(x=>x.id===t.id?t:x)}))}
                 accounts={accounts}/>
               </div>
             )}
