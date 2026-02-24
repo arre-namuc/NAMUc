@@ -1028,7 +1028,7 @@ function PhaseFeedbackBadge({ feedbacks, phaseId }) {
   if(openFbs.length>0) return (
     <span style={{fontSize:9,padding:"2px 7px",borderRadius:99,
       background:"#fef3c7",color:"#d97706",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
-      💬 피드백 {openFbs.length}
+      📨 태스크 요청 {openFbs.length}
     </span>
   );
   return (
@@ -1045,7 +1045,7 @@ function PhaseFeedbacks({ feedbacks, phaseId }) {
   return (
     <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9"}}>
       <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:6,paddingLeft:4}}>
-        💬 연결된 피드백 ({phaseFbs.length})
+        📨 연결된 요청 ({phaseFbs.length})
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:4}}>
         {phaseFbs.map(fb=>{
@@ -4519,7 +4519,7 @@ function MonthCalendar({ project, onChange, user }) {
     .filter(fb => fb.dueDate && fb.taskStatus !== "done")
     .map(fb => ({
       id: "fb-"+fb.id,
-      title: "[피드백] "+(fb.title||"(제목없음)"),
+      title: "[고객요청] "+(fb.title||"(제목없음)"),
       start: fb.dueDate,
       end: fb.dueDate,
       color: "#8b5cf6",
@@ -5157,7 +5157,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
               background: autoModal.autoType==="task"?"#eff6ff":autoModal.autoType==="meeting"?"#f5f3ff":"#faf5ff",
               color: autoModal.autoType==="task"?"#2563eb":autoModal.autoType==="meeting"?"#7c3aed":"#8b5cf6",
               fontWeight:700}}>
-              {autoModal.autoType==="task"?"태스크 마감":autoModal.autoType==="meeting"?"회의":autoModal.autoType==="feedback"?"피드백 마감":""}
+              {autoModal.autoType==="task"?"태스크 마감":autoModal.autoType==="meeting"?"회의":autoModal.autoType==="feedback"?"요청 마감":""}
             </span>
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
@@ -5601,7 +5601,7 @@ function CommentInput({ accounts, user, onSubmit }) {
     </div>
   );
 }
-function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
+function TaskRequestTab({project, patchProj, user, accounts, setNotifications}) {
   const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
   const [ff, setFf] = useState({});
@@ -5791,7 +5791,7 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
             </div>
           </div>
         </div>
-        <Btn primary onClick={openAdd}>+ 피드백 추가</Btn>
+        <Btn primary onClick={openAdd}>+ 태스크 요청 추가</Btn>
       </div>
 
       {feedbacks.length===0 ? (
@@ -5922,7 +5922,7 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
 
       {/* 세부내용 모달 */}
       {detail&&(
-        <Modal title={detail.title||"피드백 상세"} onClose={()=>setDetail(null)}>
+        <Modal title={detail.title||"태스크 요청 상세"} onClose={()=>setDetail(null)}>
           <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
             {detail.stage&&<span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1.5px solid #ddd6fe"}}>📍 {detail.stage}</span>}
             {(detail.tags||[]).map(t=><span key={t} style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:99,background:"#ecfeff",color:"#0891b2",border:"1px solid #a5f3fc"}}>#{t}</span>)}
@@ -6008,7 +6008,7 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
 
       {/* 추가/수정 모달 */}
       {modal&&(
-        <Modal title={modal==="add"?"피드백 추가":"피드백 수정"} onClose={()=>setModal(null)}>
+        <Modal title={modal==="add"?"태스크 요청 추가":"태스크 요청 수정"} onClose={()=>setModal(null)}>
           <Field label="제목 *">
             <input style={inp} autoFocus value={ff.title||""} onChange={e=>setFf(v=>({...v,title:e.target.value}))} placeholder="피드백 제목 (예: 1차 컷 수정 요청)"/>
           </Field>
@@ -6056,7 +6056,7 @@ function FeedbackTab({project, patchProj, user, accounts, setNotifications}) {
               </div>
             )}
           </Field>
-          <Field label="피드백 내용">
+          <Field label="요청 내용">
             <textarea style={{...inp,resize:"vertical",minHeight:80}} value={ff.content||""} onChange={e=>setFf(v=>({...v,content:e.target.value}))} placeholder="클라이언트 피드백 내용..."/>
           </Field>
           <Field label="세부내용">
@@ -9160,6 +9160,156 @@ function FigJamTab({ project, onChange }) {
 }
 
 
+// ═══════════════════════════════════════════════════════════
+// 고객 요청 탭 (태스크 요청 + 공지사항 + 팩트북)
+// ═══════════════════════════════════════════════════════════
+function ClientRequestTab({ project, patchProj, user, accounts, setNotifications }) {
+  const [subTab, setSubTab] = useState("task-request");
+
+  const SUB = [
+    { id:"task-request",  icon:"📋", label:"태스크 요청"  },
+    { id:"notice",        icon:"📢", label:"공지사항"     },
+    { id:"factbook",      icon:"🎨", label:"팩트북 / RFP" },
+  ];
+
+  const TAB_BTN = (t) => ({
+    padding:"7px 16px", border:"none", cursor:"pointer",
+    fontSize:12, fontWeight:subTab===t.id?700:500,
+    background:subTab===t.id?"#fff":"transparent",
+    color:subTab===t.id?"#1e293b":"#64748b",
+    borderBottom:subTab===t.id?"2px solid #2563eb":"2px solid transparent",
+    marginBottom:-1,
+  });
+
+  // ── 공지사항 (클라이언트 → 내부) ────────────────────────
+  const notices = project.clientNotices || [];
+  const [nModal, setNModal] = useState(false);
+  const [nf,     setNf]     = useState({});
+  const [nConf,  setNConf]  = useState(null);
+
+  const saveNotice = () => {
+    if (!nf.title?.trim()) return;
+    const entry = { ...nf, id: nf.id||"n"+Date.now(), createdAt: nf.createdAt||new Date().toISOString().slice(0,10) };
+    const list = nf.id ? notices.map(n=>n.id===entry.id?entry:n) : [entry, ...notices];
+    patchProj(p=>({...p, clientNotices: list}));
+    setNModal(false);
+  };
+  const deleteNotice = (id) => {
+    patchProj(p=>({...p, clientNotices: notices.filter(n=>n.id!==id)}));
+    setNConf(null);
+  };
+  const openAddNotice = () => { setNf({title:"",content:"",date:new Date().toISOString().slice(0,10),important:false}); setNModal(true); };
+  const openEditNotice = (n) => { setNf({...n}); setNModal(true); };
+
+  return (
+    <div>
+      {/* 서브 탭 바 */}
+      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:16}}>
+        {SUB.map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)} style={TAB_BTN(t)}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 태스크 요청 ── */}
+      {subTab==="task-request"&&(
+        <TaskRequestTab
+          project={project} patchProj={patchProj}
+          user={user} accounts={accounts}
+          setNotifications={setNotifications}
+        />
+      )}
+
+      {/* ── 공지사항 ── */}
+      {subTab==="notice"&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+            <Btn primary sm onClick={openAddNotice}>+ 공지 추가</Btn>
+          </div>
+
+          {notices.length===0&&(
+            <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>
+              클라이언트로부터 받은 공지사항을 등록하세요
+            </div>
+          )}
+
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {notices.map(n=>(
+              <div key={n.id} style={{background:"#fff",border:`1px solid ${n.important?"#fde68a":"#e2e8f0"}`,
+                borderLeft:`4px solid ${n.important?"#f59e0b":"#94a3b8"}`,
+                borderRadius:10,padding:"14px 16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      {n.important&&<span style={{fontSize:10,fontWeight:800,padding:"1px 6px",
+                        borderRadius:99,background:"#fef3c7",color:"#d97706"}}>⚠️ 중요</span>}
+                      <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{n.title}</span>
+                    </div>
+                    {n.content&&<div style={{fontSize:13,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{n.content}</div>}
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>{n.date}</div>
+                  </div>
+                  <div style={{display:"flex",gap:4,flexShrink:0}}>
+                    <button onClick={()=>openEditNotice(n)}
+                      style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                    <button onClick={()=>setNConf(n)}
+                      style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 공지 추가/수정 모달 */}
+          {nModal&&(
+            <Modal title={nf.id?"공지 수정":"공지 추가"} onClose={()=>setNModal(false)}>
+              <Field label="제목 *">
+                <input style={inp} autoFocus value={nf.title||""}
+                  onChange={e=>setNf(v=>({...v,title:e.target.value}))} placeholder="공지 제목"/>
+              </Field>
+              <Field label="내용">
+                <textarea style={{...inp,minHeight:100,resize:"vertical"}}
+                  value={nf.content||""} onChange={e=>setNf(v=>({...v,content:e.target.value}))}
+                  placeholder="공지 내용"/>
+              </Field>
+              <div style={{display:"flex",gap:12,alignItems:"center",marginTop:4}}>
+                <Field label="날짜" style={{flex:1}}>
+                  <input style={inp} type="date" value={nf.date||""}
+                    onChange={e=>setNf(v=>({...v,date:e.target.value}))}/>
+                </Field>
+                <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:13,marginTop:16}}>
+                  <input type="checkbox" checked={!!nf.important}
+                    onChange={e=>setNf(v=>({...v,important:e.target.checked}))}
+                    style={{accentColor:"#f59e0b",width:16,height:16}}/>
+                  <span style={{fontWeight:600,color:"#d97706"}}>⚠️ 중요</span>
+                </label>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
+                <Btn onClick={()=>setNModal(false)}>취소</Btn>
+                <Btn primary onClick={saveNotice} disabled={!nf.title?.trim()}>저장</Btn>
+              </div>
+            </Modal>
+          )}
+          {nConf&&(
+            <Modal title="공지 삭제" onClose={()=>setNConf(null)}>
+              <div style={{fontSize:14,marginBottom:20}}><b>{nConf.title}</b>을 삭제하시겠습니까?</div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <Btn onClick={()=>setNConf(null)}>취소</Btn>
+                <Btn danger onClick={()=>deleteNotice(nConf.id)}>삭제</Btn>
+              </div>
+            </Modal>
+          )}
+        </div>
+      )}
+
+      {/* ── 팩트북 / RFP (구 FigJam) ── */}
+      {subTab==="factbook"&&(
+        <FigJamTab project={project} onChange={patchProj}/>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [user,         setUser]         = useState(null);
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
@@ -9647,13 +9797,12 @@ return (
               tabs={proj.isBidding ? [
                 {id:"tasks",icon:"🏆",label:"비딩"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
-                {id:"figjam",icon:"🎨",label:"FigJam"},
+                {id:"client-request",icon:"📨",label:"고객 요청"},
               ] : [
                 {id:"tasks",icon:"📋",label:"프로젝트"},
-                {id:"feedback",icon:"💬",label:"피드백"},
+                {id:"client-request",icon:"📨",label:"고객 요청"},
                 {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
-                {id:"figjam",icon:"🎨",label:"FigJam"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
                 {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessProjFinance},
                 {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessProjFinance},
@@ -9835,8 +9984,8 @@ return (
               </div>
             )}
 
-            {/* ── 피드백 ── */}
-            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts} setNotifications={setNotifications}/>}
+            {/* ── 고객 요청 ── */}
+            {docTab==="client-request"&&<ClientRequestTab project={proj} patchProj={patchProj} user={user} accounts={accounts} setNotifications={setNotifications}/>}
 
             {/* ── 캘린더 ── */}
             {docTab==="calendar"&&<MonthCalendar project={proj} onChange={patchProj} user={user}/>}
@@ -9853,8 +10002,7 @@ return (
             {/* ── 결산서 ── */}
             {docTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)}/>}
 
-            {/* ── FigJam ── */}
-            {docTab==="figjam"&&<FigJamTab project={proj} onChange={patchProj}/>}
+
           </>
         )}
       </div>
