@@ -8534,74 +8534,144 @@ return (
           ))}
         </div>
         {/* 알림 벨 */}
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setShowNotif(v=>!v)}
-            style={{position:"relative",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,
-              background:showNotif?"#eff6ff":"#fff",cursor:"pointer",fontSize:18,lineHeight:1}}>
-            🔔
-            {(()=>{
-              const myNotifs = notifications.filter(n=>
-                n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)
-              );
-              const hasUrgent = myNotifs.some(n=>n.urgent||n.type==="mention");
-              return myNotifs.length>0&&(
-                <span style={{position:"absolute",top:-4,right:-4,minWidth:17,height:17,
-                  borderRadius:99,background:hasUrgent?"#ef4444":"#f59e0b",
-                  color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",
-                  justifyContent:"center",padding:"0 3px",border:"2px solid #fff"}}>
-                  {myNotifs.length}
-                </span>
-              );
-            })()}
-          </button>
-          {showNotif&&(
-            <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,
-              background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,
-              boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:200,overflow:"hidden"}}>
-              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
-                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontWeight:700,fontSize:14}}>알림</span>
-                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||n.type==="confirm_req"||n.type==="approved"||n.type==="rejected"||(n.to&&n.to===user.name)).length}건</span>
-              </div>
-              {notifications.length===0
-                ? <div style={{padding:"24px",textAlign:"center",color:C.faint,fontSize:13}}>새 알림이 없습니다</div>
-                : <div style={{maxHeight:360,overflowY:"auto"}}>
-                    {notifications.filter(n=>n.type==="due"||n.type==="task"||n.type==="assign"||n.type==="done"||n.type==="confirm_req"||n.type==="approved"||n.type==="rejected"||(n.to&&n.to===user.name)).map(n=>(
-                      <div key={n.id} onClick={()=>{
-                          setShowNotif(false);
-                          setMainTab("tasks");
-                          if(n.taskId){
-                            const t=proj?.tasks?.find(x=>x.id===n.taskId);
-                            if(t) setTaskPanel({...t});
-                          }
-                        }}
-                        style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
-                          cursor:"pointer",
-                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff",
-                          transition:"background .1s"}}
-                        onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff"}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                          <span style={{fontSize:13}}>
-                            {n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.type==="confirm_req"?"📋":n.type==="approved"?"✅":n.type==="rejected"?"🔁":n.urgent?"🔴":"🟡"}
-                          </span>
-                          <span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:99,
-                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.type==="confirm_req"?"#d97706":n.type==="approved"?"#16a34a":n.type==="rejected"?"#ef4444":n.urgent?"#ef4444":"#f59e0b",
-                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.type==="confirm_req"?"#fef3c7":n.type==="approved"?"#dcfce7":n.type==="rejected"?"#fee2e2":n.urgent?"#fef2f2":"#fffbeb"}}>
-                            {n.label}
-                          </span>
-                          {n.from&&<span style={{fontSize:11,color:C.faint}}>{n.from}{n.type==="assign"?" → "+((n.to)||""):" →"}</span>}
-                        </div>
-                        <div style={{fontSize:12,fontWeight:600,color:C.dark,marginBottom:2}}>{n.fbTitle}</div>
-                        {n.commentText&&<div style={{fontSize:11,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{n.commentText}</div>}
-                        <div style={{fontSize:11,color:C.faint}}>{n.projName}</div>
-                      </div>
-                    ))}
+        {(()=>{
+          const myNotifs = notifications.filter(n=>
+            !n.read && (n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)||
+            n.type==="assign"||n.type==="done"||n.type==="confirm_req"||
+            n.type==="approved"||n.type==="rejected")
+          );
+          const allVisible = notifications.filter(n=>
+            n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)||
+            n.type==="assign"||n.type==="done"||n.type==="confirm_req"||
+            n.type==="approved"||n.type==="rejected"
+          );
+          const hasUrgent = myNotifs.some(n=>n.urgent||n.type==="mention");
+          const markRead = (id) => setNotifications(prev=>prev.map(n=>n.id===id?{...n,read:true}:n));
+          const markAllRead = () => setNotifications(prev=>prev.map(n=>({...n,read:true})));
+          const removeNotif = (e, id) => { e.stopPropagation(); setNotifications(prev=>prev.filter(n=>n.id!==id)); };
+
+          return (
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setShowNotif(v=>!v)}
+                style={{position:"relative",padding:"6px 10px",borderRadius:8,
+                  border:`1px solid ${C.border}`,
+                  background:showNotif?"#eff6ff":"#fff",cursor:"pointer",fontSize:18,lineHeight:1}}>
+                🔔
+                {myNotifs.length>0&&(
+                  <span style={{position:"absolute",top:-4,right:-4,minWidth:17,height:17,
+                    borderRadius:99,background:hasUrgent?"#ef4444":"#f59e0b",
+                    color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",
+                    justifyContent:"center",padding:"0 3px",border:"2px solid #fff"}}>
+                    {myNotifs.length}
+                  </span>
+                )}
+              </button>
+              {showNotif&&(
+                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:340,
+                  background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,
+                  boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:200,overflow:"hidden"}}>
+                  {/* 헤더 */}
+                  <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontWeight:700,fontSize:14}}>알림</span>
+                      {myNotifs.length>0&&(
+                        <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:99,
+                          background:"#fee2e2",color:"#ef4444"}}>미확인 {myNotifs.length}</span>
+                      )}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      {myNotifs.length>0&&(
+                        <button onClick={markAllRead}
+                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                            background:"#f8fafc",cursor:"pointer",color:"#64748b",fontWeight:600}}>
+                          모두 읽음
+                        </button>
+                      )}
+                      {allVisible.length>0&&(
+                        <button onClick={()=>setNotifications([])}
+                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #fca5a5",
+                            background:"#fff1f2",cursor:"pointer",color:"#ef4444",fontWeight:600}}>
+                          전체 삭제
+                        </button>
+                      )}
+                    </div>
                   </div>
-              }
+                  {/* 목록 */}
+                  {allVisible.length===0
+                    ? <div style={{padding:"28px",textAlign:"center",color:C.faint,fontSize:13}}>
+                        새 알림이 없습니다
+                      </div>
+                    : <div style={{maxHeight:400,overflowY:"auto"}}>
+                        {allVisible.map(n=>{
+                          const isUnread = !n.read;
+                          const typeBg   = n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff";
+                          const typeColor= n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.type==="confirm_req"?"#d97706":n.type==="approved"?"#16a34a":n.type==="rejected"?"#ef4444":n.urgent?"#ef4444":"#f59e0b";
+                          const typeBadgeBg = n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.type==="confirm_req"?"#fef3c7":n.type==="approved"?"#dcfce7":n.type==="rejected"?"#fee2e2":n.urgent?"#fef2f2":"#fffbeb";
+                          const icon = n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.type==="confirm_req"?"📋":n.type==="approved"?"✅":n.type==="rejected"?"🔁":n.urgent?"🔴":"🟡";
+                          return (
+                            <div key={n.id}
+                              onClick={()=>{
+                                markRead(n.id);
+                                setShowNotif(false);
+                                setMainTab("tasks");
+                                if(n.taskId){
+                                  const t=proj?.tasks?.find(x=>x.id===n.taskId);
+                                  if(t) setTaskPanel({...t});
+                                }
+                              }}
+                              style={{padding:"11px 14px",borderBottom:`1px solid ${C.border}`,
+                                cursor:"pointer",position:"relative",
+                                background:isUnread?typeBg:"#fff",
+                                borderLeft:isUnread?`3px solid ${typeColor}`:"3px solid transparent",
+                                transition:"background .1s"}}
+                              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                              onMouseLeave={e=>e.currentTarget.style.background=isUnread?typeBg:"#fff"}>
+                              <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                                <span style={{fontSize:14,flexShrink:0}}>{icon}</span>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3,flexWrap:"wrap"}}>
+                                    <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",
+                                      borderRadius:99,color:typeColor,background:typeBadgeBg}}>
+                                      {n.label}
+                                    </span>
+                                    {n.from&&<span style={{fontSize:10,color:C.faint}}>
+                                      {n.from}{n.type==="assign"?" → "+(n.to||""):""}
+                                    </span>}
+                                    {isUnread&&<span style={{width:6,height:6,borderRadius:"50%",
+                                      background:"#ef4444",flexShrink:0,display:"inline-block"}}/>}
+                                  </div>
+                                  <div style={{fontSize:12,fontWeight:isUnread?700:500,
+                                    color:C.dark,marginBottom:2,
+                                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {n.fbTitle}
+                                  </div>
+                                  {n.commentText&&<div style={{fontSize:11,color:C.sub,
+                                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {n.commentText}
+                                  </div>}
+                                  <div style={{fontSize:10,color:C.faint,marginTop:1}}>{n.projName}</div>
+                                </div>
+                                {/* 개별 삭제 버튼 */}
+                                <button onClick={(e)=>removeNotif(e,n.id)}
+                                  style={{flexShrink:0,padding:"2px 5px",background:"none",
+                                    border:"none",cursor:"pointer",color:"#cbd5e1",fontSize:12,
+                                    borderRadius:4,lineHeight:1}}
+                                  onMouseEnter={e=>e.currentTarget.style.color="#94a3b8"}
+                                  onMouseLeave={e=>e.currentTarget.style.color="#cbd5e1"}>
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                  }
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* 유저 */}
         <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setUser(null)}>
