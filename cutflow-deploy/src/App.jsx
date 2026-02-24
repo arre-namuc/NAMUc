@@ -6945,12 +6945,11 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
       { id:"여유", color:"#16a34a", bg:"#f0fdf4", icon:"🟢" },
     ];
 
-    // 처리 상태
+    // 처리 상태 (3단계)
     const STATUS = [
-      { id:"접수",    color:"#94a3b8", bg:"#f8fafc" },
-      { id:"검토중",  color:"#d97706", bg:"#fffbeb" },
-      { id:"처리완료",color:"#2563eb", bg:"#eff6ff" },
-      { id:"완료회신",color:"#16a34a", bg:"#f0fdf4" },
+      { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
+      { id:"검토중", color:"#d97706", bg:"#fffbeb" },
+      { id:"완료",   color:"#16a34a", bg:"#f0fdf4" },
     ];
 
     const fmtDate = iso => {
@@ -7047,6 +7046,8 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                 📅 {a.dueDate}까지
               </span>}
               <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(a.createdAt)}</span>
+              {a.project&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:600,
+                background:"#eff6ff",color:"#2563eb"}}>{a.project}</span>}
             </div>
 
             {/* 상세 내용 */}
@@ -7139,7 +7140,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                     <button onClick={()=>setEditMemo(true)}
                       style={{padding:"3px 8px",borderRadius:6,border:"1px solid #bbf7d0",
                         background:"#f0fdf4",fontSize:10,cursor:"pointer",color:"#16a34a",fontWeight:600}}>
-                      ✅ 완료 회신
+                      ✅ 완료 처리
                     </button>
                   )}
                 </>
@@ -7272,6 +7273,19 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                   </button>
                 ))}
               </div>
+            </Field>
+
+            {/* 프로젝트 선택 */}
+            <Field label="프로젝트">
+              <select style={inp} value={af.project||""}
+                onChange={e=>setAf(v=>({...v,project:e.target.value}))}>
+                <option value="">- 프로젝트 선택 (선택사항) -</option>
+                {(officeData._projects||[]).map(p=>(
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+                <option value="사내업무">사내업무</option>
+                <option value="기타">기타</option>
+              </select>
             </Field>
 
             {/* 회계처리 사항 */}
