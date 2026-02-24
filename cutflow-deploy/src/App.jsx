@@ -9591,6 +9591,7 @@ function App() {
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
   const [officeData,   setOfficeData]   = useState({ rooms:[], bookings:[], notices:[], requests:[] });
   const [mainTab,      setMainTab]      = useState("tasks");
+  const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [addProjModal,  setAddProjModal]  = useState(false);
   const [editProjModal, setEditProjModal] = useState(false);
   const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"TVC",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
@@ -9771,21 +9772,27 @@ function App() {
 return (
     <AppContext.Provider value={{setProjects}}>
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
-      {/* 헤더 */}
-      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)",overflowX:"auto",overflowY:"hidden",whiteSpace:"nowrap",scrollbarWidth:"none",msOverflowStyle:"none"}}>
-        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-          {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>:"🎬"}
+      {/* 헤더 - 슬림 */}
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 16px 0 8px",display:"flex",alignItems:"center",gap:12,height:48,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
+        {/* 사이드바 토글 */}
+        <button onClick={()=>setSidebarOpen(v=>!v)}
+          style={{padding:"6px 8px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:18,color:C.sub,lineHeight:1,flexShrink:0}}>
+          {sidebarOpen?"◀":"☰"}
+        </button>
+        <div style={{fontWeight:800,fontSize:17,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:26,maxWidth:90,objectFit:"contain"}}/>:"🎬"}
           {company.name||"CutFlow"}
         </div>
-        {/* 메인탭 */}
-        <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3,flexShrink:0}}>
-          {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"office",icon:"🏢",label:"오피스"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
-            <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s",whiteSpace:"nowrap"}}>
-              {t.icon} {t.label}{t.locked?" 🔒":""}
-            </button>
-          ))}
-        </div>
         <div style={{flex:1}}/>
+        {/* 설정 버튼 */}
+        {user.canManageMembers&&(
+          <button onClick={()=>setMainTab("settings")}
+            style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${mainTab==="settings"?C.blue:C.border}`,
+              background:mainTab==="settings"?C.blueLight:C.white,cursor:"pointer",fontSize:12,fontWeight:mainTab==="settings"?700:500,
+              color:mainTab==="settings"?C.blue:C.sub,whiteSpace:"nowrap",flexShrink:0}}>
+            ⚙️ 설정
+          </button>
+        )}
         {/* 알림 벨 */}
         {(()=>{
           const myNotifs = notifications.filter(n=>
@@ -9936,56 +9943,92 @@ return (
         </div>
       </div>
 
-      <div style={{display:"flex",height:"calc(100vh - 56px)"}}>
-        {/* ── 왼쪽 사이드바: 프로젝트 목록 ── */}
-        <div style={{width:260,minWidth:260,background:C.white,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflowY:"auto",scrollbarWidth:"thin"}}>
-          {/* 사이드바 헤더 */}
-          <div style={{padding:"14px 16px 10px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,background:C.white,zIndex:1}}>
-            <span style={{fontSize:12,fontWeight:700,color:C.faint,letterSpacing:.5}}>프로젝트 ({projects.length})</span>
-            <div style={{display:"flex",gap:4}}>
-              <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정"
-                style={{padding:"3px 7px",borderRadius:6,border:`1px solid ${C.border}`,
-                  background:C.white,cursor:"pointer",fontSize:11,color:C.sub}}>
-                ✏️
-              </button>
-              <button onClick={()=>setAddProjModal(true)} title="새 프로젝트"
-                style={{padding:"3px 7px",borderRadius:6,border:`1px dashed ${C.border}`,
-                  background:C.white,cursor:"pointer",fontSize:11,color:C.faint,fontWeight:700}}>
-                +
-              </button>
-            </div>
-          </div>
-          {/* 프로젝트 리스트 */}
-          <div style={{flex:1,overflowY:"auto"}}>
-            {projects.map(p=>{
-              const sel = p.id === selId;
-              const tasks = p.tasks || [];
-              const done = tasks.filter(t=>t.status==="done").length;
+      <div style={{display:"flex",height:"calc(100vh - 48px)"}}>
+        {/* ── 왼쪽 사이드바 ── */}
+        <div style={{width:sidebarOpen?260:0,minWidth:sidebarOpen?260:0,background:C.white,borderRight:sidebarOpen?`1px solid ${C.border}`:"none",display:"flex",flexDirection:"column",overflow:"hidden",transition:"all .2s ease",flexShrink:0}}>
+          {/* 네비게이션 메뉴 */}
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${C.border}`}}>
+            {[
+              {id:"tasks",icon:"📋",label:"프로젝트"},
+              {id:"daily-todo",icon:"✅",label:"데일리 TODO"},
+              {id:"master-calendar",icon:"🗓",label:"종합캘린더"},
+              {id:"office",icon:"🏢",label:"오피스"},
+              {id:"crm",icon:"👥",label:"CRM"},
+              {id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},
+            ].map(t=>{
+              const sel = mainTab===t.id;
               return (
-                <div key={p.id} onClick={()=>{setSelId(p.id);setBiddingView("tasks");}}
-                  style={{padding:"10px 16px",cursor:"pointer",
-                    background:sel?C.blueLight:C.white,
-                    borderLeft:sel?`3px solid ${C.blue}`:"3px solid transparent",
-                    borderBottom:`1px solid ${C.border}`,
-                    transition:"all .12s"}}
-                  onMouseEnter={e=>{if(!sel)e.currentTarget.style.background=C.bg}}
-                  onMouseLeave={e=>{e.currentTarget.style.background=sel?C.blueLight:C.white}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7}}>
-                    <span style={{width:8,height:8,borderRadius:"50%",background:p.color,flexShrink:0}}/>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5}}>
-                        <span style={{fontSize:12,fontWeight:sel?700:500,color:sel?C.blue:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
-                        {p.isBidding&&<span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆</span>}
-                      </div>
-                      <div style={{fontSize:10,color:C.faint,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {p.client||"클라이언트 미정"}{tasks.length>0?` · ${done}/${tasks.length}`:""}{p.due?` · ${p.due}`:""}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)}
+                  style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",
+                    borderRadius:8,border:"none",background:sel?C.blueLight:"transparent",
+                    cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:sel?700:500,
+                    color:sel?C.blue:t.locked?C.faint:C.sub,transition:"all .12s",textAlign:"left",
+                    marginBottom:2}}>
+                  <span style={{fontSize:15,width:20,textAlign:"center"}}>{t.icon}</span>
+                  <span>{t.label}</span>
+                  {t.locked&&<span style={{fontSize:10,marginLeft:"auto"}}>🔒</span>}
+                </button>
               );
             })}
           </div>
+
+          {/* 프로젝트 목록 (프로젝트 탭일 때만) */}
+          {mainTab==="tasks"&&(
+            <>
+              <div style={{padding:"10px 12px 8px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,background:C.bg}}>
+                <span style={{fontSize:11,fontWeight:700,color:C.faint,letterSpacing:.3}}>프로젝트 ({projects.length})</span>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정"
+                    style={{padding:"2px 6px",borderRadius:5,border:`1px solid ${C.border}`,
+                      background:C.white,cursor:"pointer",fontSize:10,color:C.sub}}>
+                    ✏️
+                  </button>
+                  <button onClick={()=>setAddProjModal(true)} title="새 프로젝트"
+                    style={{padding:"2px 6px",borderRadius:5,border:`1px dashed ${C.border}`,
+                      background:C.white,cursor:"pointer",fontSize:10,color:C.faint,fontWeight:700}}>
+                    +
+                  </button>
+                </div>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {projects.map(p=>{
+                  const sel = p.id === selId;
+                  const tasks = p.tasks || [];
+                  const done = tasks.filter(t=>t.status==="done").length;
+                  return (
+                    <div key={p.id} onClick={()=>{setSelId(p.id);setBiddingView("tasks");}}
+                      style={{padding:"9px 14px",cursor:"pointer",
+                        background:sel?C.blueLight:C.white,
+                        borderLeft:sel?`3px solid ${C.blue}`:"3px solid transparent",
+                        borderBottom:`1px solid ${C.border}`,
+                        transition:"all .12s"}}
+                      onMouseEnter={e=>{if(!sel)e.currentTarget.style.background=C.bg}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=sel?C.blueLight:C.white}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7}}>
+                        <span style={{width:8,height:8,borderRadius:"50%",background:p.color,flexShrink:0}}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                            <span style={{fontSize:12,fontWeight:sel?700:500,color:sel?C.blue:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                            {p.isBidding&&<span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆</span>}
+                          </div>
+                          <div style={{fontSize:10,color:C.faint,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {p.client||"클라이언트 미정"}{tasks.length>0?` · ${done}/${tasks.length}`:""}{p.due?` · ${p.due}`:""}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{padding:"8px 12px"}}>
+                  <button onClick={()=>setAddProjModal(true)}
+                    style={{width:"100%",padding:"7px",borderRadius:8,border:`1.5px dashed ${C.border}`,
+                      background:"none",cursor:"pointer",fontSize:11,color:C.faint,fontWeight:600}}>
+                    + 새 프로젝트
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ── 메인 콘텐츠 영역 ── */}
