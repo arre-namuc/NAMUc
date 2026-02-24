@@ -7,6 +7,7 @@ import {
   collection, doc,
   getDocs, getDoc, setDoc, updateDoc, deleteDoc,
   onSnapshot, serverTimestamp,
+  query, orderBy, limit, addDoc,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -166,4 +167,78 @@ export async function saveMember(member) {
 export async function deleteMember(memberId) {
   if (!isConfigured) return;
   await deleteDoc(doc(db, "members", String(memberId)));
+}
+
+// ── 채팅 ─────────────────────────────────────────────────
+
+/**
+ * 채팅방 ID 생성
+ * - 프로젝트방: "proj_{projId}"
+ * - DM: "dm_{낮은id}_{높은id}"
+ */
+export function getRoomId(type, a, b) {
+  if (type === "proj") return `proj_${a}`;
+  const sorted = [String(a), String(b)].sort();
+  return `dm_${sorted[0]}_${sorted[1]}`;
+}
+
+/** 메시지 전송 */
+export async function sendMessage(roomId, { text, from, fromName, type="text" }) {
+  if (!isConfigured) return;
+  await addDoc(collection(db, "chats", roomId, "messages"), {
+    text, from, fromName, type,
+    createdAt: serverTimestamp(),
+  });
+  await setDoc(doc(db, "chats", roomId), {
+    lastMsg: text,
+    lastAt:  serverTimestamp(),
+    lastFrom: fromName,
+  }, { merge: true });
+}
+
+/** 메시지 실시간 구독 (최근 100개) */
+export function subscribeMessages(roomId, callback) {
+  if (!isConfigured) {
+    callback([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, "chats", roomId, "messages"),
+    orderBy("createdAt", "asc"),
+    limit(100)
+  );
+  return onSnapshot(q, snap => {
+    const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(msgs);
+  });
+}
+
+/** 채팅방 목록 구독 */
+export function subscribeRooms(callback) {
+  if (!isConfigured) { callback({}); return () => {}; }
+  return onSnapshot(collection(db, "chats"), snap => {
+    const rooms = {};
+    snap.docs.forEach(d => { rooms[d.id] = d.data(); });
+    callback(rooms);
+  });
+}
+
+// ── 오피스 데이터 ─────────────────────────────────────────
+
+/** 오피스 데이터 실시간 구독 */
+export function subscribeOffice(callback) {
+  if (!isConfigured) { callback({}); return () => {}; }
+  return onSnapshot(doc(db, "settings", "office"), (snap) => {
+    if (snap.exists()) callback(snap.data());
+    else callback({});
+  });
+}
+
+/** 오피스 데이터 저장 */
+export async function saveOffice(data) {
+  if (!isConfigured) return;
+  await setDoc(doc(db, "settings", "office"), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }
