@@ -6927,15 +6927,16 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
     const accts = officeData.accounting || [];
     const [modal, setModal] = useState(null);
     const [af, setAf]       = useState({});
-    const [fileNames, setFileNames] = useState([]); // 첨부파일 표시용
 
-    // 유형: 프로젝트 결제 / AI 크레딧 / 기타
-    const TYPES = ["프로젝트 결제","AI 크레딧","경비 청구","법인카드","세금계산서","기타"];
+    // 유형 (법인카드 제외)
+    const TYPES = ["프로젝트 결제","AI 크레딧","경비 청구","세금계산서","기타"];
     const TYPE_COLOR = {
       "프로젝트 결제":"#2563eb","AI 크레딧":"#7c3aed",
-      "경비 청구":"#d97706","법인카드":"#16a34a",
-      "세금계산서":"#64748b","기타":"#94a3b8",
+      "경비 청구":"#d97706","세금계산서":"#64748b","기타":"#94a3b8",
     };
+
+    // 결제 방법
+    const PAY_METHODS = ["계좌이체","법인카드"];
 
     // 긴급도
     const URGENCY = [
@@ -6944,7 +6945,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
       { id:"여유", color:"#16a34a", bg:"#f0fdf4", icon:"🟢" },
     ];
 
-    // 처리 상태 (경영지원 워크플로우)
+    // 처리 상태
     const STATUS = [
       { id:"접수",    color:"#94a3b8", bg:"#f8fafc" },
       { id:"검토중",  color:"#d97706", bg:"#fffbeb" },
@@ -6973,54 +6974,35 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
         : [...accts, entry];
       patch("accounting", next);
       setModal(null);
-      setFileNames([]);
     };
 
-    const del = (id) => {
-      patch("accounting", accts.filter(a=>a.id!==id));
-      setModal(null);
-    };
-
-    const patchStatus = (id, status) =>
-      patch("accounting", accts.map(a=>a.id===id?{...a,status}:a));
-
-    const patchProcessMemo = (id, memo) =>
-      patch("accounting", accts.map(a=>a.id===id?{...a,processMemo:memo}:a));
+    const del = (id) => { patch("accounting", accts.filter(a=>a.id!==id)); setModal(null); };
+    const patchStatus = (id, status) => patch("accounting", accts.map(a=>a.id===id?{...a,status}:a));
+    const patchProcessMemo = (id, memo) => patch("accounting", accts.map(a=>a.id===id?{...a,processMemo:memo}:a));
 
     // 파일 첨부 (base64)
-    const handleFiles = (e) => {
+    const handleFiles = (e, field) => {
       const files = Array.from(e.target.files);
-      const names = files.map(f=>f.name);
-      setFileNames(prev=>[...prev,...names]);
       Promise.all(files.map(f=>new Promise(res=>{
         const r=new FileReader();
         r.onload=()=>res({name:f.name,url:r.result,type:f.type,size:f.size});
         r.readAsDataURL(f);
-      }))).then(attachments=>{
-        setAf(v=>({...v,attachments:[...(v.attachments||[]),...attachments]}));
+      }))).then(newFiles=>{
+        setAf(v=>({...v,[field]:[...(v[field]||[]),...newFiles]}));
       });
     };
+    const removeFile = (field, idx) => setAf(v=>({...v,[field]:(v[field]||[]).filter((_,i)=>i!==idx)}));
 
-    const removeAttachment = (idx) => {
-      setAf(v=>({...v,attachments:(v.attachments||[]).filter((_,i)=>i!==idx)}));
-      setFileNames(prev=>prev.filter((_,i)=>i!==idx));
-    };
-
-    // 긴급도 순 정렬
     const URGENCY_ORDER = {"긴급":0,"보통":1,"여유":2};
     const sorted = [...accts].sort((a,b)=>{
-      const uDiff = (URGENCY_ORDER[a.urgency]??1)-(URGENCY_ORDER[b.urgency]??1);
-      if(uDiff!==0) return uDiff;
-      return new Date(b.createdAt)-new Date(a.createdAt);
+      const uDiff=(URGENCY_ORDER[a.urgency]??1)-(URGENCY_ORDER[b.urgency]??1);
+      return uDiff!==0?uDiff:new Date(b.createdAt)-new Date(a.createdAt);
     });
     const myAccts    = sorted.filter(a=>a.requestedBy===user.name);
     const otherAccts = sorted.filter(a=>a.requestedBy!==user.name);
+    const statusCounts = STATUS.map(s=>({...s, cnt:accts.filter(a=>a.status===s.id).length}));
 
-    // 상태 요약 카운트
-    const statusCounts = STATUS.map(s=>({
-      ...s, cnt: accts.filter(a=>a.status===s.id).length
-    }));
-
+    // ── 카드 컴포넌트 ──
     const AcctCard = ({a}) => {
       const st  = STATUS.find(s=>s.id===a.status)||STATUS[0];
       const urg = URGENCY.find(u=>u.id===a.urgency)||URGENCY[1];
@@ -7031,15 +7013,22 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
 
       return (
         <div style={{background:"#fff",borderRadius:12,
-          border:`1px solid ${a.urgency==="긴급"?"#fca5a5":"#e2e8f0"}`,
-          overflow:"hidden"}}>
-          {/* 카드 헤더 */}
+          border:`1px solid ${a.urgency==="긴급"?"#fca5a5":"#e2e8f0"}`,overflow:"hidden"}}>
+
+          {/* 헤더 */}
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",
             background:urg.bg,borderBottom:"1px solid #f1f5f9"}}>
             <span style={{fontSize:11}}>{urg.icon}</span>
             <span style={{fontSize:11,fontWeight:700,color:urg.color}}>{a.urgency}</span>
             <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,fontWeight:700,
-              background:tc+"15",color:tc,marginLeft:2}}>{a.type}</span>
+              background:tc+"18",color:tc,marginLeft:2}}>{a.type}</span>
+            {a.payMethod&&(
+              <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,fontWeight:600,
+                background:a.payMethod==="계좌이체"?"#f0fdf4":"#eff6ff",
+                color:a.payMethod==="계좌이체"?"#16a34a":"#2563eb"}}>
+                {a.payMethod==="계좌이체"?"🏦 계좌이체":"💳 법인카드"}
+              </span>
+            )}
             <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1e293b",
               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.title}</span>
             <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
@@ -7047,52 +7036,81 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
           </div>
 
           <div style={{padding:"10px 14px"}}>
-            {/* 메타 정보 */}
+            {/* 메타 */}
             <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:6}}>
               <span style={{fontSize:11,color:"#64748b"}}>👤 {a.requestedBy}</span>
-              {a.amount&&<span style={{fontSize:11,color:"#1e293b",fontWeight:600}}>
+              {a.amount&&<span style={{fontSize:11,color:"#1e293b",fontWeight:700}}>
                 💰 {Number(a.amount).toLocaleString()}원
               </span>}
-              {a.dueDate&&<span style={{fontSize:11,color:a.urgency==="긴급"?"#ef4444":"#64748b",fontWeight:600}}>
-                📅 기한 {a.dueDate}
+              {a.dueDate&&<span style={{fontSize:11,
+                color:a.urgency==="긴급"?"#ef4444":"#64748b",fontWeight:600}}>
+                📅 {a.dueDate}까지
               </span>}
               <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(a.createdAt)}</span>
             </div>
 
             {/* 상세 내용 */}
             {a.memo&&<div style={{fontSize:11,color:"#475569",lineHeight:1.6,
-              padding:"6px 8px",background:"#f8fafc",borderRadius:6,marginBottom:6}}>
-              {a.memo}
-            </div>}
+              padding:"6px 8px",background:"#f8fafc",borderRadius:6,marginBottom:6,
+              whiteSpace:"pre-wrap"}}>{a.memo}</div>}
 
-            {/* 첨부 파일 */}
-            {(a.attachments||[]).length>0&&(
-              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                {a.attachments.map((att,i)=>(
-                  <a key={i} href={att.url} download={att.name} target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",gap:4,fontSize:10,
-                      padding:"3px 8px",borderRadius:6,background:"#eff6ff",
-                      color:"#2563eb",textDecoration:"none",border:"1px solid #bfdbfe"}}>
-                    📎 {att.name}
-                  </a>
-                ))}
+            {/* 계좌 정보 */}
+            {a.bankInfo&&(
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",
+                background:"#f0fdf4",borderRadius:6,marginBottom:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#16a34a"}}>🏦 계좌</span>
+                <span style={{fontSize:11,color:"#1e293b",fontFamily:"monospace"}}>{a.bankInfo}</span>
               </div>
             )}
 
-            {/* 처리 메모 (완료 회신) */}
+            {/* 결제 URL */}
+            {a.payUrl&&(
+              <div style={{marginBottom:6}}>
+                <a href={a.payUrl} target="_blank" rel="noreferrer"
+                  style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,
+                    padding:"5px 10px",borderRadius:6,background:"#eff6ff",
+                    border:"1px solid #bfdbfe",color:"#2563eb",
+                    textDecoration:"none",fontWeight:600}}>
+                  🔗 결제 링크 바로가기 →
+                </a>
+              </div>
+            )}
+
+            {/* 첨부 파일 (견적서/영수증 + 증빙자료) */}
+            {[(a.attachments||[]),"견적서/영수증",(a.evidence||[]),"증빙자료"].reduce((acc,item,i)=>{
+              if(typeof item==="string") { acc.label=item; return acc; }
+              if(item.length>0) acc.groups.push({label:acc.label,files:item});
+              return acc;
+            },{groups:[],label:""}).groups.map(g=>(
+              <div key={g.label} style={{marginBottom:5}}>
+                <div style={{fontSize:9,color:"#94a3b8",fontWeight:600,marginBottom:3}}>{g.label}</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {g.files.map((att,i)=>(
+                    <a key={i} href={att.url} download={att.name} target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",gap:3,fontSize:10,
+                        padding:"3px 8px",borderRadius:6,background:"#f8fafc",
+                        color:"#475569",textDecoration:"none",border:"1px solid #e2e8f0"}}>
+                      📎 {att.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* 완료 회신 메모 */}
             {a.processMemo&&!editMemo&&(
               <div style={{padding:"6px 8px",background:"#f0fdf4",borderRadius:6,
-                fontSize:11,color:"#16a34a",marginBottom:6}}>
+                fontSize:11,color:"#16a34a",marginBottom:6,lineHeight:1.5}}>
                 ✅ {a.processMemo}
                 {canManage&&<button onClick={()=>setEditMemo(true)}
-                  style={{marginLeft:6,fontSize:9,color:"#94a3b8",background:"none",
+                  style={{marginLeft:8,fontSize:9,color:"#94a3b8",background:"none",
                     border:"none",cursor:"pointer"}}>수정</button>}
               </div>
             )}
             {canManage&&editMemo&&(
               <div style={{display:"flex",gap:6,marginBottom:6}}>
                 <input value={memoVal} onChange={e=>setMemoVal(e.target.value)}
-                  placeholder="처리 내용 / 완료 회신 메모"
+                  placeholder="처리 내용 및 완료 회신 내용"
                   style={{flex:1,...inp,padding:"5px 8px",fontSize:11}}/>
                 <button onClick={()=>{patchProcessMemo(a.id,memoVal);setEditMemo(false);}}
                   style={{padding:"5px 10px",borderRadius:6,border:"none",
@@ -7103,10 +7121,10 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
               </div>
             )}
 
-            {/* 액션 영역 */}
-            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            {/* 액션 */}
+            <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
               {canManage&&(
-                <div style={{display:"flex",gap:4}}>
+                <>
                   {STATUS.map(s=>(
                     <button key={s.id} onClick={()=>patchStatus(a.id,s.id)}
                       style={{padding:"3px 8px",borderRadius:6,border:"none",cursor:"pointer",
@@ -7119,16 +7137,16 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                   ))}
                   {!a.processMemo&&!editMemo&&(
                     <button onClick={()=>setEditMemo(true)}
-                      style={{padding:"3px 8px",borderRadius:6,border:"1px solid #e2e8f0",
-                        background:"#f8fafc",fontSize:10,cursor:"pointer",color:"#64748b"}}>
-                      완료 회신
+                      style={{padding:"3px 8px",borderRadius:6,border:"1px solid #bbf7d0",
+                        background:"#f0fdf4",fontSize:10,cursor:"pointer",color:"#16a34a",fontWeight:600}}>
+                      ✅ 완료 회신
                     </button>
                   )}
-                </div>
+                </>
               )}
               <div style={{flex:1}}/>
               {canEdit2&&(
-                <button onClick={()=>{setAf({...a});setModal({id:a.id});setFileNames((a.attachments||[]).map(x=>x.name));}}
+                <button onClick={()=>{setAf({...a});setModal({id:a.id});}}
                   style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
                     background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
               )}
@@ -7138,14 +7156,40 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
       );
     };
 
+    // ── FileAttachField 헬퍼 ──
+    const FileField = ({label, field}) => (
+      <Field label={label}>
+        <label style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
+          borderRadius:8,border:"2px dashed #bfdbfe",background:"#f8fbff",
+          cursor:"pointer",fontSize:12,color:"#2563eb",fontWeight:600,marginBottom:4}}>
+          + 파일 선택
+          <input type="file" multiple accept="image/*,.pdf,.xlsx,.xls,.docx"
+            onChange={e=>handleFiles(e,field)} style={{display:"none"}}/>
+        </label>
+        {(af[field]||[]).length>0&&(
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {af[field].map((att,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,
+                padding:"3px 8px",borderRadius:6,background:"#eff6ff",
+                border:"1px solid #bfdbfe",color:"#2563eb"}}>
+                📎 {att.name}
+                <button onClick={()=>removeFile(field,i)}
+                  style={{background:"none",border:"none",cursor:"pointer",
+                    color:"#94a3b8",fontSize:10,padding:0}}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Field>
+    );
+
     return (
       <div>
-        {/* 상단 */}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-          {/* 상태 요약 */}
+        {/* 상단 요약 + 등록 버튼 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
           <div style={{display:"flex",gap:6,flex:1,flexWrap:"wrap"}}>
             {statusCounts.map(s=>(
-              <div key={s.id} style={{display:"flex",alignItems:"center",gap:5,
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:4,
                 padding:"4px 12px",borderRadius:99,background:s.bg,
                 border:`1px solid ${s.color}33`}}>
                 <span style={{fontSize:16,fontWeight:800,color:s.color}}>{s.cnt}</span>
@@ -7153,12 +7197,11 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
               </div>
             ))}
           </div>
-          <Btn primary sm onClick={()=>{setAf({type:"프로젝트 결제",urgency:"보통",status:"접수"});setModal({});setFileNames([]);}}>
+          <Btn primary sm onClick={()=>{setAf({type:"프로젝트 결제",urgency:"보통",payMethod:"계좌이체"});setModal({});}}>
             + 회계 요청
           </Btn>
         </div>
 
-        {/* 요청 목록 */}
         {[{title:"내 요청",list:myAccts},{title:"팀 전체 요청",list:otherAccts}].map(({title,list})=>
           list.length>0&&(
             <div key={title} style={{marginBottom:14}}>
@@ -7178,7 +7221,8 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
 
         {/* 등록/수정 모달 */}
         {modal&&(
-          <Modal title={modal.id?"회계 요청 수정":"회계 처리 요청"} onClose={()=>{setModal(null);setFileNames([]);}}>
+          <Modal title={modal.id?"회계 요청 수정":"회계 처리 요청"} onClose={()=>setModal(null)}>
+
             {/* 긴급도 */}
             <Field label="긴급도">
               <div style={{display:"flex",gap:6}}>
@@ -7201,11 +7245,30 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
                 {TYPES.map(t=>(
                   <button key={t} type="button" onClick={()=>setAf(v=>({...v,type:t}))}
                     style={{padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
-                      fontSize:11,fontWeight:(af.type||"프로젝트 결제")===t?700:400,
-                      background:(af.type||"프로젝트 결제")===t?(TYPE_COLOR[t]+"20"||"#f8fafc"):"#f1f5f9",
-                      color:(af.type||"프로젝트 결제")===t?(TYPE_COLOR[t]||"#475569"):"#475569",
-                      outline:(af.type||"프로젝트 결제")===t?`2px solid ${TYPE_COLOR[t]||"#94a3b8"}`:"none"}}>
+                      fontSize:11,fontWeight:(af.type)===t?700:400,
+                      background:(af.type)===t?(TYPE_COLOR[t]+"20"):"#f1f5f9",
+                      color:(af.type)===t?(TYPE_COLOR[t]):"#475569",
+                      outline:(af.type)===t?`2px solid ${TYPE_COLOR[t]}`:"none"}}>
                     {t}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* 결제 방법 */}
+            <Field label="결제 방법">
+              <div style={{display:"flex",gap:6}}>
+                {PAY_METHODS.map(m=>(
+                  <button key={m} type="button" onClick={()=>setAf(v=>({...v,payMethod:m}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:(af.payMethod||"계좌이체")===m?700:400,
+                      background:(af.payMethod||"계좌이체")===m
+                        ?(m==="계좌이체"?"#f0fdf4":"#eff6ff"):"#f8fafc",
+                      color:(af.payMethod||"계좌이체")===m
+                        ?(m==="계좌이체"?"#16a34a":"#2563eb"):"#94a3b8",
+                      outline:(af.payMethod||"계좌이체")===m
+                        ?`2px solid ${m==="계좌이체"?"#16a34a":"#2563eb"}`:"1px solid #f1f5f9"}}>
+                    {m==="계좌이체"?"🏦 계좌이체":"💳 법인카드"}
                   </button>
                 ))}
               </div>
@@ -7228,44 +7291,41 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
               </Field>
             </div>
 
+            {/* 계좌 정보 (계좌이체 선택 시 강조) */}
+            <Field label={`🏦 계좌 정보${(af.payMethod||"계좌이체")==="계좌이체"?" *":""}`}>
+              <input style={{...inp,
+                borderColor:(af.payMethod||"계좌이체")==="계좌이체"?"#86efac":"#e2e8f0",
+                background:(af.payMethod||"계좌이체")==="계좌이체"?"#f0fdf4":"#fff"}}
+                value={af.bankInfo||""}
+                placeholder="은행명 / 계좌번호 / 예금주 (예: 국민은행 123-456-789 홍길동)"
+                onChange={e=>setAf(v=>({...v,bankInfo:e.target.value}))}/>
+            </Field>
+
+            {/* 결제 URL */}
+            <Field label="🔗 결제 URL">
+              <input style={inp} value={af.payUrl||""}
+                placeholder="결제 페이지 링크 (쇼핑몰, 서비스 구독 등)"
+                onChange={e=>setAf(v=>({...v,payUrl:e.target.value}))}/>
+            </Field>
+
             {/* 상세 내용 */}
             <Field label="상세 내용">
-              <textarea style={{...inp,minHeight:70,resize:"vertical",lineHeight:1.6}}
-                value={af.memo||""} placeholder="결제 방법, 계좌 정보, 기타 요청 사항 등"
+              <textarea style={{...inp,minHeight:60,resize:"vertical",lineHeight:1.6}}
+                value={af.memo||""} placeholder="기타 요청 사항, 특이 사항 등"
                 onChange={e=>setAf(v=>({...v,memo:e.target.value}))}/>
             </Field>
 
-            {/* 견적서 및 영수증 첨부 */}
-            <Field label="📎 견적서 / 영수증 첨부">
-              <label style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
-                borderRadius:8,border:"2px dashed #bfdbfe",background:"#f8fbff",
-                cursor:"pointer",fontSize:12,color:"#2563eb",fontWeight:600}}>
-                <span>+ 파일 선택</span>
-                <input type="file" multiple accept="image/*,.pdf,.xlsx,.xls,.docx"
-                  onChange={handleFiles}
-                  style={{display:"none"}}/>
-              </label>
-              {(af.attachments||[]).length>0&&(
-                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
-                  {af.attachments.map((att,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,
-                      padding:"3px 8px",borderRadius:6,background:"#eff6ff",
-                      border:"1px solid #bfdbfe",color:"#2563eb"}}>
-                      📎 {att.name}
-                      <button onClick={()=>removeAttachment(i)}
-                        style={{background:"none",border:"none",cursor:"pointer",
-                          color:"#94a3b8",fontSize:10,padding:0,marginLeft:2}}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Field>
+            {/* 견적서/영수증 */}
+            <FileField label="📎 견적서 / 영수증" field="attachments"/>
+
+            {/* 증빙자료 */}
+            <FileField label="🗂 증빙자료" field="evidence"/>
 
             <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
               {modal.id&&(af.requestedBy===user.name||canManage)&&
                 <Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
               <div style={{flex:1}}/>
-              <Btn onClick={()=>{setModal(null);setFileNames([]);}}>취소</Btn>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
               <Btn primary onClick={save} disabled={!af.title?.trim()}>저장</Btn>
             </div>
           </Modal>
