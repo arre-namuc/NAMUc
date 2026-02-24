@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   subscribeProjects, saveProject, deleteProject,
   uploadVoucherFile, uploadFeedbackImage, subscribeCompany, saveCompany,
+  signInWithGoogle, signOutUser, onAuthChange,
   subscribeMembers, saveMember, deleteMember,
   isConfigured,
   subscribeOffice, saveOffice,
@@ -970,49 +971,71 @@ const todayStr = () => new Date().toISOString().slice(0,10);
 const isOverdue = t => t.stage!=="ONAIR" && t.due && t.due < todayStr();
 
 // ═══════════════════════════════════════════════════════════
-// 로그인 화면
+// 로그인 화면 — Google 로그인
 // ═══════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, accounts }) {
-  const [selId, setSelId] = useState(accounts[0]?.id ?? "");
-  const [pw, setPw]       = useState("");
-  const [err, setErr]     = useState("");
-  const [show, setShow]   = useState(false);
+  const [err,      setErr]      = useState("");
+  const [loading,  setLoading]  = useState(false);
 
-  const login = () => {
-    const acc = accounts.find(a=>String(a.id)===String(selId) && a.pw===pw);
-    if (acc) onLogin(acc);
-    else setErr("비밀번호가 올바르지 않습니다.");
+  const handleGoogle = async () => {
+    setErr(""); setLoading(true);
+    try {
+      const gUser = await signInWithGoogle();
+      // 이메일로 accounts에서 매칭
+      const acc = accounts.find(a =>
+        a.email && a.email.toLowerCase() === gUser.email.toLowerCase()
+      );
+      if (acc) {
+        onLogin({...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
+      } else {
+        await signOutUser();
+        setErr("등록되지 않은 계정입니다. 관리자에게 문의하세요.\n(" + gUser.email + ")");
+      }
+    } catch(e) {
+      if (e.code !== "auth/popup-closed-by-user") setErr("로그인 중 오류가 발생했습니다.");
+    }
+    setLoading(false);
   };
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:20,padding:"40px 36px",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,.08)"}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
           <div style={{fontSize:36,marginBottom:8}}>🎬</div>
           <div style={{fontWeight:800,fontSize:22,letterSpacing:-0.5}}>CutFlow</div>
           <div style={{fontSize:13,color:C.faint,marginTop:4}}>광고 영상 프로덕션 관리</div>
         </div>
-        <Field label="이름">
-          <select style={inp} value={selId} onChange={e=>{setSelId(e.target.value);setErr("");setPw("");}}>
-            {accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
-          </select>
-        </Field>
-        <Field label="비밀번호">
-          <div style={{position:"relative"}}>
-            <input style={{...inp,paddingRight:40}} type={show?"text":"password"} value={pw}
-              placeholder="비밀번호 입력"
-              onChange={e=>{setPw(e.target.value);setErr("");}}
-              onKeyDown={e=>e.key==="Enter"&&login()}/>
-            <button onClick={()=>setShow(v=>!v)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:15,padding:0}}>
-              {show?"🙈":"👁"}
-            </button>
+        {err && (
+          <div style={{fontSize:12,color:C.red,marginBottom:16,padding:"10px 14px",background:C.redLight,borderRadius:8,whiteSpace:"pre-line",lineHeight:1.6}}>
+            ⚠️ {err}
           </div>
-        </Field>
-        {err && <div style={{fontSize:13,color:C.red,marginBottom:12,padding:"8px 12px",background:C.redLight,borderRadius:8}}>{err}</div>}
-        <button onClick={login} style={{width:"100%",padding:12,borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>
-          로그인
+        )}
+        <button
+          onClick={handleGoogle}
+          disabled={loading}
+          style={{width:"100%",padding:"13px 16px",borderRadius:10,border:`1.5px solid ${C.border}`,
+            background:loading?"#f8fafc":C.white,color:C.dark,fontSize:15,fontWeight:600,
+            cursor:loading?"not-allowed":"pointer",display:"flex",alignItems:"center",
+            justifyContent:"center",gap:10,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+          {loading ? (
+            <span style={{color:C.faint}}>로그인 중...</span>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              Google 계정으로 로그인
+            </>
+          )}
         </button>
+        <div style={{marginTop:20,fontSize:11,color:C.faint,textAlign:"center",lineHeight:1.6}}>
+          등록된 팀원 계정으로만 접속 가능합니다<br/>
+          계정 등록은 관리자에게 문의하세요
         </div>
+      </div>
     </div>
   );
 }
@@ -4131,7 +4154,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
   };
   const openEdit = m => { setEditM(m); setMf({...m}); setModal(true); };
   const save = () => {
-    if(!mf.name?.trim()||!mf.pw?.trim()||!mf.jobTitle?.trim()) return;
+    if(!mf.name?.trim()||!mf.email?.trim()||!mf.jobTitle?.trim()) return;
     onSave({...mf, id:editM?editM.id:"m"+Date.now(), order:editM?(editM.order||0):accounts.length});
     setModal(false);
   };
@@ -4361,8 +4384,9 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                 placeholder="직접 입력 (위에서 선택하거나 직접 입력)"
                 onChange={e=>setMf(v=>({...v,jobTitle:e.target.value}))}/>
             </Field>
-            <Field label="비밀번호 *">
-              <input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/>
+            <Field label="구글 계정 이메일 *">
+              <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))}
+                placeholder="example@gmail.com" type="email"/>
             </Field>
           </div>
 
@@ -4474,7 +4498,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
             {editM && <Btn danger sm onClick={()=>{setModal(false);setResignConf(editM);}}>퇴사 처리</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(false)}>취소</Btn>
-            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()||!mf.jobTitle?.trim()}>저장</Btn>
+            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.email?.trim()||!mf.jobTitle?.trim()}>저장</Btn>
           </div>
         </Modal>
       )}
@@ -9580,9 +9604,23 @@ function App() {
     if (!isConfigured) return;
     const u1 = subscribeProjects(fb => { if(fb.length>0){setProjects(fb);setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);} });
     const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
-    const u3 = subscribeMembers(m => { if(m.length>0) setAccounts(m); });
     const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
-    return () => { u1(); u2(); u3(); u4(); };
+
+    // members 구독 + 구글 로그인 상태 복구
+    const u3 = subscribeMembers(m => {
+      if(m.length>0) {
+        setAccounts(m);
+        // 새로고침 시 로그인 상태 복구
+        const u5 = onAuthChange(gUser => {
+          if (!gUser) return;
+          const acc = m.find(a => a.email && a.email.toLowerCase() === gUser.email.toLowerCase());
+          if (acc) setUser(prev => prev ? prev : {...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
+        });
+        return u5;
+      }
+    });
+
+    return () => { u1(); u2(); u3?.(); u4(); };
   }, []);
   // D-day 알림 자동 생성
   useEffect(() => {
@@ -9899,7 +9937,7 @@ return (
         })()}
 
         {/* 유저 */}
-        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setUser(null)}>
+        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={async()=>{await signOutUser();setUser(null);}}>
           <Avatar name={user.name}/>
           <div>
             <div style={{fontSize:13,fontWeight:700,lineHeight:1.2}}>{user.name}</div>
