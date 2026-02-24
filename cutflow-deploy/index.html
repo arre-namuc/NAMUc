@@ -3,8 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NAMUc — 광고 영상 프로덕션 관리</title>
-    <link rel="icon" href="https://i.imgur.com/ONdvF5Q.jpeg"/>
+    <title>CutFlow</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1e293b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CutFlow" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- 파비콘 -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -13,5 +25,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- PWA 서비스 워커 등록 -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
