@@ -9947,11 +9947,14 @@ return (
                         onClick={()=>{
                           if(window.confirm("일반 프로젝트로 전환하시겠습니까?")) {
                             patchProj(p=>{
-                              const existing = p.tasks||[];
+                              // 기존 비딩 태스크 → phaseId:"s01"(비딩 단계) 부여
+                              const biddingTasks = (p.tasks||[]).map(t=>
+                                t.phaseId ? t : {...t, phaseId:"s01", phase:"비딩"}
+                              );
                               const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                                .filter(nt => !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                                .filter(nt => nt.phaseId!=="s01" && !biddingTasks.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
                               return {...p, isBidding:false, stage:"PLANNING",
-                                tasks:[...existing, ...templateTasks]};
+                                tasks:[...biddingTasks, ...templateTasks]};
                             });
                             setBiddingView("tasks");
                           }
@@ -10073,10 +10076,12 @@ return (
                     <button onClick={()=>{
                       if(window.confirm("일반 프로젝트로 전환하시겠습니까?")) {
                         patchProj(p=>{
-                          const existing = p.tasks||[];
+                          const biddingTasks = (p.tasks||[]).map(t=>
+                            t.phaseId ? t : {...t, phaseId:"s01", phase:"비딩"}
+                          );
                           const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
-                            .filter(nt => !existing.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
-                          return {...p, isBidding:false, stage:"PLANNING", tasks:[...existing, ...templateTasks]};
+                            .filter(nt => nt.phaseId!=="s01" && !biddingTasks.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                          return {...p, isBidding:false, stage:"PLANNING", tasks:[...biddingTasks, ...templateTasks]};
                         });
                         setBiddingView("tasks");
                       }
