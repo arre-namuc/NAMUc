@@ -1081,14 +1081,18 @@ function PhaseFeedbacks({ feedbacks, phaseId }) {
 
 function PhaseRoleDisplay({ projectRoles, phase }) {
   const pr = (projectRoles||{})[phase.id] || {};
-  const owner  = pr.owner  || "";
-  const driver = pr.driver || "";
-  if(!owner && !driver) return null;
+  const owner  = pr.owner || "";
+  // driver: 배열 또는 구버전 string 모두 호환
+  const driverArr = Array.isArray(pr.driver)
+    ? pr.driver
+    : (pr.driver ? pr.driver.split(",").map(s=>s.trim()).filter(Boolean) : []);
+  const driverStr = driverArr.join(", ");
+  if(!owner && !driverStr) return null;
   return (
     <>
       {owner && <span style={{fontSize:10,color:"#94a3b8"}}>주도: <strong style={{color:"#d97706"}}>{owner}</strong></span>}
-      {owner && driver && <span style={{fontSize:10,color:"#94a3b8",margin:"0 4px"}}>|</span>}
-      {driver && <span style={{fontSize:10,color:"#94a3b8"}}>실행: <strong style={{color:"#2563eb"}}>{driver}</strong></span>}
+      {owner && driverStr && <span style={{fontSize:10,color:"#94a3b8",margin:"0 4px"}}>|</span>}
+      {driverStr && <span style={{fontSize:10,color:"#94a3b8"}}>실행: <strong style={{color:"#2563eb"}}>{driverStr}</strong></span>}
     </>
   );
 }
@@ -1097,10 +1101,19 @@ function PhaseRoleDisplay({ projectRoles, phase }) {
 function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onAddTask, onAddSubTask, onDeleteTask, onUpdatePhaseRole, projectRoles }) {
   const [expandedPhase, setExpandedPhase] = useState(null);
   const [roleModal, setRoleModal] = useState(null);
-  const [roleForm, setRoleForm] = useState({owner:"", driver:""});
+  const [roleForm, setRoleForm] = useState({owner:"", driver:[]});
   const today = todayStr();
-  const openRoleEdit = (e, phase) => { e.stopPropagation(); setRoleModal(phase); };
-  const saveRole = () => { if(onUpdatePhaseRole) onUpdatePhaseRole(roleModal.id, roleForm); setRoleModal(null); };
+  const openRoleEdit = (e, phase) => {
+    e.stopPropagation();
+    const saved = (projectRoles||{})[phase.id] || {};
+    // driver: 기존 string → 배열 호환
+    const driverArr = Array.isArray(saved.driver)
+      ? saved.driver
+      : (saved.driver ? saved.driver.split(",").map(s=>s.trim()).filter(Boolean) : []);
+    setRoleForm({ owner: saved.owner||"", driver: driverArr });
+    setRoleModal(phase);
+  };
+  const saveRole = () => { if(onUpdatePhaseRole) onUpdatePhaseRole(roleModal.id, { ...roleForm, driver: roleForm.driver }); setRoleModal(null); };
   const memberNames = (accounts||[]).map(a=>a.name);
   const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
   const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
@@ -1481,10 +1494,37 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
             ))}
           </select>
         </Field>
-        <Field label="실행자 (Driver) - 쉼표로 구분">
-          <input style={inp} value={roleForm.driver}
-            onChange={e=>setRoleForm(v=>({...v,driver:e.target.value}))}
-            placeholder="예: 감독, 조감독"/>
+        <Field label="실행자 (Driver)">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {[...["EPD","기획실장","PD","감독","조감독","AE","AI작업자","경영지원","대표"],
+               ...memberNames].filter((v,i,a)=>a.indexOf(v)===i).map(name => {
+              const sel = (roleForm.driver||[]).includes(name);
+              return (
+                <button key={name} type="button"
+                  onClick={()=>setRoleForm(v=>({
+                    ...v,
+                    driver: sel
+                      ? v.driver.filter(d=>d!==name)
+                      : [...(v.driver||[]), name]
+                  }))}
+                  style={{display:"flex",alignItems:"center",gap:4,
+                    padding:"5px 11px",borderRadius:99,border:"none",cursor:"pointer",
+                    fontSize:11,fontWeight:sel?700:400,
+                    background:sel?"#2563eb":"#f1f5f9",
+                    color:sel?"#fff":"#475569",
+                    outline:sel?"2px solid #2563eb":"none",
+                    transition:"all .12s"}}>
+                  {sel && <span style={{fontSize:9}}>✓</span>}
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+          {(roleForm.driver||[]).length>0&&(
+            <div style={{fontSize:11,color:"#64748b",marginTop:6}}>
+              선택됨: {roleForm.driver.join(", ")}
+            </div>
+          )}
         </Field>
         <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
           <Btn onClick={()=>setRoleModal(null)}>취소</Btn>
@@ -3801,15 +3841,120 @@ function SettlementView({ project, onConfirm, onSave }) {
 // ═══════════════════════════════════════════════════════════
 // 구성원 관리 컴포넌트
 // ═══════════════════════════════════════════════════════════
-const ROLES = ["대표","EPD","PD","감독","조감독","AE","AI","경영지원"];
+const ROLES = ["대표","EPD","PD","감독","조감독","AE","AI작업자","경영지원","팀장","실장","매니저","기타"];
+
+// 팀 구조
+const TEAMS = [
+  { id:"management", name:"경영지원실",      color:"#d97706", bg:"#fffbeb", icon:"🏢" },
+  { id:"pd",         name:"PD팀",           color:"#2563eb", bg:"#eff6ff", icon:"🎬" },
+  { id:"ai",         name:"AI연출팀",        color:"#7c3aed", bg:"#f5f3ff", icon:"🤖" },
+  { id:"contents",   name:"콘텐츠전략기획팀", color:"#16a34a", bg:"#f0fdf4", icon:"📋" },
+];
+const TEAM_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
+// 수습 중 여부
+const isProbation = (m) => {
+  if (!m.probationEnd) return false;
+  return m.probationEnd >= new Date().toISOString().slice(0,10);
+};
+const ProbationBadge = () => (
+  <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:99,
+    background:"#fef3c7",color:"#d97706",border:"1px solid #fde68a",
+    verticalAlign:"middle",marginLeft:3}}>수습</span>
+);
+
+function OrgChart({ accounts }) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {TEAMS.map(team=>{
+        const members = accounts.filter(a=>a.team===team.id)
+          .sort((a,b)=>(a.order||0)-(b.order||0));
+        return (
+          <div key={team.id} style={{borderRadius:14,border:`1px solid ${team.color}33`,overflow:"hidden"}}>
+            {/* 팀 헤더 */}
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 18px",
+              background:`linear-gradient(135deg,${team.bg},${team.color}18)`}}>
+              <span style={{fontSize:20}}>{team.icon}</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:15,color:team.color}}>{team.name}</div>
+                <div style={{fontSize:11,color:"#94a3b8"}}>{members.length}명</div>
+              </div>
+            </div>
+            {/* 팀원 카드 그리드 */}
+            {members.length===0
+              ? <div style={{padding:"18px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                  배정된 팀원이 없습니다
+                </div>
+              : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10,padding:"14px"}}>
+                  {members.map(m=>(
+                    <div key={m.id} style={{background:"#fff",borderRadius:10,
+                      border:"1px solid #e2e8f0",padding:"12px 14px",
+                      display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <Avatar name={m.name} size={36}/>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:2}}>
+                          {m.name}{isProbation(m)&&<ProbationBadge/>}
+                        </div>
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+                          <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,fontWeight:700,
+                            background:team.bg,color:team.color}}>{m.role}</span>
+                          {m.jobTitle&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                            background:"#f1f5f9",color:"#64748b"}}>{m.jobTitle}</span>}
+                        </div>
+                        {m.phone&&<div style={{fontSize:10,color:"#64748b"}}>📱 {m.phone}</div>}
+                        {m.email&&<div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>✉️ {m.email}</div>}
+                        {m.joinDate&&<div style={{fontSize:10,color:"#94a3b8"}}>
+                          입사 {m.joinDate}
+                          {isProbation(m)&&<span style={{color:"#d97706",marginLeft:4}}>
+                            (~{m.probationEnd} 수습)
+                          </span>}
+                        </div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+        );
+      })}
+      {/* 미배정 인원 */}
+      {accounts.filter(a=>!a.team||!TEAMS.find(t=>t.id===a.team)).length>0&&(
+        <div style={{borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+          <div style={{padding:"12px 18px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0"}}>
+            <span style={{fontWeight:700,fontSize:14,color:"#94a3b8"}}>⬜ 팀 미배정</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10,padding:"14px"}}>
+            {accounts.filter(a=>!a.team||!TEAMS.find(t=>t.id===a.team)).map(m=>(
+              <div key={m.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",
+                padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                <Avatar name={m.name} size={36}/>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{m.name}</div>
+                  <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                    background:"#f1f5f9",color:"#64748b",fontWeight:600}}>{m.role}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MemberManagement({ accounts, onSave, onDelete }) {
+  const [viewMode, setViewMode] = useState("list"); // "list" | "org"
   const [modal, setModal] = useState(false);
   const [editM, setEditM] = useState(null);
   const [mf,    setMf]    = useState({});
   const [conf,  setConf]  = useState(null);
 
-  const openAdd  = () => { setEditM(null); setMf({name:"",role:ROLES[1],pw:"",canViewFinance:false,canManageMembers:false}); setModal(true); };
+  const openAdd  = () => {
+    setEditM(null);
+    setMf({name:"",role:ROLES[2],team:"",pw:"",
+           canViewFinance:false,canManageMembers:false,
+           jobTitle:"",phone:"",email:"",joinDate:"",probationEnd:"",birthDate:"",idLast4:"",emergencyContact:""});
+    setModal(true);
+  };
   const openEdit = m => { setEditM(m); setMf({...m}); setModal(true); };
   const save = () => {
     if(!mf.name?.trim()||!mf.pw?.trim()) return;
@@ -3817,59 +3962,205 @@ function MemberManagement({ accounts, onSave, onDelete }) {
     setModal(false);
   };
 
+  const sorted = [...accounts].sort((a,b)=>{
+    const ta = TEAMS.findIndex(t=>t.id===a.team);
+    const tb = TEAMS.findIndex(t=>t.id===b.team);
+    if(ta!==tb) return (ta===-1?99:ta)-(tb===-1?99:tb);
+    return (a.order||0)-(b.order||0);
+  });
+
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div style={{fontWeight:700,fontSize:14}}>구성원 목록 ({accounts.length}명)</div>
+      {/* 상단 바 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{fontWeight:700,fontSize:14}}>구성원 ({accounts.length}명)</div>
+          {/* 뷰 전환 */}
+          <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>
+            {[{id:"list",label:"📋 목록"},{id:"org",label:"🏢 조직도"}].map(v=>(
+              <button key={v.id} onClick={()=>setViewMode(v.id)}
+                style={{padding:"5px 12px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
+                  background:viewMode===v.id?"#2563eb":"#fff",
+                  color:viewMode===v.id?"#fff":"#64748b"}}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>
       </div>
-      <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-          <span/><span>이름</span><span>직책</span><span style={{textAlign:"center"}}>경영관리열람</span><span style={{textAlign:"center"}}>멤버관리</span><span>비밀번호</span><span/>
-        </div>
-        {accounts.length===0 && <div style={{padding:"30px",textAlign:"center",color:C.faint}}>구성원이 없습니다</div>}
-        {accounts.map((m,i)=>(
-          <div key={m.id} style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-            <Avatar name={m.name} size={28}/>
-            <div style={{fontWeight:700,fontSize:13}}>{m.name}</div>
-            <span style={{fontSize:12,padding:"2px 8px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{m.role}</span>
-            <div style={{textAlign:"center"}}>{m.canViewFinance?<span style={{color:C.green}}>✅</span>:<span style={{color:C.faint}}>—</span>}</div>
-            <div style={{textAlign:"center"}}>{m.canManageMembers?<span style={{color:C.blue}}>✅</span>:<span style={{color:C.faint}}>—</span>}</div>
-            <span style={{fontSize:12,color:C.faint,fontFamily:"monospace"}}>{m.pw}</span>
-            <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-              <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14}}>✏️</button>
-              <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14}}>🗑️</button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{marginTop:12,padding:"10px 14px",background:C.amberLight,borderRadius:8,fontSize:12,color:C.amber}}>
-        ⚠️ 비밀번호는 구성원이 앱에 로그인할 때 사용합니다.
-      </div>
 
+      {viewMode==="org"
+        ? <OrgChart accounts={accounts}/>
+        : (
+          <>
+            {/* 팀별 그룹 목록 */}
+            {TEAMS.map(team=>{
+              const members = sorted.filter(m=>m.team===team.id);
+              if(members.length===0) return null;
+              return (
+                <div key={team.id} style={{marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                    borderRadius:"10px 10px 0 0",background:team.bg,
+                    border:`1px solid ${team.color}44`}}>
+                    <span>{team.icon}</span>
+                    <span style={{fontWeight:700,fontSize:12,color:team.color}}>{team.name}</span>
+                    <span style={{fontSize:11,color:team.color,opacity:.7}}>{members.length}명</span>
+                  </div>
+                  <div style={{border:`1px solid ${team.color}33`,borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 80px 80px 70px 56px",
+                      background:"#f8fafc",padding:"8px 12px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                      <span/><span>이름 / 직함</span><span>직책</span><span>연락처</span>
+                      <span style={{textAlign:"center"}}>경영열람</span>
+                      <span style={{textAlign:"center"}}>멤버관리</span>
+                      <span>입사일</span><span/>
+                    </div>
+                    {members.map((m,i)=>(
+                      <div key={m.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 80px 80px 70px 56px",
+                        padding:"10px 12px",borderTop:"1px solid #f1f5f9",gap:6,alignItems:"center",
+                        background:i%2===0?"#fff":"#fafbfc"}}>
+                        <Avatar name={m.name} size={26}/>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>
+                          {m.name}{isProbation(m)&&<ProbationBadge/>}
+                        </div>
+                          {m.jobTitle&&<div style={{fontSize:10,color:"#94a3b8"}}>{m.jobTitle}</div>}
+                        </div>
+                        <span style={{fontSize:11,padding:"2px 7px",borderRadius:99,
+                          background:team.bg,color:team.color,fontWeight:600,whiteSpace:"nowrap"}}>{m.role}</span>
+                        <div style={{fontSize:10,color:"#64748b"}}>
+                          {m.phone&&<div>{m.phone}</div>}
+                          {m.email&&<div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{m.email}</div>}
+                        </div>
+                        <div style={{textAlign:"center"}}>{m.canViewFinance?<span style={{color:"#16a34a"}}>✅</span>:<span style={{color:"#cbd5e1"}}>—</span>}</div>
+                        <div style={{textAlign:"center"}}>{m.canManageMembers?<span style={{color:"#2563eb"}}>✅</span>:<span style={{color:"#cbd5e1"}}>—</span>}</div>
+                        <div style={{fontSize:10}}>
+                          <div style={{color:"#94a3b8"}}>{m.joinDate||"—"}</div>
+                          {isProbation(m)&&<div style={{color:"#d97706",fontWeight:600}}>
+                            ~{m.probationEnd}
+                          </div>}
+                        </div>
+                        <div style={{display:"flex",gap:3,justifyContent:"flex-end"}}>
+                          <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                          <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* 팀 미배정 */}
+            {sorted.filter(m=>!m.team||!TEAMS.find(t=>t.id===m.team)).length>0&&(
+              <div style={{marginBottom:16}}>
+                <div style={{padding:"8px 12px",borderRadius:"10px 10px 0 0",
+                  background:"#f8fafc",border:"1px solid #e2e8f0",
+                  fontWeight:700,fontSize:12,color:"#94a3b8"}}>⬜ 팀 미배정</div>
+                <div style={{border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+                  {sorted.filter(m=>!m.team||!TEAMS.find(t=>t.id===m.team)).map((m,i)=>(
+                    <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,
+                      padding:"10px 12px",borderTop:i?`1px solid #f1f5f9`:undefined,
+                      background:i%2===0?"#fff":"#fafbfc"}}>
+                      <Avatar name={m.name} size={26}/>
+                      <div style={{flex:1}}>
+                        <span style={{fontWeight:700,fontSize:12,marginRight:8}}>{m.name}</span>
+                        <span style={{fontSize:11,padding:"1px 7px",borderRadius:99,
+                          background:"#f1f5f9",color:"#64748b"}}>{m.role}</span>
+                      </div>
+                      <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                      <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )
+      }
+
+      {/* 추가/수정 모달 */}
       {modal && (
         <Modal title={editM?"구성원 수정":"구성원 추가"} onClose={()=>setModal(false)}>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="이름 *"><input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="홍길동"/></Field>
-            <Field label="직책 *" half><select style={inp} value={mf.role||ROLES[1]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>{ROLES.map(r=><option key={r}>{r}</option>)}</select></Field>
-            <Field label="비밀번호 *" half><input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/></Field>
-            <Field label="연락처" half><input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
-            <Field label="이메일" half><input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/></Field>
+          {/* 기본 정보 */}
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>기본 정보</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Field label="이름 *" style={{gridColumn:"1/-1"}}>
+              <input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="홍길동"/>
+            </Field>
+            <Field label="팀">
+              <select style={inp} value={mf.team||""} onChange={e=>setMf(v=>({...v,team:e.target.value}))}>
+                <option value="">- 팀 미배정 -</option>
+                {TEAMS.map(t=><option key={t.id} value={t.id}>{t.icon} {t.name}</option>)}
+              </select>
+            </Field>
+            <Field label="직책 *">
+              <select style={inp} value={mf.role||ROLES[2]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>
+                {ROLES.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </Field>
+            <Field label="직함 (표시용)">
+              <input style={inp} value={mf.jobTitle||""} onChange={e=>setMf(v=>({...v,jobTitle:e.target.value}))} placeholder="예: 수석 PD, AI 디렉터"/>
+            </Field>
+            <Field label="비밀번호 *">
+              <input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/>
+            </Field>
           </div>
-          <div style={{marginTop:8,padding:"12px 14px",background:C.slateLight,borderRadius:10}}>
-            <div style={{fontWeight:700,fontSize:12,color:C.sub,marginBottom:10}}>권한 설정</div>
-            <div style={{display:"flex",gap:20}}>
+
+          {/* 연락처 */}
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>연락처</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Field label="휴대폰">
+              <input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
+            </Field>
+            <Field label="이메일">
+              <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
+            </Field>
+            <Field label="긴급연락처" style={{gridColumn:"1/-1"}}>
+              <input style={inp} value={mf.emergencyContact||""} onChange={e=>setMf(v=>({...v,emergencyContact:e.target.value}))} placeholder="이름 관계 010-0000-0000"/>
+            </Field>
+          </div>
+
+          {/* 인사 정보 */}
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>인사 정보</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Field label="입사일">
+              <input style={inp} type="date" value={mf.joinDate||""} onChange={e=>setMf(v=>({...v,joinDate:e.target.value}))}/>
+            </Field>
+            <Field label="수습 종료일">
+              <input style={inp} type="date" value={mf.probationEnd||""} onChange={e=>setMf(v=>({...v,probationEnd:e.target.value}))}/>
+            </Field>
+            <Field label="생년월일">
+              <input style={inp} type="date" value={mf.birthDate||""} onChange={e=>setMf(v=>({...v,birthDate:e.target.value}))}/>
+            </Field>
+            <Field label="주민번호 뒷자리 (급여용)">
+              <input style={{...inp,letterSpacing:2}} value={mf.idLast4||""} maxLength={7}
+                onChange={e=>setMf(v=>({...v,idLast4:e.target.value.replace(/\D/g,"")}))} placeholder="0000000"/>
+            </Field>
+          </div>
+
+          {/* 권한 */}
+          <div style={{padding:"12px 14px",background:"#f8fafc",borderRadius:10,marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:11,color:"#94a3b8",marginBottom:10,letterSpacing:1}}>권한 설정</div>
+            <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-                <input type="checkbox" checked={!!mf.canViewFinance} onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))} style={{accentColor:C.green,width:16,height:16}}/>
-                <div><div style={{fontWeight:600}}>💰 경영관리 열람</div><div style={{fontSize:11,color:C.faint}}>경영관리 대시보드, 결산서</div></div>
+                <input type="checkbox" checked={!!mf.canViewFinance}
+                  onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))}
+                  style={{accentColor:C.green,width:16,height:16}}/>
+                <div><div style={{fontWeight:600}}>💰 경영관리 열람</div>
+                  <div style={{fontSize:11,color:C.faint}}>경영관리 대시보드, 결산서</div></div>
               </label>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-                <input type="checkbox" checked={!!mf.canManageMembers} onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))} style={{accentColor:C.blue,width:16,height:16}}/>
-                <div><div style={{fontWeight:600}}>👥 구성원 관리</div><div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div></div>
+                <input type="checkbox" checked={!!mf.canManageMembers}
+                  onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))}
+                  style={{accentColor:C.blue,width:16,height:16}}/>
+                <div><div style={{fontWeight:600}}>👥 구성원 관리</div>
+                  <div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div></div>
               </label>
             </div>
           </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
+
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
             {editM && <Btn danger sm onClick={()=>{setConf(editM);setModal(false);}}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(false)}>취소</Btn>
