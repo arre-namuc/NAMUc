@@ -4,6 +4,7 @@ import {
   uploadVoucherFile, uploadFeedbackImage, subscribeCompany, saveCompany,
   subscribeMembers, saveMember, deleteMember,
   isConfigured,
+  subscribeOffice, saveOffice,
 } from "./firebase.js";
 
 // ═══════════════════════════════════════════════════════════
@@ -6013,6 +6014,628 @@ function CalNameInput({ project, onSave }) {
 // ═══════════════════════════════════════════════════════════
 // CRM 페이지
 // ═══════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════
+// 오피스
+// ══════════════════════════════════════════════════════════
+
+function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
+  const [tab, setTab] = useState("rooms");  // "rooms" | "notice" | "request"
+
+  // ── 데이터 헬퍼 ──────────────────────────────────────────
+  const rooms      = officeData.rooms      || [{ id:"r1", name:"회의실 A" }, { id:"r2", name:"회의실 B" }];
+  const bookings   = officeData.bookings   || [];
+  const notices    = officeData.notices    || [];
+  const requests   = officeData.requests   || [];
+
+  const patch = (key, val) => setOfficeData(d => ({ ...d, [key]: val }));
+
+  const canManage = user.canManageMembers;
+
+  // ────────────────────────────────────────────────────────
+  // 회의실 예약
+  // ────────────────────────────────────────────────────────
+  const RoomsSection = () => {
+    const today = new Date();
+    const [weekOffset, setWeekOffset] = useState(0);
+    const [bookModal, setBookModal]   = useState(null); // {slot, roomId} or {booking} for edit
+    const [bf, setBf] = useState({});
+
+    // 주의 월요일 계산
+    const getMonday = (offset) => {
+      const d = new Date(today);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7;
+      d.setDate(diff);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    const monday = getMonday(weekOffset);
+    const weekDays = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d;
+    });
+
+    const HOURS = Array.from({ length: 10 }, (_, i) => i + 9); // 9~18
+    const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    const todayStr = ymd(today);
+
+    const bookingsOn = (roomId, dateStr, hour) =>
+      bookings.filter(b => b.roomId === roomId && b.date === dateStr && b.startHour <= hour && hour < b.endHour);
+
+    const openAdd = (roomId, dateStr, hour) => {
+      setBf({ roomId, date: dateStr, startHour: hour, endHour: hour + 1, title: "", attendees: [user.name] });
+      setBookModal({ mode: "add" });
+    };
+
+    const openEdit = (b) => {
+      setBf({ ...b });
+      setBookModal({ mode: "edit", id: b.id });
+    };
+
+    const save = () => {
+      if (!bf.title?.trim()) return;
+      if (bf.startHour >= bf.endHour) return;
+      // 충돌 검사
+      const conflict = bookings.find(b =>
+        b.id !== bookModal.id &&
+        b.roomId === bf.roomId &&
+        b.date   === bf.date &&
+        b.startHour < bf.endHour &&
+        bf.startHour < b.endHour
+      );
+      if (conflict) { alert(`"${conflict.title}" 예약과 시간이 겹칩니다.`); return; }
+
+      const entry = { ...bf, id: bookModal.id || "bk" + Date.now(), bookedBy: user.name };
+      const next = bookModal.mode === "edit"
+        ? bookings.map(b => b.id === bookModal.id ? entry : b)
+        : [...bookings, entry];
+      patch("bookings", next);
+      setBookModal(null);
+    };
+
+    const del = (id) => {
+      patch("bookings", bookings.filter(b => b.id !== id));
+      setBookModal(null);
+    };
+
+    const fmtDate = d => `${d.getMonth()+1}/${d.getDate()} (${["일","월","화","수","목","금","토"][d.getDay()]})`;
+    const isToday = d => ymd(d) === todayStr;
+
+    return (
+      <div>
+        {/* 주간 네비게이션 */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <button onClick={() => setWeekOffset(w => w-1)}
+            style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #e2e8f0", background:"#fff", cursor:"pointer", fontSize:13 }}>‹</button>
+          <span style={{ fontWeight:700, fontSize:14, color:"#1e293b" }}>
+            {monday.getMonth()+1}월 {monday.getDate()}일 — {weekDays[4].getMonth()+1}월 {weekDays[4].getDate()}일
+          </span>
+          <button onClick={() => setWeekOffset(w => w+1)}
+            style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #e2e8f0", background:"#fff", cursor:"pointer", fontSize:13 }}>›</button>
+          <button onClick={() => setWeekOffset(0)}
+            style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #e2e8f0", background:"#fff", cursor:"pointer", fontSize:11, color:"#64748b" }}>이번 주</button>
+          {canManage && (
+            <button onClick={() => {
+              const name = prompt("회의실 이름:");
+              if (name?.trim()) patch("rooms", [...rooms, { id:"r"+Date.now(), name:name.trim() }]);
+            }}
+              style={{ marginLeft:"auto", padding:"5px 12px", borderRadius:7, border:"1px solid #bfdbfe",
+                background:"#eff6ff", color:"#2563eb", cursor:"pointer", fontSize:11, fontWeight:600 }}>
+              + 회의실 추가
+            </button>
+          )}
+        </div>
+
+        {/* 타임라인 그리드 */}
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ borderCollapse:"collapse", width:"100%", minWidth:700 }}>
+            <thead>
+              <tr>
+                <th style={{ width:80, padding:"6px 8px", fontSize:10, color:"#94a3b8", fontWeight:600, textAlign:"left", borderBottom:"2px solid #e2e8f0" }}>시간</th>
+                {weekDays.map(d => (
+                  <th key={ymd(d)} style={{ padding:"6px 4px", fontSize:11, fontWeight:isToday(d)?800:600,
+                    color:isToday(d)?"#2563eb":"#475569",
+                    background:isToday(d)?"#eff6ff":"transparent",
+                    borderRadius:isToday(d)?6:0, borderBottom:"2px solid #e2e8f0", textAlign:"center" }}>
+                    {fmtDate(d)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rooms.map(room => (
+                <>
+                  {/* 회의실 헤더 행 */}
+                  <tr key={"room-"+room.id}>
+                    <td colSpan={6} style={{ padding:"8px 10px", background:"#f8fafc",
+                      fontSize:12, fontWeight:700, color:"#334155",
+                      borderTop:"2px solid #e2e8f0", borderBottom:"1px solid #f1f5f9" }}>
+                      🚪 {room.name}
+                      {canManage && (
+                        <button onClick={() => {
+                          if (window.confirm(`"${room.name}" 삭제?`))
+                            patch("rooms", rooms.filter(r => r.id !== room.id));
+                        }}
+                          style={{ marginLeft:8, fontSize:9, color:"#94a3b8", background:"none", border:"none", cursor:"pointer" }}>✕</button>
+                      )}
+                    </td>
+                  </tr>
+                  {/* 시간대 행 */}
+                  {HOURS.map(hour => (
+                    <tr key={room.id+"-"+hour}>
+                      <td style={{ padding:"2px 8px", fontSize:10, color:"#94a3b8", fontWeight:500,
+                        borderRight:"1px solid #f1f5f9", verticalAlign:"top", whiteSpace:"nowrap" }}>
+                        {hour}:00
+                      </td>
+                      {weekDays.map(d => {
+                        const dateStr = ymd(d);
+                        const bks = bookingsOn(room.id, dateStr, hour);
+                        const isFirst = bks.length > 0 && bks[0].startHour === hour;
+                        const myBook = bks.find(b => b.bookedBy === user.name);
+                        const isPast = dateStr < todayStr || (dateStr === todayStr && hour < today.getHours());
+                        return (
+                          <td key={dateStr+"-"+hour}
+                            onClick={() => bks.length === 0 && !isPast && openAdd(room.id, dateStr, hour)}
+                            style={{ padding:"1px 2px", height:32, verticalAlign:"top",
+                              borderLeft:"1px solid #f1f5f9", borderBottom:"1px solid #f8fafc",
+                              background:isToday(d)?"#fafeff":"#fff",
+                              cursor:bks.length===0&&!isPast?"pointer":"default" }}
+                            onMouseEnter={e => { if(bks.length===0&&!isPast) e.currentTarget.style.background="#f0f7ff"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background=isToday(d)?"#fafeff":"#fff"; }}>
+                            {isFirst && bks.map(b => (
+                              <div key={b.id}
+                                onClick={e => { e.stopPropagation(); openEdit(b); }}
+                                style={{ margin:"1px 2px", padding:"2px 6px", borderRadius:5,
+                                  background:b.bookedBy===user.name?"#2563eb":"#64748b",
+                                  color:"#fff", fontSize:10, fontWeight:600,
+                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                                  cursor:"pointer", lineHeight:1.4 }}>
+                                {b.title}
+                                <span style={{ fontSize:9, opacity:.8, marginLeft:3 }}>
+                                  {b.startHour}~{b.endHour}시
+                                </span>
+                              </div>
+                            ))}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 예약 모달 */}
+        {bookModal && (
+          <Modal title={bookModal.mode==="add"?"회의실 예약":"예약 수정"} onClose={()=>setBookModal(null)}>
+            <Field label="회의 제목 *">
+              <input style={inp} autoFocus value={bf.title||""} placeholder="회의 제목 입력"
+                onChange={e=>setBf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="회의실" style={{flex:1}}>
+                <select style={inp} value={bf.roomId||""} onChange={e=>setBf(v=>({...v,roomId:e.target.value}))}>
+                  {rooms.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </Field>
+              <Field label="날짜" style={{flex:1}}>
+                <input style={inp} type="date" value={bf.date||""}
+                  onChange={e=>setBf(v=>({...v,date:e.target.value}))}/>
+              </Field>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="시작" style={{flex:1}}>
+                <select style={inp} value={bf.startHour||9} onChange={e=>setBf(v=>({...v,startHour:Number(e.target.value)}))}>
+                  {HOURS.map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </Field>
+              <Field label="종료" style={{flex:1}}>
+                <select style={inp} value={bf.endHour||10} onChange={e=>setBf(v=>({...v,endHour:Number(e.target.value)}))}>
+                  {HOURS.slice(1).concat([19]).map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="참석자">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {(accounts||[]).map(a=>{
+                  const sel=(bf.attendees||[]).includes(a.name);
+                  return(
+                    <button key={a.id} type="button"
+                      onClick={()=>setBf(v=>({...v,attendees:sel?v.attendees.filter(n=>n!==a.name):[...(v.attendees||[]),a.name]}))}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+                        borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                        background:sel?"#2563eb":"#f1f5f9",color:sel?"#fff":"#475569",fontWeight:sel?700:400}}>
+                      <Avatar name={a.name} size={14}/>{a.name}{sel&&" ✓"}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+            <Field label="메모">
+              <input style={inp} value={bf.memo||""} placeholder="안건, 준비물 등"
+                onChange={e=>setBf(v=>({...v,memo:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {bookModal.mode==="edit" && (bf.bookedBy===user.name||canManage) &&
+                <Btn danger sm onClick={()=>del(bookModal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setBookModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!bf.title?.trim()||bf.startHour>=bf.endHour}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────
+  // 공지사항
+  // ────────────────────────────────────────────────────────
+  const NoticeSection = () => {
+    const [modal, setModal] = useState(null);
+    const [nf, setNf]       = useState({});
+
+    const IMPORTANCE = [
+      { id:"normal",    label:"일반",  color:"#64748b", bg:"#f1f5f9" },
+      { id:"important", label:"중요",  color:"#2563eb", bg:"#eff6ff" },
+      { id:"urgent",    label:"긴급",  color:"#ef4444", bg:"#fff1f2" },
+    ];
+
+    const sorted = [...notices].sort((a,b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    const save = () => {
+      if (!nf.title?.trim()) return;
+      const entry = { ...nf, id: modal.id||"nt"+Date.now(),
+        author: user.name, createdAt: new Date().toISOString() };
+      const next = modal.id ? notices.map(n=>n.id===modal.id?entry:n) : [...notices, entry];
+      patch("notices", next);
+      setModal(null);
+    };
+
+    const del = (id) => { patch("notices", notices.filter(n=>n.id!==id)); setModal(null); };
+    const togglePin = (id) => patch("notices", notices.map(n=>n.id===id?{...n,pinned:!n.pinned}:n));
+
+    const fmtDate = iso => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+    };
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          {canManage && (
+            <Btn primary sm onClick={()=>{setNf({importance:"normal",pinned:false,title:"",content:""});setModal({});}}>
+              + 공지 작성
+            </Btn>
+          )}
+        </div>
+
+        {sorted.length === 0 && (
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            등록된 공지사항이 없습니다
+          </div>
+        )}
+
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {sorted.map(n => {
+            const imp = IMPORTANCE.find(i=>i.id===n.importance)||IMPORTANCE[0];
+            return (
+              <div key={n.id} style={{background:"#fff",borderRadius:12,
+                border:`1px solid ${n.importance==="urgent"?"#fca5a5":n.importance==="important"?"#bfdbfe":"#e2e8f0"}`,
+                overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",
+                  background:n.pinned?"#fffbeb":"transparent",
+                  borderBottom:n.content?"1px solid #f8fafc":"none"}}>
+                  {n.pinned && <span style={{fontSize:12}}>📌</span>}
+                  <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                    background:imp.bg,color:imp.color}}>{imp.label}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:"#1e293b",flex:1}}>{n.title}</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{fmtDate(n.createdAt)}</span>
+                  <span style={{fontSize:11,color:"#64748b"}}>{n.author}</span>
+                  {canManage && (
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>togglePin(n.id)}
+                        style={{padding:"2px 7px",borderRadius:6,border:"1px solid #e2e8f0",
+                          background:n.pinned?"#fef3c7":"#f8fafc",fontSize:10,cursor:"pointer",
+                          color:n.pinned?"#d97706":"#94a3b8"}}>
+                        {n.pinned?"📌 고정됨":"📌 고정"}
+                      </button>
+                      <button onClick={()=>{setNf({...n});setModal({id:n.id});}}
+                        style={{padding:"2px 7px",borderRadius:6,border:"1px solid #e2e8f0",
+                          background:"#f8fafc",fontSize:10,cursor:"pointer",color:"#64748b"}}>수정</button>
+                    </div>
+                  )}
+                </div>
+                {n.content && (
+                  <div style={{padding:"10px 16px",fontSize:12,color:"#475569",
+                    lineHeight:1.7,whiteSpace:"pre-wrap"}}>
+                    {n.content}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {modal && (
+          <Modal title={modal.id?"공지 수정":"공지 작성"} onClose={()=>setModal(null)}>
+            <Field label="중요도">
+              <div style={{display:"flex",gap:6}}>
+                {IMPORTANCE.map(i=>(
+                  <button key={i.id} type="button"
+                    onClick={()=>setNf(v=>({...v,importance:i.id}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:nf.importance===i.id?700:400,
+                      background:nf.importance===i.id?i.bg:"#f8fafc",
+                      color:nf.importance===i.id?i.color:"#94a3b8",
+                      outline:nf.importance===i.id?`2px solid ${i.color}`:"1px solid #f1f5f9"}}>
+                    {i.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="제목 *">
+              <input style={inp} autoFocus value={nf.title||""} placeholder="공지 제목"
+                onChange={e=>setNf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <Field label="내용">
+              <textarea style={{...inp,minHeight:100,resize:"vertical",lineHeight:1.6}}
+                value={nf.content||""} placeholder="공지 내용을 입력하세요"
+                onChange={e=>setNf(v=>({...v,content:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+              background:"#f8fafc",borderRadius:8,marginBottom:8}}>
+              <span style={{fontSize:12,color:"#475569",flex:1}}>상단 고정</span>
+              <button type="button" onClick={()=>setNf(v=>({...v,pinned:!v.pinned}))}
+                style={{width:40,height:22,borderRadius:99,border:"none",cursor:"pointer",
+                  background:nf.pinned?"#f59e0b":"#e2e8f0",position:"relative",transition:"background .2s"}}>
+                <div style={{position:"absolute",top:3,left:nf.pinned?20:3,width:16,height:16,
+                  borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/>
+              </button>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!nf.title?.trim()}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────
+  // 업무 요청 / 총무
+  // ────────────────────────────────────────────────────────
+  const RequestSection = () => {
+    const [modal, setModal] = useState(null);
+    const [rf, setRf]       = useState({});
+
+    const TYPES = ["비품 구매", "시설 수리", "IT 지원", "기타"];
+    const STATUS = [
+      { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
+      { id:"검토중", color:"#d97706", bg:"#fffbeb" },
+      { id:"처리중", color:"#2563eb", bg:"#eff6ff" },
+      { id:"완료",   color:"#16a34a", bg:"#f0fdf4" },
+    ];
+
+    const myRequests    = requests.filter(r => r.requestedBy === user.name);
+    const otherRequests = requests.filter(r => r.requestedBy !== user.name);
+
+    const save = () => {
+      if (!rf.title?.trim()) return;
+      const entry = { ...rf, id: modal.id||"rq"+Date.now(),
+        requestedBy: modal.id ? rf.requestedBy : user.name,
+        status: rf.status||"접수",
+        createdAt: modal.id ? rf.createdAt : new Date().toISOString() };
+      const next = modal.id ? requests.map(r=>r.id===modal.id?entry:r) : [...requests, entry];
+      patch("requests", next);
+      setModal(null);
+    };
+
+    const del = (id) => { patch("requests", requests.filter(r=>r.id!==id)); setModal(null); };
+
+    const patchStatus = (id, status) => patch("requests", requests.map(r=>r.id===id?{...r,status}:r));
+
+    const fmtDate = iso => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+
+    const RequestCard = ({ r }) => {
+      const st = STATUS.find(s=>s.id===r.status)||STATUS[0];
+      const canEdit2 = r.requestedBy===user.name||canManage;
+      return (
+        <div style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",
+          padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+              <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700,
+                background:"#f1f5f9",color:"#475569"}}>{r.type||"기타"}</span>
+              <span style={{fontSize:13,fontWeight:600,color:"#1e293b",
+                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</span>
+            </div>
+            {r.content && (
+              <div style={{fontSize:11,color:"#64748b",marginBottom:4,
+                overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,
+                WebkitBoxOrient:"vertical"}}>{r.content}</div>
+            )}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"#94a3b8"}}>요청: {r.requestedBy}</span>
+              {r.needBy && <span style={{fontSize:10,color:"#94a3b8"}}>필요일: {r.needBy}</span>}
+              {r.amount && <span style={{fontSize:10,color:"#94a3b8"}}>예상: {Number(r.amount).toLocaleString()}원</span>}
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(r.createdAt)}</span>
+            </div>
+            {/* 담당자 처리 메모 */}
+            {r.processMemo && (
+              <div style={{marginTop:6,padding:"5px 8px",background:"#f0fdf4",borderRadius:6,
+                fontSize:11,color:"#16a34a"}}>
+                ✅ {r.processMemo}
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
+            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+              background:st.bg,color:st.color}}>{r.status}</span>
+            {canEdit2 && (
+              <button onClick={()=>{setRf({...r});setModal({id:r.id});}}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+            )}
+            {/* 상태 변경 버튼 (관리자) */}
+            {canManage && r.status !== "완료" && (
+              <select value={r.status}
+                onChange={e=>patchStatus(r.id, e.target.value)}
+                style={{fontSize:10,padding:"2px 5px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",cursor:"pointer",color:"#475569",outline:"none"}}>
+                {STATUS.map(s=><option key={s.id}>{s.id}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          <Btn primary sm onClick={()=>{setRf({type:"비품 구매",status:"접수"});setModal({});}}>
+            + 요청 등록
+          </Btn>
+        </div>
+
+        {/* 내 요청 */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>내 요청</div>
+          {myRequests.length===0
+            ? <div style={{fontSize:12,color:"#94a3b8",padding:"12px 0",textAlign:"center",
+                border:"1px dashed #e2e8f0",borderRadius:8}}>등록한 요청이 없어요</div>
+            : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {myRequests.map(r=><RequestCard key={r.id} r={r}/>)}
+              </div>
+          }
+        </div>
+
+        {/* 전체 요청 (관리자 or 모든 팀원에게 표시) */}
+        {otherRequests.length > 0 && (
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>팀 전체 요청</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {otherRequests.map(r=><RequestCard key={r.id} r={r}/>)}
+            </div>
+          </div>
+        )}
+
+        {requests.length === 0 && (
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            등록된 요청이 없습니다
+          </div>
+        )}
+
+        {modal && (
+          <Modal title={modal.id?"요청 수정":"업무 요청 등록"} onClose={()=>setModal(null)}>
+            <Field label="유형">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {TYPES.map(t=>(
+                  <button key={t} type="button" onClick={()=>setRf(v=>({...v,type:t}))}
+                    style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:rf.type===t?700:400,
+                      background:rf.type===t?"#1e293b":"#f1f5f9",
+                      color:rf.type===t?"#fff":"#475569"}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="제목 *">
+              <input style={inp} autoFocus value={rf.title||""} placeholder="요청 내용 요약"
+                onChange={e=>setRf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <Field label="상세 내용">
+              <textarea style={{...inp,minHeight:80,resize:"vertical",lineHeight:1.6}}
+                value={rf.content||""} placeholder="구체적인 내용, 규격, 수량 등"
+                onChange={e=>setRf(v=>({...v,content:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="필요일" style={{flex:1}}>
+                <input style={inp} type="date" value={rf.needBy||""}
+                  onChange={e=>setRf(v=>({...v,needBy:e.target.value}))}/>
+              </Field>
+              <Field label="예상 금액" style={{flex:1}}>
+                <input style={inp} type="number" value={rf.amount||""} placeholder="원"
+                  onChange={e=>setRf(v=>({...v,amount:e.target.value}))}/>
+              </Field>
+            </div>
+            {/* 관리자: 처리 메모 */}
+            {canManage && modal.id && (
+              <Field label="처리 메모">
+                <input style={inp} value={rf.processMemo||""} placeholder="처리 내용 기록"
+                  onChange={e=>setRf(v=>({...v,processMemo:e.target.value}))}/>
+              </Field>
+            )}
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id && (rf.requestedBy===user.name||canManage) &&
+                <Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!rf.title?.trim()}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ── 탭 렌더 ──────────────────────────────────────────────
+  const TABS = [
+    { id:"rooms",   icon:"🚪", label:"회의실 예약" },
+    { id:"notice",  icon:"📢", label:"공지사항",
+      badge: notices.filter(n=>n.importance==="urgent").length },
+    { id:"request", icon:"📝", label:"업무 요청",
+      badge: requests.filter(r=>r.status==="접수"||r.status==="검토중").length },
+  ];
+
+  return (
+    <div>
+      {/* 탭 */}
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e2e8f0",paddingBottom:0}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{padding:"8px 16px",borderRadius:"8px 8px 0 0",border:"none",cursor:"pointer",
+              fontSize:13,fontWeight:tab===t.id?700:500,
+              background:tab===t.id?"#fff":"transparent",
+              color:tab===t.id?"#1e293b":"#64748b",
+              borderBottom:tab===t.id?"2px solid #2563eb":"2px solid transparent",
+              marginBottom:-2,position:"relative",display:"flex",alignItems:"center",gap:5}}>
+            {t.icon} {t.label}
+            {t.badge>0&&(
+              <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99,
+                background:"#ef4444",color:"#fff",minWidth:14,textAlign:"center"}}>
+                {t.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab==="rooms"   && <RoomsSection/>}
+      {tab==="notice"  && <NoticeSection/>}
+      {tab==="request" && <RequestSection/>}
+    </div>
+  );
+}
+
 function CRMPage({ projects }) {
   const [search, setSearch] = useState("");
   const [selProj, setSelProj] = useState(null);
@@ -6561,6 +7184,7 @@ function App() {
     catch(e) { return FORMATS_DEFAULT; }
   });
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
+  const [officeData,   setOfficeData]   = useState({ rooms:[], bookings:[], notices:[], requests:[] });
   const [mainTab,      setMainTab]      = useState("tasks");
   const [addProjModal,  setAddProjModal]  = useState(false);
   const [editProjModal, setEditProjModal] = useState(false);
@@ -6577,7 +7201,8 @@ function App() {
     const u1 = subscribeProjects(fb => { if(fb.length>0){setProjects(fb);setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);} });
     const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
     const u3 = subscribeMembers(m => { if(m.length>0) setAccounts(m); });
-    return () => { u1(); u2(); u3(); };
+    const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
   // D-day 알림 자동 생성
   useEffect(() => {
@@ -6734,7 +7359,7 @@ return (
         </button>
         {/* 메인탭 */}
         <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
+          {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"office",icon:"🏢",label:"오피스"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
             <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
@@ -6823,6 +7448,8 @@ return (
       <div style={{maxWidth:1400,margin:"0 auto",padding:"24px 24px 48px"}}>
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
+        ) : mainTab==="office" ? (
+          <OfficeTab user={user} accounts={accounts} company={company} officeData={officeData} setOfficeData={d=>{ const next=typeof d==="function"?d(officeData):d; setOfficeData(next); if(isConfigured) saveOffice(next).catch(console.error); }}/>
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
         ) : mainTab==="daily-todo" ? (
