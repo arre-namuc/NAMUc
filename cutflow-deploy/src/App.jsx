@@ -9772,8 +9772,8 @@ return (
     <AppContext.Provider value={{setProjects}}>
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       {/* 헤더 */}
-      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
-        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8}}>
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)",overflowX:"auto",overflowY:"hidden",whiteSpace:"nowrap",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
           {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>:"🎬"}
           {company.name||"CutFlow"}
         </div>
@@ -9791,9 +9791,9 @@ return (
           ✏️
         </button>
         {/* 메인탭 */}
-        <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
+        <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3,flexShrink:0}}>
           {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"office",icon:"🏢",label:"오피스"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
-            <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
+            <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s",whiteSpace:"nowrap"}}>
               {t.icon} {t.label}{t.locked?" 🔒":""}
             </button>
           ))}
