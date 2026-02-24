@@ -3909,6 +3909,16 @@ const parseIdNumber = (idNum) => {
   return { birthDate, birthIso, age };
 };
 
+// 두 날짜 사이 근속기간
+const calcTenure_between = (start, end) => {
+  if (!start||!end) return "";
+  const s = new Date(start), e = new Date(end);
+  const months = (e.getFullYear()-s.getFullYear())*12+(e.getMonth()-s.getMonth());
+  if (months<1) return "1개월 미만";
+  if (months<12) return `${months}개월`;
+  const y = Math.floor(months/12), r = months%12;
+  return r>0?`${y}년 ${r}개월`:`${y}년`;
+};
 // 입사일 → 근속연수 텍스트
 const calcTenure = (joinDate) => {
   if (!joinDate) return "";
@@ -4011,11 +4021,16 @@ function OrgChart({ accounts }) {
 }
 
 function MemberManagement({ accounts, onSave, onDelete }) {
-  const [viewMode, setViewMode] = useState("list"); // "list" | "org"
+  const [viewMode, setViewMode] = useState("list"); // "list" | "org" | "resigned"
   const [modal, setModal] = useState(false);
   const [editM, setEditM] = useState(null);
   const [mf,    setMf]    = useState({});
   const [conf,  setConf]  = useState(null);
+  const [resignConf, setResignConf] = useState(null); // 퇴사 처리 확인
+
+  const active   = accounts.filter(a => !a.resigned);
+  const resigned = accounts.filter(a =>  a.resigned)
+    .sort((a,b) => (b.resignDate||"").localeCompare(a.resignDate||""));
 
   const openAdd  = () => {
     setEditM(null);
@@ -4024,6 +4039,17 @@ function MemberManagement({ accounts, onSave, onDelete }) {
            jobTitle:"",phone:"",email:"",joinDate:"",probationEnd:"",birthDate:"",idLast4:"",emergencyContact:""});
     setModal(true);
   };
+
+  // 퇴사 처리 — resigned: true + 퇴사일 저장
+  const doResign = (m, resignDate, resignReason) => {
+    onSave({...m, resigned:true, resignDate, resignReason,
+            team:"", canViewFinance:false, canManageMembers:false});
+    setResignConf(null);
+  };
+  // 복직 처리
+  const doRestore = (m) => {
+    onSave({...m, resigned:false, resignDate:"", resignReason:""});
+  };
   const openEdit = m => { setEditM(m); setMf({...m}); setModal(true); };
   const save = () => {
     if(!mf.name?.trim()||!mf.pw?.trim()||!mf.jobTitle?.trim()) return;
@@ -4031,7 +4057,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
     setModal(false);
   };
 
-  const sorted = [...accounts].sort((a,b)=>{
+  const sorted = [...active].sort((a,b)=>{
     const ta = TEAMS.findIndex(t=>t.id===a.team);
     const tb = TEAMS.findIndex(t=>t.id===b.team);
     if(ta!==tb) return (ta===-1?99:ta)-(tb===-1?99:tb);
@@ -4046,26 +4072,75 @@ function MemberManagement({ accounts, onSave, onDelete }) {
     <div>
       {/* 상단 바 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{fontWeight:700,fontSize:14}}>구성원 ({accounts.length}명)</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <div style={{fontWeight:700,fontSize:14}}>
+            재직 {active.length}명
+            {resigned.length>0&&<span style={{fontSize:12,color:"#94a3b8",marginLeft:6}}>퇴사 {resigned.length}명</span>}
+          </div>
           {/* 뷰 전환 */}
           <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>
-            {[{id:"list",label:"📋 목록"},{id:"org",label:"🏢 조직도"}].map(v=>(
+            {[{id:"list",label:"📋 목록"},{id:"org",label:"🏢 조직도"},{id:"resigned",label:"🚪 퇴사자"}].map(v=>(
               <button key={v.id} onClick={()=>setViewMode(v.id)}
                 style={{padding:"5px 12px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
-                  background:viewMode===v.id?"#2563eb":"#fff",
-                  color:viewMode===v.id?"#fff":"#64748b"}}>
+                  background:viewMode===v.id?(v.id==="resigned"?"#f1f5f9":"#2563eb"):"#fff",
+                  color:viewMode===v.id?(v.id==="resigned"?"#64748b":"#fff"):"#64748b",
+                  position:"relative"}}>
                 {v.label}
+                {v.id==="resigned"&&resigned.length>0&&(
+                  <span style={{marginLeft:4,fontSize:9,fontWeight:800,padding:"1px 4px",
+                    borderRadius:99,background:"#94a3b8",color:"#fff"}}>
+                    {resigned.length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
-        <Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>
+        {viewMode!=="resigned"&&<Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>}
       </div>
 
-      {viewMode==="org"
-        ? <OrgChart accounts={accounts}/>
-        : (
+      {viewMode==="resigned" ? (
+        /* ── 퇴사자 목록 ───────────────────────────────── */
+        <div>
+          {resigned.length===0
+            ? <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>퇴사자가 없습니다</div>
+            : <div style={{border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 100px 90px 60px",
+                  background:"#f8fafc",padding:"8px 12px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                  <span/><span>이름 / 직함</span><span>퇴사일</span><span>근속기간</span><span>퇴사 사유</span><span>연락처</span><span/>
+                </div>
+                {resigned.map((m,i)=>(
+                  <div key={m.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 100px 90px 60px",
+                    padding:"10px 12px",borderTop:"1px solid #f1f5f9",gap:6,alignItems:"center",
+                    background:i%2===0?"#fff":"#fafbfc",opacity:.8}}>
+                    <Avatar name={m.name} size={26}/>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:12,color:"#64748b"}}>{m.name}</div>
+                      {m.jobTitle&&<div style={{fontSize:10,color:"#94a3b8"}}>{m.jobTitle}</div>}
+                    </div>
+                    <span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>{m.resignDate||"—"}</span>
+                    <span style={{fontSize:10,color:"#94a3b8"}}>
+                      {m.joinDate&&m.resignDate ? calcTenure_between(m.joinDate,m.resignDate) : "—"}
+                    </span>
+                    <span style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {m.resignReason||"—"}
+                    </span>
+                    <span style={{fontSize:10,color:"#94a3b8"}}>{m.phone||"—"}</span>
+                    <div style={{display:"flex",gap:4}}>
+                      <button title="수정" onClick={()=>openEdit(m)}
+                        style={{border:"none",background:"none",cursor:"pointer",fontSize:12}}>✏️</button>
+                      <button title="복직" onClick={()=>doRestore(m)}
+                        style={{border:"1px solid #bbf7d0",background:"#f0fdf4",borderRadius:6,
+                          cursor:"pointer",fontSize:10,padding:"2px 6px",color:"#16a34a",fontWeight:700}}>복직</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+      ) : viewMode==="org" ? (
+        <OrgChart accounts={active}/>
+      ) : (
           <>
             {/* 팀별 그룹 목록 */}
             {TEAMS.map(team=>{
@@ -4114,6 +4189,9 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                         </div>
                         <div style={{display:"flex",gap:3,justifyContent:"flex-end"}}>
                           <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                          <button onClick={()=>setResignConf(m)}
+                            style={{border:"1px solid #fca5a5",background:"#fff1f2",borderRadius:6,
+                              cursor:"pointer",fontSize:9,padding:"2px 5px",color:"#ef4444",fontWeight:700}}>퇴사</button>
                           <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
                         </div>
                       </div>
@@ -4322,6 +4400,50 @@ function MemberManagement({ accounts, onSave, onDelete }) {
           </div>
         </Modal>
       )}
+      {/* 퇴사 처리 모달 */}
+      {resignConf&&(()=>{
+        const [resignDate, setResignDate] = React.useState(new Date().toISOString().slice(0,10));
+        const [resignReason, setResignReason] = React.useState("");
+        return (
+          <Modal title="퇴사 처리" onClose={()=>setResignConf(null)}>
+            <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:12}}>
+              {resignConf.name} ({resignConf.jobTitle||resignConf.role}) 퇴사 처리
+            </div>
+            <Field label="퇴사일">
+              <input style={inp} type="date" value={resignDate}
+                onChange={e=>setResignDate(e.target.value)}/>
+            </Field>
+            <Field label="퇴사 사유">
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                {["자진퇴사","계약만료","권고사직","해고","기타"].map(r=>(
+                  <button key={r} type="button" onClick={()=>setResignReason(r)}
+                    style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:resignReason===r?700:400,
+                      background:resignReason===r?"#ef4444":"#f1f5f9",
+                      color:resignReason===r?"#fff":"#64748b"}}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <input style={inp} value={resignReason}
+                placeholder="사유 직접 입력"
+                onChange={e=>setResignReason(e.target.value)}/>
+            </Field>
+            {resignConf.joinDate&&resignDate&&(
+              <div style={{fontSize:12,color:"#64748b",padding:"8px 12px",
+                background:"#f8fafc",borderRadius:8,marginBottom:4}}>
+                근속기간: <strong>{calcTenure_between(resignConf.joinDate, resignDate)}</strong>
+              </div>
+            )}
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <Btn onClick={()=>setResignConf(null)}>취소</Btn>
+              <Btn danger onClick={()=>doResign(resignConf, resignDate, resignReason)}
+                disabled={!resignDate}>퇴사 처리</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {conf && (
         <Modal title="구성원 삭제" onClose={()=>setConf(null)}>
           <div style={{fontSize:14,marginBottom:20}}><b>{conf.name}</b> ({conf.role})을 삭제하시겠습니까?</div>
