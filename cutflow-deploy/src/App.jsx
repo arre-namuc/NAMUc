@@ -10555,6 +10555,27 @@ return (
             </div>
           </div>
 
+          {/* 비딩 되돌리기 — 비딩에서 전환된 일반 프로젝트만 표시 */}
+          {!proj.isBidding && proj.biddingStatus && (
+            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,
+              padding:"12px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:2}}>🏆 비딩 전환 프로젝트</div>
+                <div style={{fontSize:11,color:"#a16207"}}>비딩 탭으로 되돌립니다. 현재 태스크·데이터는 유지됩니다.</div>
+              </div>
+              <button
+                onClick={()=>{
+                  if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n현재 태스크와 데이터는 모두 유지됩니다.")) {
+                    patchProj(p=>({...p, isBidding:true}));
+                    setEditProjModal(false);
+                  }
+                }}
+                style={{padding:"7px 14px",borderRadius:8,border:"none",flexShrink:0,
+                  background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                ↩ 비딩으로 되돌리기
+              </button>
+            </div>
+          )}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
             <div style={{display:"flex",gap:8}}>
