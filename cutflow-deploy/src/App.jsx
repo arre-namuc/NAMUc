@@ -1232,159 +1232,213 @@ function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdat
                     </button>
                   </div>
                 ) : (
-                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:2}}>
-                    {/* 컬럼 헤더 */}
-                    <div style={{display:"grid",gridTemplateColumns:"16px 20px 1fr 110px 100px 90px 28px 28px 28px",
-                      padding:"3px 8px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
-                      <span/><span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/><span/><span/>
-                    </div>
-                    {/* 계층 렌더링 */}
+                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
                     {(()=>{
-                      const roots = phaseTasks.filter(t=>!t.parentId);
-                      const children = (pid) => phaseTasks.filter(t=>t.parentId===pid);
-                      const renderTask = (t, depth=0) => {
-                        const kids = children(t.id);
-                        const hasKids = kids.length > 0;
+                      const roots    = phaseTasks.filter(t=>!t.parentId);
+                      const getKids  = pid => phaseTasks.filter(t=>t.parentId===pid);
+                      const SCOL = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+                      const SBG  = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+
+                      // 하위 태스크 행 (실제 작업 단위)
+                      const SubRow = ({t}) => (
+                        <div style={{display:"grid",
+                          gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",
+                          padding:"6px 10px 6px 28px",gap:6,alignItems:"center",
+                          background:t.status==="완료"?"#f8fafc":"#fff",
+                          borderBottom:"1px solid #f8fafc",
+                          opacity:t.status==="완료"?.6:1}}>
+                          <input type="checkbox" checked={t.status==="완료"}
+                            onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
+                            style={{accentColor:"#16a34a",cursor:"pointer"}}/>
+                          <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:500,
+                              color:t.status==="완료"?"#94a3b8":"#334155",
+                              textDecoration:t.status==="완료"?"line-through":"none",
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {t.title}
+                            </div>
+                            <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>
+                              {(t.comments||[]).length>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>💬{t.comments.length}</span>}
+                              {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
+                                <a key={li} href={lk.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                  style={{fontSize:9,color:"#2563eb",background:"#eff6ff",padding:"1px 6px",borderRadius:99,textDecoration:"none",border:"1px solid #bfdbfe",fontWeight:600}}>
+                                  🔗{lk.label||"링크"}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                          {/* 담당자 */}
+                          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center"}}>
+                            {(t.assignees&&t.assignees.length>0)
+                              ? <>{t.assignees.slice(0,3).map(n=>(
+                                  <span key={n} style={{display:"flex",alignItems:"center",gap:1,fontSize:10,background:"#eff6ff",color:"#2563eb",padding:"1px 5px",borderRadius:99,fontWeight:600,whiteSpace:"nowrap"}}>
+                                    <Avatar name={n} size={12}/>{n}
+                                  </span>
+                                ))}
+                                {t.assignees.length>3&&<span style={{fontSize:10,color:"#64748b"}}>+{t.assignees.length-3}</span>}
+                              </>
+                              : <span style={{fontSize:10,color:"#94a3b8"}}>-</span>
+                            }
+                          </div>
+                          {/* 상태 */}
+                          <select value={t.status||"대기"} onChange={e=>onUpdateTask({...t,status:e.target.value})}
+                            onClick={e=>e.stopPropagation()}
+                            style={{fontSize:10,padding:"2px 4px",borderRadius:6,border:"1px solid "+( SCOL[t.status||"대기"])+"40",background:SBG[t.status||"대기"],color:SCOL[t.status||"대기"],fontWeight:600,cursor:"pointer",outline:"none"}}>
+                            {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                          </select>
+                          {/* 마감일 */}
+                          <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",lineHeight:1.3}}>
+                            {t.due?<>{t.due.slice(5,10).replace("-","/")} {t.due.length>10&&<span style={{fontSize:9,color:"#94a3b8"}}>{t.due.slice(11,16)}</span>}</>:<span style={{color:"#cbd5e1"}}>-</span>}
+                          </div>
+                          {/* 날짜 편집 */}
+                          <div style={{position:"relative",width:24,height:24}}>
+                            <span style={{fontSize:12,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
+                            <input type="datetime-local" value={t.due||""} onChange={e=>onUpdateTask({...t,due:e.target.value})} onClick={e=>e.stopPropagation()} style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
+                          </div>
+                          {/* 삭제 */}
+                          <button type="button" onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
+                            style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",background:"#fff1f2",color:"#ef4444",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,flexShrink:0}}>−</button>
+                        </div>
+                      );
+
+                      return roots.map(t=>{
+                        const kids   = getKids(t.id);
+                        const hasKids = kids.length>0;
+                        const doneCnt = kids.filter(k=>k.status==="완료").length;
+                        const pct     = hasKids ? Math.round(doneCnt/kids.length*100) : (t.status==="완료"?100:0);
+                        const isDone  = hasKids ? pct===100 : t.status==="완료";
+
                         return (
-                          <div key={t.id}>
-                            <div style={{display:"grid",
-                              gridTemplateColumns:"16px 20px 1fr 110px 100px 90px 28px 28px 28px",
-                              padding:"6px 8px",borderRadius:8,gap:6,alignItems:"center",
-                              marginLeft: depth * 20,
-                              background:t.status==="완료"?"#f8fafc":"#fff",
-                              border:`1px solid ${t.status==="완료"?"#f1f5f9":"#e2e8f0"}`,
-                              marginBottom:2,
-                              borderLeft: depth>0 ? "3px solid #bfdbfe" : "3px solid transparent",
-                              opacity:t.status==="완료"?.65:1}}>
+                          <div key={t.id} style={{
+                            border:`1px solid ${isDone?"#dcfce7":"#e2e8f0"}`,
+                            borderRadius:10, overflow:"hidden", marginBottom:4,
+                            background:isDone?"#f0fdf4":"#fff"}}>
 
-                              {/* 들여쓰기 커넥터 */}
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                {depth>0 && <span style={{fontSize:9,color:"#cbd5e1"}}>└</span>}
-                              </div>
+                            {/* ── 상위 태스크 헤더 행 ── */}
+                            <div style={{display:"flex",alignItems:"center",gap:8,
+                              padding:"8px 10px",
+                              background:isDone?"#f0fdf4":hasKids?"#f8fafc":"#fff",
+                              borderBottom: hasKids&&!isDone?"1px solid #f1f5f9":"none"}}>
 
-                              {/* 체크박스 */}
-                              <input type="checkbox" checked={t.status==="완료"}
-                                onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
-                                style={{accentColor:"#16a34a",cursor:"pointer"}}/>
+                              {/* 체크 (하위 없을 때만 직접 체크) */}
+                              {!hasKids
+                                ? <input type="checkbox" checked={t.status==="완료"}
+                                    onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
+                                    style={{accentColor:"#16a34a",cursor:"pointer",flexShrink:0}}/>
+                                : <div style={{width:16,height:16,borderRadius:4,flexShrink:0,
+                                    background:isDone?"#16a34a":pct>0?"#bfdbfe":"#e2e8f0",
+                                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    {isDone
+                                      ? <span style={{fontSize:9,color:"#fff",fontWeight:700}}>✓</span>
+                                      : pct>0
+                                        ? <span style={{fontSize:8,color:"#2563eb",fontWeight:700}}>{pct}%</span>
+                                        : null}
+                                  </div>
+                              }
 
-                              {/* 태스크명 + 뱃지 */}
-                              <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
-                                <div style={{fontSize:12,fontWeight:depth===0?600:500,
-                                  color:t.status==="완료"?"#94a3b8":"#1e293b",
-                                  textDecoration:t.status==="완료"?"line-through":"none",
+                              {/* 태스크명 */}
+                              <div onClick={()=>onEdit(t)} style={{flex:1,cursor:"pointer",minWidth:0}}>
+                                <div style={{fontSize:12,fontWeight:700,
+                                  color:isDone?"#94a3b8":"#1e293b",
+                                  textDecoration:isDone?"line-through":"none",
                                   overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                  {hasKids && <span style={{fontSize:9,color:"#94a3b8",marginRight:4}}>▸ {kids.length}</span>}
                                   {t.title}
                                 </div>
-                                <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>
-                                  {(t.comments||[]).length>0&&(
-                                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:99,
-                                      background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
-                                      💬{t.comments.length}
-                                    </span>
-                                  )}
-                                  {(t.meetings||[]).length>0&&(
-                                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:99,
-                                      background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
-                                      📅{t.meetings.length}
-                                    </span>
-                                  )}
-                                  {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
-                                    <a key={li} href={lk.url} target="_blank" rel="noreferrer"
-                                      onClick={e=>e.stopPropagation()}
-                                      style={{fontSize:9,color:"#2563eb",background:"#eff6ff",
-                                        padding:"1px 6px",borderRadius:99,textDecoration:"none",
-                                        border:"1px solid #bfdbfe",fontWeight:600}}>
-                                      🔗{lk.label||"링크"}
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* 담당자 — 전원 표시, 3명 초과시 +N */}
-                              <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
-                                {(t.assignees&&t.assignees.length>0) ? (
-                                  <>
-                                    {t.assignees.slice(0,3).map(n=>(
-                                      <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,
-                                        background:"#eff6ff",color:"#2563eb",padding:"1px 6px",borderRadius:99,fontWeight:600,whiteSpace:"nowrap"}}>
-                                        <Avatar name={n} size={14}/>{n}
-                                      </span>
+                                {hasKids&&(
+                                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                                    {/* 미니 진행바 */}
+                                    <div style={{width:80,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                                      <div style={{height:"100%",width:pct+"%",background:isDone?"#16a34a":"#2563eb",borderRadius:99}}/>
+                                    </div>
+                                    <span style={{fontSize:9,color:"#64748b"}}>{doneCnt}/{kids.length}</span>
+                                    {/* 상태 분포 */}
+                                    {["진행중","컨펌요청"].map(s=>{
+                                      const cnt=kids.filter(k=>k.status===s).length;
+                                      return cnt>0?<span key={s} style={{fontSize:9,padding:"0px 5px",borderRadius:99,background:SBG[s],color:SCOL[s],fontWeight:700}}>{s} {cnt}</span>:null;
+                                    })}
+                                  </div>
+                                )}
+                                {!hasKids&&(
+                                  <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>
+                                    {(t.comments||[]).length>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>💬{t.comments.length}</span>}
+                                    {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
+                                      <a key={li} href={lk.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                        style={{fontSize:9,color:"#2563eb",background:"#eff6ff",padding:"1px 6px",borderRadius:99,textDecoration:"none",border:"1px solid #bfdbfe",fontWeight:600}}>
+                                        🔗{lk.label||"링크"}
+                                      </a>
                                     ))}
-                                    {t.assignees.length>3&&(
-                                      <span style={{fontSize:10,color:"#64748b",fontWeight:600}}>+{t.assignees.length-3}</span>
-                                    )}
-                                  </>
-                                ) : t.assignee ? (
-                                  <span style={{display:"flex",alignItems:"center",gap:2,fontSize:11,color:"#475569"}}>
-                                    <Avatar name={t.assignee} size={16}/>{t.assignee}
-                                  </span>
-                                ) : (
-                                  <span style={{fontSize:11,color:"#94a3b8"}}>-</span>
+                                  </div>
                                 )}
                               </div>
 
-                              {/* 상태 */}
-                              <select value={t.status||"대기"}
-                                onChange={e=>onUpdateTask({...t,status:e.target.value})}
-                                onClick={e=>e.stopPropagation()}
-                                style={{fontSize:10,padding:"2px 5px",borderRadius:6,
-                                  border:"1px solid "+statusColor(t.status||"대기")+"40",
-                                  background:statusBg(t.status||"대기"),
-                                  color:statusColor(t.status||"대기"),
-                                  fontWeight:600,cursor:"pointer",outline:"none"}}>
-                                {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
-                              </select>
-
-                              {/* 마감일 */}
-                              <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
-                                fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",lineHeight:1.3}}>
-                                {t.due
-                                  ? <>{t.due.slice(5,10).replace("-","/")}
-                                      {t.due.length>10&&<div style={{fontSize:9,color:"#94a3b8"}}>{t.due.slice(11,16)}</div>}
+                              {/* 담당자 (하위 없을 때만) */}
+                              {!hasKids&&(
+                                <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
+                                  {(t.assignees&&t.assignees.length>0)
+                                    ? <>{t.assignees.slice(0,3).map(n=>(
+                                        <span key={n} style={{display:"flex",alignItems:"center",gap:1,fontSize:10,background:"#eff6ff",color:"#2563eb",padding:"1px 5px",borderRadius:99,fontWeight:600,whiteSpace:"nowrap"}}>
+                                          <Avatar name={n} size={12}/>{n}
+                                        </span>
+                                      ))}
+                                      {t.assignees.length>3&&<span style={{fontSize:10,color:"#64748b"}}>+{t.assignees.length-3}</span>}
                                     </>
-                                  : <span style={{color:"#cbd5e1"}}>-</span>}
-                              </div>
-
-                              {/* 📅 날짜 편집 */}
-                              <div style={{position:"relative",width:24,height:24}}>
-                                <span style={{fontSize:13,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
-                                <input type="datetime-local" value={t.due||""}
-                                  onChange={e=>onUpdateTask({...t,due:e.target.value})}
-                                  onClick={e=>e.stopPropagation()}
-                                  style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
-                              </div>
-
-                              {/* ＋ 하위 태스크 추가 */}
-                              {depth===0 && (
-                                <button type="button"
-                                  title="하위 태스크 추가"
-                                  onClick={e=>{e.stopPropagation();onAddSubTask&&onAddSubTask(t);}}
-                                  style={{width:24,height:24,borderRadius:6,border:"1px solid #bfdbfe",
-                                    background:"#eff6ff",color:"#2563eb",fontSize:14,fontWeight:700,
-                                    cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                                    lineHeight:1,flexShrink:0}}
-                                  onMouseEnter={e=>e.currentTarget.style.background="#dbeafe"}
-                                  onMouseLeave={e=>e.currentTarget.style.background="#eff6ff"}>
-                                  ＋
-                                </button>
+                                    : <span style={{fontSize:10,color:"#94a3b8"}}>-</span>
+                                  }
+                                </div>
                               )}
-                              {depth>0 && <div style={{width:24}}/>}
 
-                              {/* − 삭제 */}
-                              <button type="button"
-                                onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
-                                style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
-                                  background:"#fff1f2",color:"#ef4444",fontSize:15,fontWeight:700,
-                                  cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                                  lineHeight:1,flexShrink:0}}>−</button>
+                              {/* 상태 (하위 없을 때만) */}
+                              {!hasKids&&(
+                                <select value={t.status||"대기"} onChange={e=>onUpdateTask({...t,status:e.target.value})} onClick={e=>e.stopPropagation()}
+                                  style={{fontSize:10,padding:"2px 4px",borderRadius:6,border:"1px solid "+(SCOL[t.status||"대기"])+"40",background:SBG[t.status||"대기"],color:SCOL[t.status||"대기"],fontWeight:600,cursor:"pointer",outline:"none",flexShrink:0}}>
+                                  {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                                </select>
+                              )}
+
+                              {/* 마감일 (하위 없을 때만) */}
+                              {!hasKids&&(
+                                <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",flexShrink:0}}>
+                                  {t.due?t.due.slice(5,10).replace("-","/"):<span style={{color:"#cbd5e1"}}>-</span>}
+                                </div>
+                              )}
+
+                              {/* 하위 추가 버튼 */}
+                              <button type="button" title="하위 태스크 추가"
+                                onClick={e=>{e.stopPropagation();onAddSubTask&&onAddSubTask(t);}}
+                                style={{width:22,height:22,borderRadius:5,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+                                onMouseEnter={e=>e.currentTarget.style.background="#dbeafe"}
+                                onMouseLeave={e=>e.currentTarget.style.background="#eff6ff"}>＋</button>
+
+                              {/* 삭제 */}
+                              <button type="button" onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
+                                style={{width:22,height:22,borderRadius:5,border:"1px solid #fca5a5",background:"#fff1f2",color:"#ef4444",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
                             </div>
-                            {/* 하위 태스크 재귀 렌더링 */}
-                            {kids.map(kid=>renderTask(kid, depth+1))}
+
+                            {/* ── 하위 태스크 목록 ── */}
+                            {hasKids&&(
+                              <div>
+                                {/* 하위 컬럼 헤더 */}
+                                <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",
+                                  padding:"3px 10px 3px 28px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6,
+                                  background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                                  <span/><span>세부 태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/><span/>
+                                </div>
+                                {kids.map(kid=><SubRow key={kid.id} t={kid}/>)}
+                                {/* 하위 추가 */}
+                                <div style={{padding:"5px 10px 5px 28px",borderTop:"1px solid #f8fafc"}}>
+                                  <button type="button"
+                                    onClick={e=>{e.stopPropagation();onAddSubTask&&onAddSubTask(t);}}
+                                    style={{fontSize:11,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",fontWeight:600,padding:"2px 4px"}}
+                                    onMouseEnter={e=>e.currentTarget.style.color="#2563eb"}
+                                    onMouseLeave={e=>e.currentTarget.style.color="#94a3b8"}>
+                                    ＋ 세부 태스크 추가
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
-                      };
-                      return roots.map(t=>renderTask(t));
+                      });
                     })()}
 
                     {/* ＋ 태스크 추가 버튼 */}
