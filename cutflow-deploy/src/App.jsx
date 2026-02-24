@@ -10007,10 +10007,11 @@ return (
             <TabBar
               tabs={proj.isBidding ? [
                 {id:"tasks",icon:"🏆",label:"비딩"},
+                {id:"client-request",icon:"📨",label:"고객 요청"},
+                {id:"calendar",icon:"📅",label:"캘린더"},
                 {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
                 {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessProjFinance},
                 {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessProjFinance},
-                {id:"client-request",icon:"📨",label:"고객 요청"},
               ] : [
                 {id:"tasks",icon:"📋",label:"프로젝트"},
                 {id:"client-request",icon:"📨",label:"고객 요청"},
@@ -10063,26 +10064,30 @@ return (
                   </div>
                 )}
 
-                {/* ── 서브탭: 태스크목록 / 협업흐름 / 캘린더 ── */}
-                <div style={{display:"flex",gap:0,borderBottom:"2px solid #e2e8f0",marginBottom:14}}>
-                  {[
-                    {id:"tasks", icon:"📋", label:"태스크 목록"},
-                    {id:"flow",  icon:"🔀", label:"협업 흐름"},
-                    {id:"calendar", icon:"📅", label:"캘린더"},
-                  ].map(s=>(
-                    <button key={s.id} onClick={()=>setBiddingView(s.id)}
-                      style={{padding:"7px 16px",border:"none",cursor:"pointer",fontSize:12,
-                        fontWeight:biddingView===s.id?700:400,
-                        background:"transparent",
-                        color:biddingView===s.id?"#1e293b":"#64748b",
-                        borderBottom:biddingView===s.id?"2px solid #2563eb":"2px solid transparent",
-                        marginBottom:-2}}>
-                      {s.icon} {s.label}
-                    </button>
-                  ))}
+                {/* ── 뷰모드 전환 버튼 (일반 프로젝트와 동일) ── */}
+                <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+                  <button onClick={()=>setBiddingView("tasks")}
+                    style={{padding:"7px 12px",borderRadius:7,fontSize:12,cursor:"pointer",
+                      border:`1px solid ${biddingView==="tasks"?C.blue:C.border}`,
+                      background:biddingView==="tasks"?C.blueLight:C.white,
+                      color:biddingView==="tasks"?C.blue:C.sub}}>
+                    📋 태스크 목록
+                  </button>
+                  <button onClick={()=>setBiddingView("flow")}
+                    style={{padding:"7px 12px",borderRadius:7,fontSize:12,cursor:"pointer",
+                      border:`1px solid ${biddingView==="flow"?C.blue:C.border}`,
+                      background:biddingView==="flow"?C.blueLight:C.white,
+                      color:biddingView==="flow"?C.blue:C.sub}}>
+                    🔀 협업흐름
+                  </button>
+                  <div style={{marginLeft:"auto"}}>
+                    <Btn primary sm onClick={()=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통"})}>
+                      + 태스크
+                    </Btn>
+                  </div>
                 </div>
 
-                {/* 태스크 목록 */}
+                {/* 태스크 목록 뷰 */}
                 {biddingView==="tasks"&&(
                   <BiddingTaskList tasks={proj.tasks||[]}
                     onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
@@ -10093,7 +10098,7 @@ return (
                     accounts={accounts}/>
                 )}
 
-                {/* 협업 흐름 */}
+                {/* 협업흐름 뷰 */}
                 {biddingView==="flow"&&(
                   <FlowView
                     tasks={proj.tasks||[]}
@@ -10105,10 +10110,7 @@ return (
                     onNotify={n=>setNotifications(p=>[n,...p])}/>
                 )}
 
-                {/* 캘린더 */}
-                {biddingView==="calendar"&&(
-                  <MonthCalendar project={proj} onChange={patchProj} user={user}/>
-                )}
+
               </div>
             )}
 
