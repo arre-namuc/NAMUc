@@ -4020,7 +4020,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
   };
   const openEdit = m => { setEditM(m); setMf({...m}); setModal(true); };
   const save = () => {
-    if(!mf.name?.trim()||!mf.pw?.trim()) return;
+    if(!mf.name?.trim()||!mf.pw?.trim()||!mf.jobTitle?.trim()) return;
     onSave({...mf, id:editM?editM.id:"m"+Date.now(), order:editM?(editM.order||0):accounts.length});
     setModal(false);
   };
@@ -4156,7 +4156,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                 {TEAMS.map(t=><option key={t.id} value={t.id}>{t.icon} {t.name}</option>)}
               </select>
             </Field>
-            <Field label="직책 *" style={{gridColumn:"1/-1"}}>
+            <Field label="직책" style={{gridColumn:"1/-1"}}>
               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {ROLES.map(r=>{
                   const sel = mf.role===r;
@@ -4174,7 +4174,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                 })}
               </div>
             </Field>
-            <Field label="직함" style={{gridColumn:"1/-1"}}>
+            <Field label="직함 *" style={{gridColumn:"1/-1"}}>
               <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
                 {JOB_TITLES.map(t=>{
                   const sel = (mf.jobTitle||"")===t;
@@ -4307,7 +4307,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
             {editM && <Btn danger sm onClick={()=>{setConf(editM);setModal(false);}}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(false)}>취소</Btn>
-            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()}>저장</Btn>
+            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()||!mf.jobTitle?.trim()}>저장</Btn>
           </div>
         </Modal>
       )}
@@ -5305,7 +5305,7 @@ function StaffList({ project, onChange, accounts }) {
       {modal && (
         <Modal title={editS ? "스탭 수정" : "스탭 추가"} onClose={() => setModal(false)}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            <Field label="직책 *" half>
+            <Field label="직책" half>
               <select style={inp} value={sf.role || STAFF_ROLES[0]} onChange={e => setSf(v => ({ ...v, role: e.target.value }))}>
                 {STAFF_GROUPS.map(grp => (
                   <optgroup key={grp.label} label={grp.label}>
