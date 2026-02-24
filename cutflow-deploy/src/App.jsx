@@ -3927,7 +3927,12 @@ function OrgChart({ accounts }) {
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
       {TEAMS.map(team=>{
         const members = accounts.filter(a=>a.team===team.id)
-          .sort((a,b)=>(a.order||0)-(b.order||0));
+          .sort((a,b)=>{
+            const aLeader = a.role==="팀장"?0:1;
+            const bLeader = b.role==="팀장"?0:1;
+            if(aLeader!==bLeader) return aLeader-bLeader;
+            return (a.order||0)-(b.order||0);
+          });
         return (
           <div key={team.id} style={{borderRadius:14,border:`1px solid ${team.color}33`,overflow:"hidden"}}>
             {/* 팀 헤더 */}
@@ -4030,6 +4035,10 @@ function MemberManagement({ accounts, onSave, onDelete }) {
     const ta = TEAMS.findIndex(t=>t.id===a.team);
     const tb = TEAMS.findIndex(t=>t.id===b.team);
     if(ta!==tb) return (ta===-1?99:ta)-(tb===-1?99:tb);
+    // 같은 팀 내 팀장 우선
+    const aLeader = a.role==="팀장"?0:1;
+    const bLeader = b.role==="팀장"?0:1;
+    if(aLeader!==bLeader) return aLeader-bLeader;
     return (a.order||0)-(b.order||0);
   });
 
@@ -8294,80 +8303,282 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
   );
 }
 
-function CRMPage({ projects }) {
-  const [search, setSearch] = useState("");
-  const [selProj, setSelProj] = useState(null);
+// ── 외주 유형 ──────────────────────────────────────────────
+const OUTSOURCE_TYPES = ["영상제작","촬영","편집","색보정","모션그래픽","번역/자막","성우","음악","작가","디자인","기타"];
+const OUTSOURCE_STATUS = [
+  {id:"활성",   label:"활성",   color:"#16a34a", bg:"#f0fdf4"},
+  {id:"비활성", label:"비활성", color:"#94a3b8", bg:"#f8fafc"},
+  {id:"블랙리스트", label:"블랙리스트", color:"#ef4444", bg:"#fff1f2"},
+];
 
-  // 프로젝트에서 클라이언트/대행사 정보 집계
+function CRMPage({ projects }) {
+  const [crmTab,   setCrmTab]   = useState("client");   // "client" | "outsource"
+  const [search,   setSearch]   = useState("");
+  const [selProj,  setSelProj]  = useState(null);
+
+  // ── 외주 목록 (localStorage 로컬 저장) ──────────────────
+  const [vendors, setVendors] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; }
+  });
+  const [vModal,  setVModal]  = useState(null); // null | {} | {id}
+  const [vf,      setVf]      = useState({});
+
+  const saveVendors = (next) => {
+    setVendors(next);
+    try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
+  };
+  const openAddVendor = () => {
+    setVf({name:"",type:"",status:"활성",phone:"",email:"",contactName:"",note:"",rate:"",rateUnit:"건"});
+    setVModal({});
+  };
+  const openEditVendor = v => { setVf({...v}); setVModal({id:v.id}); };
+  const saveVendor = () => {
+    if(!vf.name?.trim()) return;
+    const entry = {...vf, id:vModal.id||"v"+Date.now()};
+    saveVendors(vModal.id ? vendors.map(v=>v.id===vModal.id?entry:v) : [...vendors, entry]);
+    setVModal(null);
+  };
+  const deleteVendor = (id) => saveVendors(vendors.filter(v=>v.id!==id));
+
+  // ── 고객사 집계 (프로젝트 기반) ─────────────────────────
   const clients = {};
   for (const p of projects) {
     const key = p.client;
-    if (!clients[key]) clients[key] = { name:p.client, agency:p.agency||"", projects:[], contacts:[] };
+    if(!key) continue;
+    if(!clients[key]) clients[key] = { name:p.client, agency:p.agency||"", projects:[], contacts:[] };
     clients[key].projects.push(p);
-    if (p.contactName) {
+    if(p.contactName) {
       const exists = clients[key].contacts.find(c=>c.name===p.contactName);
-      if (!exists) clients[key].contacts.push({ name:p.contactName, phone:p.contactPhone||"", email:p.contactEmail||"", agency:p.agency||"" });
+      if(!exists) clients[key].contacts.push({ name:p.contactName, phone:p.contactPhone||"", email:p.contactEmail||"", agency:p.agency||"" });
     }
   }
-  const list = Object.values(clients).filter(c =>
+  const clientList = Object.values(clients).filter(c=>
     !search || c.name.includes(search) || c.agency.includes(search) ||
     c.contacts.some(ct=>ct.name.includes(search)||ct.phone.includes(search))
   );
+  const vendorList = vendors.filter(v=>
+    !search || v.name.includes(search) || (v.type||"").includes(search) ||
+    (v.contactName||"").includes(search)
+  );
+
+  const TAB_STYLE = (id) => ({
+    padding:"8px 18px", borderRadius:"8px 8px 0 0", border:"none", cursor:"pointer",
+    fontSize:13, fontWeight:crmTab===id?700:500,
+    background:crmTab===id?"#fff":"transparent",
+    color:crmTab===id?"#1e293b":"#64748b",
+    borderBottom:crmTab===id?"2px solid #2563eb":"2px solid transparent",
+    marginBottom:-2,
+  });
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontSize:18,fontWeight:800,margin:0}}>👥 CRM — 거래처 관리</h2>
-        <input style={{...inp,width:220}} placeholder="🔍 거래처·대행사·담당자 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <h2 style={{fontSize:18,fontWeight:800,margin:0}}>👥 CRM</h2>
+        <input style={{...inp,width:220}} placeholder="🔍 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
 
-      {list.length===0 && <div style={{textAlign:"center",padding:60,color:C.faint}}>검색 결과가 없습니다</div>}
+      {/* 탭 */}
+      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:20}}>
+        <button style={TAB_STYLE("client")} onClick={()=>setCrmTab("client")}>
+          🏢 고객사 <span style={{fontSize:11,marginLeft:4,opacity:.7}}>{clientList.length}</span>
+        </button>
+        <button style={TAB_STYLE("outsource")} onClick={()=>setCrmTab("outsource")}>
+          🔧 외주 관리 <span style={{fontSize:11,marginLeft:4,opacity:.7}}>{vendors.length}</span>
+        </button>
+      </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
-        {list.map(cl=>(
-          <div key={cl.name} onClick={()=>setSelProj(selProj===cl.name?null:cl.name)}
-            style={{background:C.white,border:`1px solid ${selProj===cl.name?C.blue:C.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .15s",boxShadow:selProj===cl.name?"0 0 0 2px "+C.blue+"30":"none"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:15}}>{cl.name}</div>
-                {cl.agency&&<div style={{fontSize:12,color:C.sub,marginTop:2}}>📌 {cl.agency}</div>}
-              </div>
-              <span style={{fontSize:11,padding:"2px 8px",background:C.blueLight,color:C.blue,borderRadius:99,fontWeight:600}}>{cl.projects.length}건</span>
-            </div>
-
-            {cl.contacts.length>0 && (
-              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginBottom:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>담당자</div>
-                {cl.contacts.map((ct,i)=>(
-                  <div key={i} style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6,padding:"6px 8px",background:C.slateLight,borderRadius:8}}>
-                    <span style={{fontWeight:700,fontSize:12,width:"100%"}}>{ct.name} {ct.agency&&<span style={{fontWeight:400,color:C.faint}}>({ct.agency})</span>}</span>
-                    {ct.phone&&<a href={`tel:${ct.phone}`} style={{fontSize:11,color:C.blue,textDecoration:"none"}}>📞 {ct.phone}</a>}
-                    {ct.email&&<a href={`mailto:${ct.email}`} style={{fontSize:11,color:C.blue,textDecoration:"none",marginLeft:8}}>✉️ {ct.email}</a>}
+      {/* ── 고객사 탭 ─────────────────────────────────────── */}
+      {crmTab==="client" && (
+        <>
+          {clientList.length===0 && <div style={{textAlign:"center",padding:60,color:C.faint}}>
+            {search ? "검색 결과가 없습니다" : "프로젝트에 고객사를 입력하면 자동으로 표시됩니다"}
+          </div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+            {clientList.map(cl=>(
+              <div key={cl.name} onClick={()=>setSelProj(selProj===cl.name?null:cl.name)}
+                style={{background:C.white,border:`1px solid ${selProj===cl.name?C.blue:C.border}`,
+                  borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .15s",
+                  boxShadow:selProj===cl.name?"0 0 0 2px "+C.blue+"30":"none"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:15}}>{cl.name}</div>
+                    {cl.agency&&<div style={{fontSize:12,color:C.sub,marginTop:2}}>📌 {cl.agency}</div>}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {selProj===cl.name && (
-              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>진행 프로젝트</div>
-                {cl.projects.map(p=>(
-                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-                    <div>
-                      <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",marginRight:6}}/>
-                      <span style={{fontWeight:600}}>{p.name}</span>
-                    </div>
-                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                      <span style={{fontSize:11,padding:"1px 6px",background:C.slateLight,borderRadius:99,color:C.sub}}>{p.stage}</span>
-                      {p.due&&<span style={{fontSize:11,color:C.faint}}>{p.due}</span>}
-                    </div>
+                  <span style={{fontSize:11,padding:"2px 8px",background:C.blueLight,color:C.blue,borderRadius:99,fontWeight:600}}>{cl.projects.length}건</span>
+                </div>
+                {cl.contacts.length>0&&(
+                  <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>담당자</div>
+                    {cl.contacts.map((ct,i)=>(
+                      <div key={i} style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6,padding:"6px 8px",background:C.slateLight,borderRadius:8}}>
+                        <span style={{fontWeight:700,fontSize:12,width:"100%"}}>{ct.name}{ct.agency&&<span style={{fontWeight:400,color:C.faint}}> ({ct.agency})</span>}</span>
+                        {ct.phone&&<a href={`tel:${ct.phone}`} style={{fontSize:11,color:C.blue,textDecoration:"none"}}>📞 {ct.phone}</a>}
+                        {ct.email&&<a href={`mailto:${ct.email}`} style={{fontSize:11,color:C.blue,textDecoration:"none",marginLeft:8}}>✉️ {ct.email}</a>}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                {selProj===cl.name&&(
+                  <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>진행 프로젝트</div>
+                    {cl.projects.map(p=>(
+                      <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
+                        <div>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",marginRight:6}}/>
+                          <span style={{fontWeight:600}}>{p.name}</span>
+                        </div>
+                        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                          <span style={{fontSize:11,padding:"1px 6px",background:C.slateLight,borderRadius:99,color:C.sub}}>{p.stage}</span>
+                          {p.due&&<span style={{fontSize:11,color:C.faint}}>{p.due}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
+
+      {/* ── 외주 관리 탭 ──────────────────────────────────── */}
+      {crmTab==="outsource" && (
+        <>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+            <Btn primary sm onClick={openAddVendor}>+ 외주 등록</Btn>
+          </div>
+
+          {vendorList.length===0 && (
+            <div style={{textAlign:"center",padding:60,color:C.faint}}>
+              {search ? "검색 결과가 없습니다" : "외주 업체/프리랜서를 등록해보세요"}
+            </div>
+          )}
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+            {vendorList.map(v=>{
+              const st = OUTSOURCE_STATUS.find(s=>s.id===v.status)||OUTSOURCE_STATUS[0];
+              return (
+                <div key={v.id} style={{background:"#fff",border:`1px solid ${v.status==="블랙리스트"?"#fca5a5":"#e2e8f0"}`,
+                  borderRadius:14,padding:"14px 16px",
+                  opacity:v.status==="비활성"?.6:1}}>
+                  {/* 헤더 */}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div>
+                      <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>{v.name}</div>
+                      {v.type&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+                        background:"#eff6ff",color:"#2563eb",fontWeight:600,marginTop:3,display:"inline-block"}}>
+                        {v.type}
+                      </span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                        background:st.bg,color:st.color}}>{st.label}</span>
+                      <button onClick={()=>openEditVendor(v)}
+                        style={{border:"none",background:"none",cursor:"pointer",fontSize:13,padding:2}}>✏️</button>
+                    </div>
+                  </div>
+                  {/* 담당자 */}
+                  {v.contactName&&<div style={{fontSize:12,color:"#475569",marginBottom:4}}>
+                    👤 {v.contactName}
+                  </div>}
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:v.note?6:0}}>
+                    {v.phone&&<a href={`tel:${v.phone}`} style={{fontSize:11,color:"#2563eb",textDecoration:"none"}}>📞 {v.phone}</a>}
+                    {v.email&&<a href={`mailto:${v.email}`} style={{fontSize:11,color:"#2563eb",textDecoration:"none"}}>✉️ {v.email}</a>}
+                  </div>
+                  {/* 단가 */}
+                  {v.rate&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>
+                    💰 {Number(v.rate).toLocaleString()}원 / {v.rateUnit||"건"}
+                  </div>}
+                  {/* 메모 */}
+                  {v.note&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,padding:"6px 8px",
+                    background:"#f8fafc",borderRadius:6,whiteSpace:"pre-wrap"}}>{v.note}</div>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 외주 등록/수정 모달 */}
+          {vModal&&(
+            <Modal title={vModal.id?"외주 수정":"외주 등록"} onClose={()=>setVModal(null)}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <Field label="업체명 / 이름 *" style={{gridColumn:"1/-1"}}>
+                  <input style={inp} autoFocus value={vf.name||""} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="업체명 또는 프리랜서 이름"/>
+                </Field>
+                <Field label="유형">
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {OUTSOURCE_TYPES.map(t=>{
+                      const sel=vf.type===t;
+                      return (
+                        <button key={t} type="button" onClick={()=>setVf(v=>({...v,type:sel?"":t}))}
+                          style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:sel?700:400,
+                            background:sel?"#2563eb":"#f1f5f9",
+                            color:sel?"#fff":"#64748b"}}>
+                          {t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="상태">
+                  <div style={{display:"flex",gap:6}}>
+                    {OUTSOURCE_STATUS.map(s=>{
+                      const sel=vf.status===s.id;
+                      return (
+                        <button key={s.id} type="button" onClick={()=>setVf(v=>({...v,status:s.id}))}
+                          style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:sel?700:400,
+                            background:sel?s.bg:"#f8fafc",color:sel?s.color:"#94a3b8",
+                            outline:sel?`2px solid ${s.color}`:"none"}}>
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="담당자명">
+                  <input style={inp} value={vf.contactName||""} onChange={e=>setVf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동"/>
+                </Field>
+                <Field label="연락처">
+                  <input style={inp} value={vf.phone||""} onChange={e=>setVf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
+                </Field>
+                <Field label="이메일">
+                  <input style={inp} value={vf.email||""} onChange={e=>setVf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
+                </Field>
+                <Field label="기본 단가">
+                  <input style={inp} type="number" value={vf.rate||""} onChange={e=>setVf(v=>({...v,rate:e.target.value}))} placeholder="0"/>
+                </Field>
+                <Field label="단가 기준">
+                  <div style={{display:"flex",gap:6}}>
+                    {["건","일","시간","월"].map(u=>{
+                      const sel=vf.rateUnit===u;
+                      return (
+                        <button key={u} type="button" onClick={()=>setVf(v=>({...v,rateUnit:u}))}
+                          style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:sel?700:400,
+                            background:sel?"#2563eb":"#f1f5f9",color:sel?"#fff":"#64748b"}}>
+                          {u}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="메모" style={{gridColumn:"1/-1"}}>
+                  <textarea style={{...inp,minHeight:64,resize:"vertical"}} value={vf.note||""}
+                    onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 강점, 주의사항 등"/>
+                </Field>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                {vModal.id&&<Btn danger sm onClick={()=>{deleteVendor(vModal.id);setVModal(null);}}>삭제</Btn>}
+                <div style={{flex:1}}/>
+                <Btn onClick={()=>setVModal(null)}>취소</Btn>
+                <Btn primary onClick={saveVendor} disabled={!vf.name?.trim()}>저장</Btn>
+              </div>
+            </Modal>
+          )}
+        </>
+      )}
     </div>
   );
 }
