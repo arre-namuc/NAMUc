@@ -3841,7 +3841,11 @@ function SettlementView({ project, onConfirm, onSave }) {
 // ═══════════════════════════════════════════════════════════
 // 구성원 관리 컴포넌트
 // ═══════════════════════════════════════════════════════════
-const ROLES = ["대표","EPD","PD","감독","조감독","AE","AI작업자","경영지원","팀장","실장","매니저","기타"];
+// 직책 (조직 레벨)
+const ROLES = ["대표","실장","팀장"];
+
+// 직함 (업무 역할)
+const JOB_TITLES = ["EPD","PD","감독","조감독","AE","CP","AI Director","경영지원"];
 
 // 팀 구조
 const TEAMS = [
@@ -3861,6 +3865,61 @@ const ProbationBadge = () => (
     background:"#fef3c7",color:"#d97706",border:"1px solid #fde68a",
     verticalAlign:"middle",marginLeft:3}}>수습</span>
 );
+
+// 입사일 → 수습 종료일 (3개월 후)
+const calcProbationEnd = (joinDate) => {
+  if (!joinDate) return "";
+  const d = new Date(joinDate);
+  d.setMonth(d.getMonth() + 3);
+  return d.toISOString().slice(0,10);
+};
+
+// 주민번호 앞 6자리(birthDate yyyymmdd) + 뒷자리 1번째 → 나이 계산
+// idLast4 첫 자리: 1/2=1900s 3/4=2000s 남/여
+const calcAgeFromId = (birthDate, idLast4) => {
+  if (!birthDate || birthDate.length < 8) return null;
+  const year  = parseInt(birthDate.slice(0,4));
+  const month = parseInt(birthDate.slice(4,6));
+  const day   = parseInt(birthDate.slice(6,8));
+  if (isNaN(year)||isNaN(month)||isNaN(day)) return null;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  if (today.getMonth()+1 < month || (today.getMonth()+1===month && today.getDate() < day)) age--;
+  return age;
+};
+
+// 주민번호 전체(앞6+뒷7) → 생년월일 파싱
+const parseIdNumber = (idNum) => {
+  // idNum: "YYMMDD-NXXXXXX" or "YYMMDDNXXXXXX"
+  const clean = idNum.replace(/[^0-9]/g,"");
+  if (clean.length < 7) return null;
+  const yy   = clean.slice(0,2);
+  const mm   = clean.slice(2,4);
+  const dd   = clean.slice(4,6);
+  const gen  = clean[6]; // 1/2=1900s, 3/4=2000s
+  const century = (gen==="3"||gen==="4") ? "20" : "19";
+  const yyyy = century + yy;
+  const birthDate = `${yyyy}${mm}${dd}`;
+  const today = new Date();
+  const year = parseInt(yyyy), month = parseInt(mm), dayN = parseInt(dd);
+  let age = today.getFullYear() - year;
+  if (today.getMonth()+1 < month || (today.getMonth()+1===month && today.getDate() < dayN)) age--;
+  const birthIso = `${yyyy}-${mm}-${dd}`;
+  return { birthDate, birthIso, age };
+};
+
+// 입사일 → 근속연수 텍스트
+const calcTenure = (joinDate) => {
+  if (!joinDate) return "";
+  const start = new Date(joinDate);
+  const today = new Date();
+  const months = (today.getFullYear()-start.getFullYear())*12 + (today.getMonth()-start.getMonth());
+  if (months < 1) return "1개월 미만";
+  if (months < 12) return `${months}개월`;
+  const years = Math.floor(months/12);
+  const rem   = months % 12;
+  return rem > 0 ? `${years}년 ${rem}개월` : `${years}년`;
+};
 
 function OrgChart({ accounts }) {
   return (
@@ -3904,10 +3963,14 @@ function OrgChart({ accounts }) {
                         {m.email&&<div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>✉️ {m.email}</div>}
                         {m.joinDate&&<div style={{fontSize:10,color:"#94a3b8"}}>
                           입사 {m.joinDate}
+                          <span style={{marginLeft:4,color:"#2563eb",fontWeight:600}}>
+                            ({calcTenure(m.joinDate)})
+                          </span>
                           {isProbation(m)&&<span style={{color:"#d97706",marginLeft:4}}>
-                            (~{m.probationEnd} 수습)
+                            · 수습 ~{m.probationEnd}
                           </span>}
                         </div>}
+                        {m.age!=null&&<div style={{fontSize:10,color:"#94a3b8"}}>만 {m.age}세</div>}
                       </div>
                     </div>
                   ))}
@@ -3950,7 +4013,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
 
   const openAdd  = () => {
     setEditM(null);
-    setMf({name:"",role:ROLES[2],team:"",pw:"",
+    setMf({name:"",role:"",team:"",pw:"",
            canViewFinance:false,canManageMembers:false,
            jobTitle:"",phone:"",email:"",joinDate:"",probationEnd:"",birthDate:"",idLast4:"",emergencyContact:""});
     setModal(true);
@@ -4036,9 +4099,8 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                         <div style={{textAlign:"center"}}>{m.canManageMembers?<span style={{color:"#2563eb"}}>✅</span>:<span style={{color:"#cbd5e1"}}>—</span>}</div>
                         <div style={{fontSize:10}}>
                           <div style={{color:"#94a3b8"}}>{m.joinDate||"—"}</div>
-                          {isProbation(m)&&<div style={{color:"#d97706",fontWeight:600}}>
-                            ~{m.probationEnd}
-                          </div>}
+                          {m.joinDate&&<div style={{color:"#2563eb",fontWeight:600}}>{calcTenure(m.joinDate)}</div>}
+                          {isProbation(m)&&<div style={{color:"#d97706",fontWeight:600}}>수습 ~{m.probationEnd}</div>}
                         </div>
                         <div style={{display:"flex",gap:3,justifyContent:"flex-end"}}>
                           <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
@@ -4094,13 +4156,44 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                 {TEAMS.map(t=><option key={t.id} value={t.id}>{t.icon} {t.name}</option>)}
               </select>
             </Field>
-            <Field label="직책 *">
-              <select style={inp} value={mf.role||ROLES[2]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>
-                {ROLES.map(r=><option key={r}>{r}</option>)}
-              </select>
+            <Field label="직책 *" style={{gridColumn:"1/-1"}}>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {ROLES.map(r=>{
+                  const sel = mf.role===r;
+                  return (
+                    <button key={r} type="button" onClick={()=>setMf(v=>({...v,role:v.role===r?"":r}))}
+                      style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                        fontSize:12,fontWeight:sel?700:400,
+                        background:sel?"#1e293b":"#f1f5f9",
+                        color:sel?"#fff":"#64748b",
+                        outline:sel?"2px solid #1e293b":"none",
+                        transition:"all .1s"}}>
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
             </Field>
-            <Field label="직함 (표시용)">
-              <input style={inp} value={mf.jobTitle||""} onChange={e=>setMf(v=>({...v,jobTitle:e.target.value}))} placeholder="예: 수석 PD, AI 디렉터"/>
+            <Field label="직함" style={{gridColumn:"1/-1"}}>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
+                {JOB_TITLES.map(t=>{
+                  const sel = (mf.jobTitle||"")===t;
+                  return (
+                    <button key={t} type="button" onClick={()=>setMf(v=>({...v,jobTitle:sel?"":t}))}
+                      style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                        fontSize:12,fontWeight:sel?700:400,
+                        background:sel?"#2563eb":"#f1f5f9",
+                        color:sel?"#fff":"#64748b",
+                        outline:sel?"2px solid #2563eb":"none",
+                        transition:"all .1s"}}>
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+              <input style={{...inp,marginTop:2}} value={mf.jobTitle||""}
+                placeholder="직접 입력 (위에서 선택하거나 직접 입력)"
+                onChange={e=>setMf(v=>({...v,jobTitle:e.target.value}))}/>
             </Field>
             <Field label="비밀번호 *">
               <input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/>
@@ -4116,26 +4209,76 @@ function MemberManagement({ accounts, onSave, onDelete }) {
             <Field label="이메일">
               <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
             </Field>
-            <Field label="긴급연락처" style={{gridColumn:"1/-1"}}>
+            <Field label="긴급연락처">
               <input style={inp} value={mf.emergencyContact||""} onChange={e=>setMf(v=>({...v,emergencyContact:e.target.value}))} placeholder="이름 관계 010-0000-0000"/>
+            </Field>
+            <Field label="주소">
+              <input style={inp} value={mf.address||""} onChange={e=>setMf(v=>({...v,address:e.target.value}))} placeholder="서울시 강남구 ..."/>
             </Field>
           </div>
 
           {/* 인사 정보 */}
           <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>인사 정보</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            <Field label="입사일">
-              <input style={inp} type="date" value={mf.joinDate||""} onChange={e=>setMf(v=>({...v,joinDate:e.target.value}))}/>
+            {/* 입사일 → 수습 종료일 자동 계산 */}
+            <Field label="입사일 (고용일)">
+              <input style={inp} type="date" value={mf.joinDate||""}
+                onChange={e=>{
+                  const d = e.target.value;
+                  setMf(v=>({...v, joinDate:d, probationEnd: v.probationEnd||calcProbationEnd(d)}));
+                }}/>
+              {mf.joinDate&&(
+                <div style={{fontSize:10,color:"#2563eb",marginTop:3}}>
+                  근속 {calcTenure(mf.joinDate)}
+                </div>
+              )}
             </Field>
             <Field label="수습 종료일">
-              <input style={inp} type="date" value={mf.probationEnd||""} onChange={e=>setMf(v=>({...v,probationEnd:e.target.value}))}/>
+              <input style={inp} type="date" value={mf.probationEnd||""}
+                onChange={e=>setMf(v=>({...v,probationEnd:e.target.value}))}/>
+              {!mf.probationEnd&&mf.joinDate&&(
+                <button type="button"
+                  onClick={()=>setMf(v=>({...v,probationEnd:calcProbationEnd(v.joinDate)}))}
+                  style={{marginTop:3,fontSize:10,padding:"2px 8px",borderRadius:6,
+                    border:"1px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>
+                  입사일+3개월 자동 설정
+                </button>
+              )}
             </Field>
-            <Field label="생년월일">
-              <input style={inp} type="date" value={mf.birthDate||""} onChange={e=>setMf(v=>({...v,birthDate:e.target.value}))}/>
-            </Field>
-            <Field label="주민번호 뒷자리 (급여용)">
-              <input style={{...inp,letterSpacing:2}} value={mf.idLast4||""} maxLength={7}
-                onChange={e=>setMf(v=>({...v,idLast4:e.target.value.replace(/\D/g,"")}))} placeholder="0000000"/>
+            {/* 주민등록번호 전체 입력 → 생년월일 + 나이 자동 계산 */}
+            <Field label="주민등록번호 (급여용)" style={{gridColumn:"1/-1"}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input style={{...inp,flex:1,letterSpacing:2,fontFamily:"monospace"}}
+                  value={mf.idNumber||""}
+                  maxLength={14}
+                  placeholder="000000-0000000"
+                  onChange={e=>{
+                    const raw = e.target.value.replace(/[^0-9]/g,"");
+                    // 하이픈 자동 삽입
+                    const fmt = raw.length>6 ? raw.slice(0,6)+"-"+raw.slice(6,13) : raw;
+                    const parsed = parseIdNumber(raw);
+                    setMf(v=>({
+                      ...v,
+                      idNumber: fmt,
+                      ...(parsed ? { birthDate: parsed.birthIso, age: parsed.age } : {})
+                    }));
+                  }}/>
+                {mf.age!=null&&(
+                  <span style={{fontSize:12,fontWeight:700,color:"#1e293b",
+                    background:"#f0fdf4",padding:"4px 10px",borderRadius:8,
+                    border:"1px solid #bbf7d0",whiteSpace:"nowrap"}}>
+                    만 {mf.age}세
+                  </span>
+                )}
+              </div>
+              {mf.birthDate&&(
+                <div style={{fontSize:10,color:"#64748b",marginTop:3}}>
+                  생년월일: {mf.birthDate}
+                </div>
+              )}
+              <div style={{fontSize:10,color:"#ef4444",marginTop:3}}>
+                ⚠️ 민감정보 — 저장 시 암호화되지 않으므로 열람 권한자만 접근하세요
+              </div>
             </Field>
           </div>
 
