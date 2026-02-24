@@ -6020,7 +6020,7 @@ function CalNameInput({ project, onSave }) {
 // ══════════════════════════════════════════════════════════
 
 function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
-  const [tab, setTab] = useState("rooms");  // "rooms" | "notice" | "request"
+  const [tab, setTab] = useState("notice");  // "rooms" | "notice" | "request"
 
   // ── 데이터 헬퍼 ──────────────────────────────────────────
   const rooms      = officeData.rooms      || [{ id:"r1", name:"회의실 A" }, { id:"r2", name:"회의실 B" }];
@@ -6420,7 +6420,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
     const [modal, setModal] = useState(null);
     const [rf, setRf]       = useState({});
 
-    const TYPES = ["비품 구매", "시설 수리", "IT 지원", "기타"];
+    const TYPES = ["소모품", "사무용품", "IT 장비", "시설 수리", "기타"];
     const STATUS = [
       { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
       { id:"검토중", color:"#d97706", bg:"#fffbeb" },
@@ -6510,7 +6510,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
       <div>
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
           <Btn primary sm onClick={()=>{setRf({type:"비품 구매",status:"접수"});setModal({});}}>
-            + 요청 등록
+            + 비품 요청
           </Btn>
         </div>
 
@@ -6544,7 +6544,7 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
         )}
 
         {modal && (
-          <Modal title={modal.id?"요청 수정":"업무 요청 등록"} onClose={()=>setModal(null)}>
+          <Modal title={modal.id?"요청 수정":"비품 요청 등록"} onClose={()=>setModal(null)}>
             <Field label="유형">
               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {TYPES.map(t=>(
@@ -6597,13 +6597,581 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
     );
   };
 
+
+  // ────────────────────────────────────────────────────────
+  // 야근 공유
+  // ────────────────────────────────────────────────────────
+  const OvertimeSection = () => {
+    const overtimes = officeData.overtimes || [];
+    const [modal, setModal] = useState(null);
+    const [of_, setOf_] = useState({});
+
+    const todayStr = new Date().toISOString().slice(0,10);
+
+    // 이번 주 월~금
+    const getWeekDays = () => {
+      const d = new Date(); const day = d.getDay();
+      const mon = new Date(d); mon.setDate(d.getDate() - (day===0?6:day-1));
+      return Array.from({length:5},(_,i)=>{ const x=new Date(mon); x.setDate(mon.getDate()+i); return x.toISOString().slice(0,10); });
+    };
+    const weekDays = getWeekDays();
+
+    const save = () => {
+      if (!of_.date) return;
+      const entry = { ...of_, id: modal.id||"ot"+Date.now(), name: user.name };
+      const next = modal.id ? overtimes.map(o=>o.id===modal.id?entry:o) : [...overtimes, entry];
+      patch("overtimes", next);
+      setModal(null);
+    };
+    const del = (id) => { patch("overtimes", overtimes.filter(o=>o.id!==id)); setModal(null); };
+
+    const todayOTs = overtimes.filter(o => o.date === todayStr);
+    const weekOTs  = overtimes.filter(o => weekDays.includes(o.date));
+
+    const fmtDate = d => { const [,m,dd] = d.split("-"); return `${Number(m)}/${Number(dd)}`; };
+    const DOW = ["일","월","화","수","목","금","토"];
+    const getDow = d => DOW[new Date(d).getDay()];
+
+    return (
+      <div>
+        {/* 오늘 야근 현황 배너 */}
+        <div style={{background: todayOTs.length>0?"#fffbeb":"#f0fdf4", borderRadius:12,
+          padding:"14px 18px", marginBottom:16, border:`1px solid ${todayOTs.length>0?"#fde68a":"#bbf7d0"}`,
+          display:"flex", alignItems:"center", gap:12}}>
+          <span style={{fontSize:22}}>{todayOTs.length>0?"🌙":"🌅"}</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:4}}>
+              오늘 야근 {todayOTs.length>0?`${todayOTs.length}명`:"없음"}
+            </div>
+            {todayOTs.length>0 && (
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {todayOTs.map(o=>(
+                  <span key={o.id} style={{display:"flex",alignItems:"center",gap:4,
+                    fontSize:11,padding:"2px 8px",borderRadius:99,
+                    background:"#fef3c7",color:"#92400e",fontWeight:600}}>
+                    <Avatar name={o.name} size={14}/>{o.name}
+                    {o.until && <span style={{opacity:.7}}>~{o.until}</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <Btn primary sm onClick={()=>{ setOf_({date:todayStr,until:"",reason:""}); setModal({}); }}>
+            + 야근 등록
+          </Btn>
+        </div>
+
+        {/* 이번 주 야근 달력 */}
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+          padding:"14px 16px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:10}}>이번 주 야근 현황</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+            {weekDays.map(d=>{
+              const dayOTs = weekOTs.filter(o=>o.date===d);
+              const isToday2 = d===todayStr;
+              return (
+                <div key={d} style={{borderRadius:8,padding:"8px 6px",textAlign:"center",
+                  background:isToday2?"#eff6ff":"#f8fafc",
+                  border:`1px solid ${isToday2?"#bfdbfe":"#f1f5f9"}`}}>
+                  <div style={{fontSize:10,fontWeight:700,color:isToday2?"#2563eb":"#94a3b8",marginBottom:4}}>
+                    {fmtDate(d)} ({getDow(d)})
+                  </div>
+                  {dayOTs.length===0
+                    ? <div style={{fontSize:9,color:"#cbd5e1"}}>-</div>
+                    : dayOTs.map(o=>(
+                        <div key={o.id} style={{fontSize:9,padding:"1px 4px",borderRadius:4,
+                          background:"#fef3c7",color:"#92400e",fontWeight:600,
+                          marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {o.name}{o.until&&` ~${o.until}`}
+                        </div>
+                      ))
+                  }
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 내 야근 기록 */}
+        <div style={{marginBottom:8,fontSize:12,fontWeight:700,color:"#475569"}}>최근 내 야근 기록</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {overtimes.filter(o=>o.name===user.name).slice(-10).reverse().map(o=>(
+            <div key={o.id} style={{display:"flex",alignItems:"center",gap:10,
+              padding:"8px 12px",borderRadius:8,background:"#fff",
+              border:"1px solid #e2e8f0"}}>
+              <span style={{fontSize:12,color:"#64748b",minWidth:60}}>{fmtDate(o.date)}({getDow(o.date)})</span>
+              {o.until&&<span style={{fontSize:11,color:"#d97706",fontWeight:600}}>~{o.until}</span>}
+              <span style={{fontSize:11,color:"#475569",flex:1}}>{o.reason||""}</span>
+              <button onClick={()=>{setOf_({...o});setModal({id:o.id});}}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+            </div>
+          ))}
+          {overtimes.filter(o=>o.name===user.name).length===0&&(
+            <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12,
+              background:"#f8fafc",borderRadius:8,border:"1px dashed #e2e8f0"}}>야근 기록이 없어요 🎉</div>
+          )}
+        </div>
+
+        {modal&&(
+          <Modal title={modal.id?"야근 수정":"야근 등록"} onClose={()=>setModal(null)}>
+            <Field label="날짜">
+              <input style={inp} type="date" value={of_.date||""}
+                onChange={e=>setOf_(v=>({...v,date:e.target.value}))}/>
+            </Field>
+            <Field label="퇴근 예정 시간">
+              <input style={inp} type="time" value={of_.until||""}
+                onChange={e=>setOf_(v=>({...v,until:e.target.value}))} placeholder="예: 22:00"/>
+            </Field>
+            <Field label="사유">
+              <input style={inp} value={of_.reason||""} placeholder="야근 사유"
+                onChange={e=>setOf_(v=>({...v,reason:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!of_.date}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────
+  // 회계 요청
+  // ────────────────────────────────────────────────────────
+  const AccountingSection = () => {
+    const accts = officeData.accounting || [];
+    const [modal, setModal] = useState(null);
+    const [af, setAf] = useState({});
+
+    const TYPES = ["경비 청구", "법인카드 사용", "세금계산서 발행", "급여 관련", "기타"];
+    const STATUS = [
+      { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
+      { id:"검토중", color:"#d97706", bg:"#fffbeb" },
+      { id:"처리중", color:"#2563eb", bg:"#eff6ff" },
+      { id:"완료",   color:"#16a34a", bg:"#f0fdf4" },
+    ];
+
+    const save = () => {
+      if (!af.title?.trim()) return;
+      const entry = { ...af, id: modal.id||"ac"+Date.now(),
+        requestedBy: modal.id ? af.requestedBy : user.name,
+        status: af.status||"접수",
+        createdAt: modal.id ? af.createdAt : new Date().toISOString() };
+      const next = modal.id ? accts.map(a=>a.id===modal.id?entry:a) : [...accts, entry];
+      patch("accounting", next);
+      setModal(null);
+    };
+    const del = (id) => { patch("accounting", accts.filter(a=>a.id!==id)); setModal(null); };
+    const patchStatus = (id, status) => patch("accounting", accts.map(a=>a.id===id?{...a,status}:a));
+
+    const fmtDate = iso => { if(!iso) return ""; const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}`; };
+    const myAccts = accts.filter(a=>a.requestedBy===user.name);
+    const otherAccts = accts.filter(a=>a.requestedBy!==user.name);
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          <Btn primary sm onClick={()=>{setAf({type:"경비 청구",status:"접수"});setModal({});}}>
+            + 회계 요청
+          </Btn>
+        </div>
+
+        {/* 요약 카드 */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
+          {STATUS.map(s=>{
+            const cnt = accts.filter(a=>a.status===s.id).length;
+            return (
+              <div key={s.id} style={{background:s.bg,borderRadius:10,padding:"10px 14px",
+                border:`1px solid ${s.color}22`,textAlign:"center"}}>
+                <div style={{fontSize:18,fontWeight:800,color:s.color}}>{cnt}</div>
+                <div style={{fontSize:10,color:s.color,fontWeight:600,marginTop:2}}>{s.id}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {[{title:"내 요청",list:myAccts},{title:"팀 전체",list:otherAccts}].map(({title,list})=>
+          list.length>0&&(
+            <div key={title} style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:6}}>{title}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                {list.map(a=>{
+                  const st=STATUS.find(s=>s.id===a.status)||STATUS[0];
+                  return (
+                    <div key={a.id} style={{background:"#fff",borderRadius:10,
+                      border:"1px solid #e2e8f0",padding:"10px 14px",
+                      display:"flex",gap:10,alignItems:"center"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
+                          <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700,
+                            background:"#f1f5f9",color:"#475569"}}>{a.type}</span>
+                          <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{a.title}</span>
+                        </div>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          <span style={{fontSize:10,color:"#94a3b8"}}>요청: {a.requestedBy}</span>
+                          {a.amount&&<span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
+                            💰 {Number(a.amount).toLocaleString()}원
+                          </span>}
+                          {a.dueDate&&<span style={{fontSize:10,color:"#94a3b8"}}>필요일: {a.dueDate}</span>}
+                          <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(a.createdAt)}</span>
+                        </div>
+                        {a.memo&&<div style={{fontSize:11,color:"#64748b",marginTop:3}}>{a.memo}</div>}
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
+                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                          background:st.bg,color:st.color}}>{a.status}</span>
+                        {(a.requestedBy===user.name||canManage)&&(
+                          <button onClick={()=>{setAf({...a});setModal({id:a.id});}}
+                            style={{fontSize:10,padding:"2px 8px",borderRadius:6,
+                              border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+                        )}
+                        {canManage&&a.status!=="완료"&&(
+                          <select value={a.status} onChange={e=>patchStatus(a.id,e.target.value)}
+                            style={{fontSize:10,padding:"2px 5px",borderRadius:6,
+                              border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",outline:"none"}}>
+                            {STATUS.map(s=><option key={s.id}>{s.id}</option>)}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        )}
+        {accts.length===0&&(
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            등록된 회계 요청이 없습니다
+          </div>
+        )}
+
+        {modal&&(
+          <Modal title={modal.id?"회계 요청 수정":"회계 요청 등록"} onClose={()=>setModal(null)}>
+            <Field label="유형">
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {TYPES.map(t=>(
+                  <button key={t} type="button" onClick={()=>setAf(v=>({...v,type:t}))}
+                    style={{padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:af.type===t?700:400,
+                      background:af.type===t?"#1e293b":"#f1f5f9",
+                      color:af.type===t?"#fff":"#475569"}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="제목 *">
+              <input style={inp} autoFocus value={af.title||""} placeholder="요청 내용 요약"
+                onChange={e=>setAf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="금액" style={{flex:1}}>
+                <input style={inp} type="number" value={af.amount||""} placeholder="원"
+                  onChange={e=>setAf(v=>({...v,amount:e.target.value}))}/>
+              </Field>
+              <Field label="처리 필요일" style={{flex:1}}>
+                <input style={inp} type="date" value={af.dueDate||""}
+                  onChange={e=>setAf(v=>({...v,dueDate:e.target.value}))}/>
+              </Field>
+            </div>
+            <Field label="상세 내용">
+              <textarea style={{...inp,minHeight:70,resize:"vertical",lineHeight:1.6}}
+                value={af.memo||""} placeholder="영수증 첨부 방법, 계좌 정보 등 상세 내용"
+                onChange={e=>setAf(v=>({...v,memo:e.target.value}))}/>
+            </Field>
+            {canManage&&modal.id&&(
+              <Field label="처리 메모">
+                <input style={inp} value={af.processMemo||""} placeholder="처리 내용 기록"
+                  onChange={e=>setAf(v=>({...v,processMemo:e.target.value}))}/>
+              </Field>
+            )}
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id&&(af.requestedBy===user.name||canManage)&&
+                <Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!af.title?.trim()}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────
+  // 자유 게시판
+  // ────────────────────────────────────────────────────────
+  const BoardSection = () => {
+    const posts  = officeData.board || [];
+    const [modal, setModal]   = useState(null);
+    const [pf, setPf]         = useState({});
+    const [selPost, setSelPost] = useState(null);
+    const [commentInput, setCommentInput] = useState("");
+
+    const CATEGORIES = ["잡담","음식 추천","분실물","공구/나눔","건의","기타"];
+    const CAT_COLOR  = {
+      "잡담":"#2563eb","음식 추천":"#d97706","분실물":"#ef4444",
+      "공구/나눔":"#16a34a","건의":"#7c3aed","기타":"#94a3b8"
+    };
+    const CAT_BG = {
+      "잡담":"#eff6ff","음식 추천":"#fffbeb","분실물":"#fff1f2",
+      "공구/나눔":"#f0fdf4","건의":"#f5f3ff","기타":"#f8fafc"
+    };
+
+    const sorted = [...posts].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+    const save = () => {
+      if (!pf.title?.trim()) return;
+      const entry = { ...pf, id: modal.id||"bd"+Date.now(),
+        author: user.name,
+        createdAt: modal.id ? pf.createdAt : new Date().toISOString(),
+        comments: pf.comments||[], likes: pf.likes||[] };
+      const next = modal.id ? posts.map(p=>p.id===modal.id?entry:p) : [...posts, entry];
+      patch("board", next);
+      setModal(null);
+      if (selPost?.id === modal.id) setSelPost(entry);
+    };
+
+    const del = (id) => {
+      patch("board", posts.filter(p=>p.id!==id));
+      setModal(null);
+      if (selPost?.id===id) setSelPost(null);
+    };
+
+    const toggleLike = (postId) => {
+      const next = posts.map(p=>{
+        if (p.id!==postId) return p;
+        const likes = p.likes||[];
+        const newLikes = likes.includes(user.name) ? likes.filter(n=>n!==user.name) : [...likes, user.name];
+        return {...p, likes:newLikes};
+      });
+      patch("board", next);
+      if (selPost?.id===postId) setSelPost(next.find(p=>p.id===postId));
+    };
+
+    const addComment = (postId) => {
+      if (!commentInput.trim()) return;
+      const comment = { id:"cm"+Date.now(), author:user.name,
+        text:commentInput.trim(), createdAt:new Date().toISOString() };
+      const next = posts.map(p=>p.id===postId?{...p,comments:[...(p.comments||[]),comment]}:p);
+      patch("board", next);
+      setCommentInput("");
+      setSelPost(next.find(p=>p.id===postId));
+    };
+
+    const delComment = (postId, cmId) => {
+      const next = posts.map(p=>p.id===postId?{...p,comments:(p.comments||[]).filter(c=>c.id!==cmId)}:p);
+      patch("board", next);
+      setSelPost(next.find(p=>p.id===postId));
+    };
+
+    const fmtDate = iso => {
+      const d = new Date(iso);
+      const now = new Date();
+      const diff = Math.floor((now-d)/1000);
+      if (diff<60)   return "방금";
+      if (diff<3600) return Math.floor(diff/60)+"분 전";
+      if (diff<86400)return Math.floor(diff/3600)+"시간 전";
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+
+    if (selPost) {
+      const post = posts.find(p=>p.id===selPost.id)||selPost;
+      return (
+        <div>
+          <button onClick={()=>setSelPost(null)}
+            style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#64748b",
+              background:"none",border:"none",cursor:"pointer",padding:"0 0 12px 0",fontWeight:600}}>
+            ← 목록으로
+          </button>
+          <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:"1px solid #f1f5f9"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,fontWeight:700,
+                  background:CAT_BG[post.category]||"#f8fafc",
+                  color:CAT_COLOR[post.category]||"#94a3b8"}}>{post.category||"기타"}</span>
+                {(post.author===user.name||canManage)&&(
+                  <button onClick={()=>{setPf({...post});setModal({id:post.id});}}
+                    style={{marginLeft:"auto",fontSize:11,padding:"2px 8px",borderRadius:6,
+                      border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+                )}
+              </div>
+              <div style={{fontSize:16,fontWeight:700,color:"#1e293b",marginBottom:8}}>{post.title}</div>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+                <Avatar name={post.author} size={20}/>
+                <span style={{fontSize:12,color:"#64748b"}}>{post.author}</span>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{fmtDate(post.createdAt)}</span>
+              </div>
+              <div style={{fontSize:13,color:"#334155",lineHeight:1.8,whiteSpace:"pre-wrap",
+                padding:"12px 14px",background:"#f8fafc",borderRadius:8}}>
+                {post.content}
+              </div>
+              <div style={{marginTop:10,display:"flex",gap:6}}>
+                <button onClick={()=>toggleLike(post.id)}
+                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 14px",
+                    borderRadius:99,border:`1px solid ${(post.likes||[]).includes(user.name)?"#fca5a5":"#e2e8f0"}`,
+                    background:(post.likes||[]).includes(user.name)?"#fff1f2":"#f8fafc",
+                    cursor:"pointer",fontSize:12,fontWeight:600,
+                    color:(post.likes||[]).includes(user.name)?"#ef4444":"#94a3b8"}}>
+                  ❤️ {(post.likes||[]).length}
+                </button>
+              </div>
+            </div>
+            {/* 댓글 */}
+            <div style={{padding:"14px 18px"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:10}}>
+                댓글 {(post.comments||[]).length}
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                {(post.comments||[]).map(c=>(
+                  <div key={c.id} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                    <Avatar name={c.author} size={22}/>
+                    <div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                        <span style={{fontSize:11,fontWeight:700,color:"#334155"}}>{c.author}</span>
+                        <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(c.createdAt)}</span>
+                        {(c.author===user.name||canManage)&&(
+                          <button onClick={()=>delComment(post.id,c.id)}
+                            style={{marginLeft:"auto",fontSize:9,color:"#94a3b8",
+                              background:"none",border:"none",cursor:"pointer"}}>✕</button>
+                        )}
+                      </div>
+                      <div style={{fontSize:12,color:"#475569",lineHeight:1.6}}>{c.text}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={commentInput} onChange={e=>setCommentInput(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addComment(post.id);}}}
+                  placeholder="댓글 입력... (Enter로 등록)"
+                  style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                    fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                <Btn primary sm onClick={()=>addComment(post.id)} disabled={!commentInput.trim()}>등록</Btn>
+              </div>
+            </div>
+          </div>
+          {modal&&(
+            <Modal title="글 수정" onClose={()=>setModal(null)}>
+              <Field label="카테고리">
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {CATEGORIES.map(c=>(
+                    <button key={c} type="button" onClick={()=>setPf(v=>({...v,category:c}))}
+                      style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                        fontWeight:pf.category===c?700:400,
+                        background:pf.category===c?(CAT_BG[c]||"#f8fafc"):"#f1f5f9",
+                        color:pf.category===c?(CAT_COLOR[c]||"#94a3b8"):"#475569",
+                        outline:pf.category===c?`2px solid ${CAT_COLOR[c]||"#94a3b8"}`:"none"}}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label="제목 *"><input style={inp} autoFocus value={pf.title||""} onChange={e=>setPf(v=>({...v,title:e.target.value}))}/></Field>
+              <Field label="내용"><textarea style={{...inp,minHeight:100,resize:"vertical",lineHeight:1.6}} value={pf.content||""} onChange={e=>setPf(v=>({...v,content:e.target.value}))}/></Field>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                {modal.id&&(pf.author===user.name||canManage)&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+                <div style={{flex:1}}/><Btn onClick={()=>setModal(null)}>취소</Btn>
+                <Btn primary onClick={save} disabled={!pf.title?.trim()}>저장</Btn>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          <Btn primary sm onClick={()=>{setPf({category:"잡담",title:"",content:""});setModal({});}}>
+            + 글쓰기
+          </Btn>
+        </div>
+        {sorted.length===0&&(
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            아직 게시물이 없어요. 첫 글을 남겨보세요 ✍️
+          </div>
+        )}
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {sorted.map(p=>(
+            <div key={p.id} onClick={()=>setSelPost(p)}
+              style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",
+                padding:"11px 14px",cursor:"pointer",display:"flex",gap:10,alignItems:"center"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+              <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,fontWeight:700,flexShrink:0,
+                background:CAT_BG[p.category]||"#f8fafc",
+                color:CAT_COLOR[p.category]||"#94a3b8"}}>{p.category||"기타"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#1e293b",
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:2,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.content}</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{p.author}</span>
+                {(p.comments||[]).length>0&&(
+                  <span style={{fontSize:10,color:"#64748b"}}>💬{p.comments.length}</span>
+                )}
+                {(p.likes||[]).length>0&&(
+                  <span style={{fontSize:10,color:"#ef4444"}}>❤️{p.likes.length}</span>
+                )}
+                <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(p.createdAt)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {modal&&(
+          <Modal title="글쓰기" onClose={()=>setModal(null)}>
+            <Field label="카테고리">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {CATEGORIES.map(c=>(
+                  <button key={c} type="button" onClick={()=>setPf(v=>({...v,category:c}))}
+                    style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                      fontWeight:pf.category===c?700:400,
+                      background:pf.category===c?(CAT_BG[c]||"#f8fafc"):"#f1f5f9",
+                      color:pf.category===c?(CAT_COLOR[c]||"#94a3b8"):"#475569",
+                      outline:pf.category===c?`2px solid ${CAT_COLOR[c]||"#94a3b8"}`:"none"}}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="제목 *"><input style={inp} autoFocus value={pf.title||""} onChange={e=>setPf(v=>({...v,title:e.target.value}))}/></Field>
+            <Field label="내용"><textarea style={{...inp,minHeight:100,resize:"vertical",lineHeight:1.6}} value={pf.content||""} placeholder="자유롭게 작성해주세요" onChange={e=>setPf(v=>({...v,content:e.target.value}))}/></Field>
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:4,gap:6}}>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!pf.title?.trim()}>등록</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
   // ── 탭 렌더 ──────────────────────────────────────────────
+  const overtimes   = officeData.overtimes   || [];
+  const accounting  = officeData.accounting  || [];
+  const board       = officeData.board       || [];
+
   const TABS = [
-    { id:"rooms",   icon:"🚪", label:"회의실 예약" },
-    { id:"notice",  icon:"📢", label:"공지사항",
+    { id:"notice",     icon:"📢", label:"공지사항",
       badge: notices.filter(n=>n.importance==="urgent").length },
-    { id:"request", icon:"📝", label:"업무 요청",
+    { id:"rooms",      icon:"🚪", label:"회의실 예약" },
+    { id:"overtime",   icon:"🌙", label:"야근 공유",
+      badge: overtimes.filter(o=>o.date===new Date().toISOString().slice(0,10)).length },
+    { id:"accounting", icon:"💳", label:"회계 요청",
+      badge: accounting.filter(a=>a.status==="접수"||a.status==="검토중").length },
+    { id:"request",    icon:"📦", label:"비품 요청",
       badge: requests.filter(r=>r.status==="접수"||r.status==="검토중").length },
+    { id:"board",      icon:"💬", label:"자유게시판" },
   ];
 
   return (
@@ -6629,9 +7197,12 @@ function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
         ))}
       </div>
 
-      {tab==="rooms"   && <RoomsSection/>}
-      {tab==="notice"  && <NoticeSection/>}
-      {tab==="request" && <RequestSection/>}
+      {tab==="rooms"      && <RoomsSection/>}
+      {tab==="notice"     && <NoticeSection/>}
+      {tab==="overtime"   && <OvertimeSection/>}
+      {tab==="accounting" && <AccountingSection/>}
+      {tab==="request"    && <RequestSection/>}
+      {tab==="board"      && <BoardSection/>}
     </div>
   );
 }
