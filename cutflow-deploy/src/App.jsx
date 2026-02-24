@@ -9163,43 +9163,75 @@ function FigJamTab({ project, onChange }) {
 // ── 비딩 태스크 목록 컴포넌트 ─────────────────────────────
 const TASK_STATUS_COLORS = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#f59e0b"};
 
-function BiddingTaskList({ tasks, onAdd, onOpen, accounts }) {
-  return (
-    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginTop:14}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>📋 태스크</div>
-        <Btn primary sm onClick={onAdd}>+ 태스크</Btn>
+function BiddingTaskList({ tasks, onAdd, onAddSub, onOpen }) {
+  const roots = tasks.filter(t => !t.parentId);
+  const kids  = pid => tasks.filter(t => t.parentId === pid);
+
+  const TaskRow = ({ t, isChild }) => {
+    const sc = TASK_STATUS_COLORS[t.status||"대기"] || "#94a3b8";
+    const childCount = kids(t.id).length;
+    return (
+      <div style={{marginLeft: isChild ? 24 : 0}}>
+        {/* 행 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+          borderRadius:8,border:`1px solid ${isChild?"#f1f5f9":"#e8edf2"}`,
+          cursor:"pointer",background:isChild?"#fafcff":"#fff",
+          marginBottom:4,transition:"background .1s"}}
+          onClick={()=>onOpen(t)}
+          onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
+          onMouseLeave={e=>e.currentTarget.style.background=isChild?"#fafcff":"#fff"}>
+          {/* 인덴트 아이콘 */}
+          {isChild && <span style={{color:"#cbd5e1",fontSize:11,flexShrink:0}}>↳</span>}
+          <span style={{width:7,height:7,borderRadius:"50%",background:sc,flexShrink:0}}/>
+          <span style={{flex:1,fontSize:isChild?12:13,fontWeight:isChild?500:700,color:"#1e293b",
+            lineHeight:1.3}}>{t.title}</span>
+          {(t.assignees||[]).length>0&&(
+            <div style={{display:"flex",gap:1}}>
+              {(t.assignees||[]).slice(0,3).map((n,i)=><Avatar key={i} name={n} size={16}/>)}
+            </div>
+          )}
+          {t.due&&<span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{t.due.slice(5)}</span>}
+          <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,fontWeight:700,
+            background:sc+"22",color:sc,flexShrink:0}}>{t.status||"대기"}</span>
+          {/* 하위 추가 버튼 (상위 태스크에만) */}
+          {!isChild&&(
+            <button type="button"
+              title="하위 태스크 추가"
+              onClick={e=>{e.stopPropagation();onAddSub(t.id);}}
+              style={{border:"1px dashed #cbd5e1",background:"none",borderRadius:6,
+                cursor:"pointer",fontSize:10,color:"#94a3b8",padding:"1px 6px",
+                flexShrink:0,lineHeight:1.5}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor="#2563eb"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor="#cbd5e1"}>
+              + 하위
+            </button>
+          )}
+        </div>
+        {/* 하위 태스크 */}
+        {!isChild && kids(t.id).map(child=>(
+          <TaskRow key={child.id} t={child} isChild={true}/>
+        ))}
       </div>
-      {tasks.length===0
+    );
+  };
+
+  return (
+    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,
+      padding:"14px 16px",marginTop:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>
+          📋 태스크
+          <span style={{fontSize:11,fontWeight:400,color:"#94a3b8",marginLeft:6}}>
+            {roots.length}개 상위 · {tasks.length - roots.length}개 하위
+          </span>
+        </div>
+        <Btn primary sm onClick={()=>onAdd(null)}>+ 상위 태스크</Btn>
+      </div>
+      {roots.length===0
         ? <div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:12}}>
-            등록된 태스크가 없습니다
+            + 상위 태스크 버튼으로 태스크를 추가하세요
           </div>
-        : <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {tasks.map(t=>{
-              const sc = TASK_STATUS_COLORS[t.status||"대기"] || "#94a3b8";
-              return (
-                <div key={t.id} onClick={()=>onOpen(t)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
-                    borderRadius:8,border:"1px solid #f1f5f9",cursor:"pointer",
-                    background:"#fafafa",transition:"background .1s"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
-                  onMouseLeave={e=>e.currentTarget.style.background="#fafafa"}>
-                  <span style={{width:8,height:8,borderRadius:"50%",background:sc,flexShrink:0}}/>
-                  <span style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b"}}>{t.title}</span>
-                  {(t.assignees||[]).length>0&&(
-                    <div style={{display:"flex",gap:2}}>
-                      {(t.assignees||[]).slice(0,3).map((n,i)=><Avatar key={i} name={n} size={18}/>)}
-                    </div>
-                  )}
-                  {t.due&&<span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{t.due}</span>}
-                  <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,fontWeight:700,
-                    background:sc+"22",color:sc}}>
-                    {t.status||"대기"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+        : roots.map(t=><TaskRow key={t.id} t={t} isChild={false}/>)
       }
     </div>
   );
@@ -9924,7 +9956,8 @@ return (
                 )}
               {/* ── 비딩 태스크 ── */}
               <BiddingTaskList tasks={proj.tasks||[]}
-                onAdd={()=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통"})}
+                onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
+                onAddSub={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId})}
                 onOpen={t=>setTaskPanel(t)}
                 accounts={accounts}/>
               </div>
@@ -10403,6 +10436,50 @@ return (
                 <Field label="예상 규모" half>
                   <input style={inp} value={pf.estimatedBudget||""} onChange={e=>setPf(v=>({...v,estimatedBudget:e.target.value}))} placeholder="예: 5,000만원"/>
                 </Field>
+              </div>
+              {/* ── 참여인원 토글 ── */}
+              <div style={{borderTop:"1px solid #fde68a",paddingTop:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>
+                  👥 참여인원
+                  {(pf.biddingMembers||[]).length>0&&(
+                    <span style={{fontWeight:400,marginLeft:6,color:"#a16207"}}>
+                      {(pf.biddingMembers||[]).length}명 선택
+                    </span>
+                  )}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {accounts.filter(a=>!a.resigned).map(a=>{
+                    const sel=(pf.biddingMembers||[]).includes(a.id);
+                    const teamColor=TEAM_BY_ID[a.team]?.color||"#2563eb";
+                    const teamBg=TEAM_BY_ID[a.team]?.bg||"#eff6ff";
+                    return (
+                      <button key={a.id} type="button"
+                        onClick={()=>setPf(v=>{
+                          const cur=v.biddingMembers||[];
+                          return {...v,biddingMembers:sel?cur.filter(id=>id!==a.id):[...cur,a.id]};
+                        })}
+                        style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",
+                          borderRadius:99,border:"none",cursor:"pointer",fontSize:12,
+                          fontWeight:sel?700:400,transition:"all .12s",
+                          background:sel?teamBg:"#fff8dc",
+                          color:sel?teamColor:"#78716c",
+                          outline:sel?`2px solid ${teamColor}`:"1px solid #fde68a"}}>
+                        <Avatar name={a.name} size={16}/>
+                        <span>{a.name}</span>
+                        {a.jobTitle&&<span style={{fontSize:10,opacity:.75}}>· {a.jobTitle}</span>}
+                        {sel&&<span style={{fontSize:10,marginLeft:2}}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(pf.biddingMembers||[]).length>0&&(
+                  <div style={{marginTop:8,fontSize:11,color:"#92400e",
+                    padding:"5px 10px",background:"#fff8dc",borderRadius:7,
+                    border:"1px solid #fde68a"}}>
+                    {accounts.filter(a=>(pf.biddingMembers||[]).includes(a.id))
+                      .map(a=>a.name+(a.jobTitle?" ("+a.jobTitle+")":"")).join(" · ")}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
