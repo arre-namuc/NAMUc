@@ -4225,7 +4225,8 @@ function MemberManagement({ accounts, onSave, onDelete }) {
               <input style={inp} type="date" value={mf.joinDate||""}
                 onChange={e=>{
                   const d = e.target.value;
-                  setMf(v=>({...v, joinDate:d, probationEnd: v.probationEnd||calcProbationEnd(d)}));
+                  // 입사일 변경 시 수습 종료일 항상 자동 갱신
+                  setMf(v=>({...v, joinDate:d, probationEnd: calcProbationEnd(d)}));
                 }}/>
               {mf.joinDate&&(
                 <div style={{fontSize:10,color:"#2563eb",marginTop:3}}>
@@ -4233,16 +4234,16 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                 </div>
               )}
             </Field>
-            <Field label="수습 종료일">
-              <input style={inp} type="date" value={mf.probationEnd||""}
+            <Field label="수습 종료일 (입사일 +3개월 자동)">
+              <input style={{...inp,
+                background: mf.probationEnd&&mf.joinDate&&mf.probationEnd===calcProbationEnd(mf.joinDate)
+                  ? "#f0fdf4" : "#fff",
+                borderColor: mf.probationEnd&&mf.joinDate&&mf.probationEnd===calcProbationEnd(mf.joinDate)
+                  ? "#bbf7d0" : "#e2e8f0"}}
+                type="date" value={mf.probationEnd||""}
                 onChange={e=>setMf(v=>({...v,probationEnd:e.target.value}))}/>
-              {!mf.probationEnd&&mf.joinDate&&(
-                <button type="button"
-                  onClick={()=>setMf(v=>({...v,probationEnd:calcProbationEnd(v.joinDate)}))}
-                  style={{marginTop:3,fontSize:10,padding:"2px 8px",borderRadius:6,
-                    border:"1px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>
-                  입사일+3개월 자동 설정
-                </button>
+              {mf.probationEnd&&mf.joinDate&&mf.probationEnd===calcProbationEnd(mf.joinDate)&&(
+                <div style={{fontSize:10,color:"#16a34a",marginTop:3}}>✓ 자동 계산됨</div>
               )}
             </Field>
             {/* 주민등록번호 전체 입력 → 생년월일 + 나이 자동 계산 */}
