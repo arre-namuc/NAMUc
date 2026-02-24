@@ -10171,7 +10171,7 @@ return (
                   <PhaseView
   tasks={proj.tasks||[]}
   feedbacks={proj.feedbacks||[]}
-  template={PROJECT_TEMPLATE}
+  template={proj.biddingStatus ? PROJECT_TEMPLATE : PROJECT_TEMPLATE.filter(p=>p.id!=="s01")}
   user={user}
   accounts={accounts}
   projectRoles={proj.phaseRoles||{}}
