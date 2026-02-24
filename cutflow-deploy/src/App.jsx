@@ -3521,6 +3521,7 @@ function SettlementView({ project, onConfirm, onSave }) {
   const [preview,     setPreview]    = useState(null);
   const [lightboxImg, setLightboxImg]= useState(null);
   const [analyzing,   setAnalyzing]  = useState(false);
+  const [uploading,   setUploading]  = useState(false);  // Firebase Storage 업로드 중
 
   const catOptions   = (q.items||[]).map(c=>c.category);
   const groupOptions = cat => { const c=(q.items||[]).find(c=>c.category===cat); return c?c.groups.map(g=>g.group):[]; };
@@ -3534,9 +3535,43 @@ function SettlementView({ project, onConfirm, onSave }) {
     setModal(true);
   };
   const openEdit = v => { setEditV(v); setVf({...v}); setModal(true); };
-  const saveV = () => {
+  const saveV = async () => {
     if(!vf.name||!vf.vendor) return alert("항목명과 업체명을 입력해주세요.");
-    const entry={...vf,id:editV?editV.id:"v"+Date.now(),amount:Number(vf.amount)||0};
+    const id = editV ? editV.id : "v"+Date.now();
+    let files = vf.files || [];
+
+    // Firebase Storage 업로드 — b64url이 있는 파일만 업로드
+    const needUpload = files.filter(f => f.b64url && !f.url);
+    if (needUpload.length > 0 && isConfigured) {
+      setUploading(true);
+      try {
+        const uploaded = await Promise.all(
+          needUpload.map(async (f) => {
+            // b64url → File 객체로 변환
+            const res = await fetch(f.b64url);
+            const blob = await res.blob();
+            const file = new File([blob], f.name, { type: f.type });
+            const result = await uploadVoucherFile(project.id, id, file);
+            return result; // { name, url, type, size, path }
+          })
+        );
+        // b64url 없애고 url로 교체 (Firestore 문서 크기 절약)
+        files = [
+          ...files.filter(f => f.url && !f.b64url), // 이미 업로드된 파일
+          ...uploaded,
+        ];
+      } catch(e) {
+        console.error("업로드 실패:", e);
+        alert("파일 업로드에 실패했습니다. 다시 시도해주세요.");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    } else {
+      // Firebase 미연결 시 b64url 그대로 유지 (로컬 모드)
+    }
+
+    const entry = {...vf, id, amount:Number(vf.amount)||0, files};
     patchB(b=>({...b,vouchers:editV?(b.vouchers||[]).map(v=>v.id===editV.id?entry:v):[...(b.vouchers||[]),entry]}));
     setModal(false);
   };
@@ -3790,8 +3825,10 @@ function SettlementView({ project, onConfirm, onSave }) {
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
             {editV&&<Btn danger sm onClick={()=>{removeV(editV);setModal(false);}}>삭제</Btn>}
             <div style={{flex:1}}/>
-            <Btn onClick={()=>setModal(false)}>취소</Btn>
-            <Btn primary onClick={saveV} disabled={analyzing}>저장</Btn>
+            <Btn onClick={()=>setModal(false)} disabled={uploading}>취소</Btn>
+            <Btn primary onClick={saveV} disabled={analyzing||uploading}>
+              {uploading ? "📤 업로드 중..." : analyzing ? "🤖 분석 중..." : "저장"}
+            </Btn>
           </div>
         </Modal>
       )}
