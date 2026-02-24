@@ -4234,7 +4234,6 @@ function MemberManagement({ accounts, onSave, onDelete }) {
                           <button onClick={()=>setResignConf(m)}
                             style={{border:"1px solid #fca5a5",background:"#fff1f2",borderRadius:6,
                               cursor:"pointer",fontSize:9,padding:"2px 5px",color:"#ef4444",fontWeight:700}}>퇴사</button>
-                          <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
                         </div>
                       </div>
                     ))}
@@ -4435,7 +4434,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
           </div>
 
           <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-            {editM && <Btn danger sm onClick={()=>{setConf(editM);setModal(false);}}>삭제</Btn>}
+            {editM && <Btn danger sm onClick={()=>{setModal(false);setResignConf(editM);}}>퇴사 처리</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(false)}>취소</Btn>
             <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()||!mf.jobTitle?.trim()}>저장</Btn>
@@ -4451,15 +4450,7 @@ function MemberManagement({ accounts, onSave, onDelete }) {
         />
       )}
 
-      {conf && (
-        <Modal title="구성원 삭제" onClose={()=>setConf(null)}>
-          <div style={{fontSize:14,marginBottom:20}}><b>{conf.name}</b> ({conf.role})을 삭제하시겠습니까?</div>
-          <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-            <Btn onClick={()=>setConf(null)}>취소</Btn>
-            <Btn danger onClick={()=>{onDelete(conf.id);setConf(null);}}>삭제</Btn>
-          </div>
-        </Modal>
-      )}
+
     </div>
   );
 }
