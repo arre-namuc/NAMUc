@@ -9042,6 +9042,7 @@ function ProjectSelector({ projects, selId, setSelId, proj, setAddProjModal }) {
         <span style={{fontSize:13,fontWeight:700,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,textAlign:"left"}}>
           {proj?.name||"프로젝트 선택"}
         </span>
+        {proj?.isBidding&&<span style={{fontSize:10,fontWeight:800,padding:"1px 6px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆 비딩</span>}
         {proj?.status&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,background:proj.color+"22",color:proj.color,fontWeight:700,flexShrink:0}}>{proj.status}</span>}
         <span style={{fontSize:10,color:C.faint,flexShrink:0,transition:"transform .2s",display:"inline-block",transform:open?"rotate(180deg)":"none"}}>▼</span>
       </button>
@@ -9067,8 +9068,9 @@ function ProjectSelector({ projects, selId, setSelId, proj, setAddProjModal }) {
                   onMouseLeave={e=>{e.currentTarget.style.background=sel?"#eff6ff":C.white}}>
                   <span style={{width:10,height:10,borderRadius:"50%",background:p.color,flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:sel?700:500,color:sel?C.blue:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      {p.name}
+                    <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:sel?700:500,color:sel?C.blue:C.dark,overflow:"hidden",whiteSpace:"nowrap"}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</span>
+                      {p.isBidding&&<span style={{fontSize:10,fontWeight:800,padding:"1px 6px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆 비딩</span>}
                     </div>
                     <div style={{fontSize:10,color:C.faint,marginTop:1}}>
                       {p.client&&`${p.client} · `}{tasks.length>0?`태스크 ${done}/${tasks.length}`:"태스크 없음"}{p.due&&` · 납품 ${p.due}`}
