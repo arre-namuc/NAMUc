@@ -9534,6 +9534,7 @@ function App() {
 
   const [docTab,       setDocTab]       = useState("tasks");
   const [viewMode,     setViewMode]     = useState("phase");
+  const [biddingView,  setBiddingView]  = useState("tasks");  // tasks|flow|calendar
   const [taskModal,    setTaskModal]    = useState(null);  // 수정 모달
   const [taskPanel,    setTaskPanel]    = useState(null);  // 상세 패널
   const [tf,           setTf]           = useState({});
@@ -10024,60 +10025,90 @@ return (
 
             {/* ── 비딩 탭 ── */}
             {docTab==="tasks"&&proj.isBidding&&(
-              <div style={{padding:"20px 0"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14,marginBottom:20}}>
-                  {/* PT 날짜 */}
-                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px"}}>
-                    <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:6}}>📅 PT 날짜</div>
-                    <input style={inp} type="date" value={proj.ptDate||""}
-                      onChange={e=>patchProj(p=>({...p,ptDate:e.target.value}))}/>
+              <div style={{padding:"16px 0"}}>
+                {/* 비딩 정보 카드 */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12,marginBottom:16}}>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>📅 PT 날짜</div>
+                    <input style={inp} type="date" value={proj.ptDate||""} onChange={e=>patchProj(p=>({...p,ptDate:e.target.value}))}/>
                   </div>
-                  {/* 결과 발표일 */}
-                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px"}}>
-                    <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:6}}>📢 결과 발표일</div>
-                    <input style={inp} type="date" value={proj.resultDate||""}
-                      onChange={e=>patchProj(p=>({...p,resultDate:e.target.value}))}/>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>📢 결과 발표일</div>
+                    <input style={inp} type="date" value={proj.resultDate||""} onChange={e=>patchProj(p=>({...p,resultDate:e.target.value}))}/>
                   </div>
-                  {/* 경쟁사 */}
-                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px"}}>
-                    <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:6}}>🏢 경쟁사</div>
-                    <input style={inp} value={proj.competitors||""} placeholder="A사, B사 등"
-                      onChange={e=>patchProj(p=>({...p,competitors:e.target.value}))}/>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>🏢 경쟁사</div>
+                    <input style={inp} value={proj.competitors||""} placeholder="A사, B사 등" onChange={e=>patchProj(p=>({...p,competitors:e.target.value}))}/>
                   </div>
-                  {/* 예상 규모 */}
-                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px"}}>
-                    <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:6}}>💰 예상 규모</div>
-                    <input style={inp} value={proj.estimatedBudget||""} placeholder="예: 5,000만원"
-                      onChange={e=>patchProj(p=>({...p,estimatedBudget:e.target.value}))}/>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>💰 예상 규모</div>
+                    <input style={inp} value={proj.estimatedBudget||""} placeholder="예: 5,000만원" onChange={e=>patchProj(p=>({...p,estimatedBudget:e.target.value}))}/>
                   </div>
                 </div>
                 {/* 수주 전환 안내 */}
                 {proj.biddingStatus==="수주"&&(
                   <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:12,
-                    padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                     <div>
-                      <div style={{fontWeight:700,fontSize:14,color:"#16a34a",marginBottom:4}}>🎉 수주 확정!</div>
-                      <div style={{fontSize:12,color:"#15803d"}}>일반 프로젝트로 전환하면 22단계 워크플로우가 자동 생성됩니다.</div>
+                      <div style={{fontWeight:700,fontSize:13,color:"#16a34a",marginBottom:2}}>🎉 수주 확정!</div>
+                      <div style={{fontSize:11,color:"#15803d"}}>일반 프로젝트로 전환하면 22단계 워크플로우가 자동 생성됩니다.</div>
                     </div>
-                    <button
-                      onClick={()=>{if(window.confirm("일반 프로젝트로 전환하시겠습니까?"))
-                        patchProj(p=>({...p,isBidding:false,stage:"PLANNING",
-                          tasks:generateTasksFromTemplate(p.id, accounts.filter(a=>[p.pd,p.director,p.epd,p.assistant].includes(a.name)))}));
-                      }}
-                      style={{padding:"10px 18px",borderRadius:10,border:"none",
-                        background:"#16a34a",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                    <button onClick={()=>{if(window.confirm("일반 프로젝트로 전환하시겠습니까?"))
+                      patchProj(p=>({...p,isBidding:false,stage:"PLANNING",
+                        tasks:generateTasksFromTemplate(p.id,accounts.filter(a=>[p.pd,p.director,p.epd,p.assistant].includes(a.name)))}));}}
+                      style={{padding:"8px 16px",borderRadius:8,border:"none",
+                        background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
                       ➡ 프로젝트 전환
                     </button>
                   </div>
                 )}
-              {/* ── 비딩 태스크 ── */}
-              <BiddingTaskList tasks={proj.tasks||[]}
-                onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
-                onAddSub={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId})}
-                onOpen={t=>setTaskPanel(t)}
-                onDelete={id=>patchProj(p=>({...p,tasks:(p.tasks||[]).filter(x=>x.id!==id)}))}
-                onUpdate={t=>patchProj(p=>({...p,tasks:(p.tasks||[]).map(x=>x.id===t.id?t:x)}))}
-                accounts={accounts}/>
+
+                {/* ── 서브탭: 태스크목록 / 협업흐름 / 캘린더 ── */}
+                <div style={{display:"flex",gap:0,borderBottom:"2px solid #e2e8f0",marginBottom:14}}>
+                  {[
+                    {id:"tasks", icon:"📋", label:"태스크 목록"},
+                    {id:"flow",  icon:"🔀", label:"협업 흐름"},
+                    {id:"calendar", icon:"📅", label:"캘린더"},
+                  ].map(s=>(
+                    <button key={s.id} onClick={()=>setBiddingView(s.id)}
+                      style={{padding:"7px 16px",border:"none",cursor:"pointer",fontSize:12,
+                        fontWeight:biddingView===s.id?700:400,
+                        background:"transparent",
+                        color:biddingView===s.id?"#1e293b":"#64748b",
+                        borderBottom:biddingView===s.id?"2px solid #2563eb":"2px solid transparent",
+                        marginBottom:-2}}>
+                      {s.icon} {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 태스크 목록 */}
+                {biddingView==="tasks"&&(
+                  <BiddingTaskList tasks={proj.tasks||[]}
+                    onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
+                    onAddSub={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId})}
+                    onOpen={t=>setTaskPanel(t)}
+                    onDelete={id=>patchProj(p=>({...p,tasks:(p.tasks||[]).filter(x=>x.id!==id)}))}
+                    onUpdate={t=>patchProj(p=>({...p,tasks:(p.tasks||[]).map(x=>x.id===t.id?t:x)}))}
+                    accounts={accounts}/>
+                )}
+
+                {/* 협업 흐름 */}
+                {biddingView==="flow"&&(
+                  <FlowView
+                    tasks={proj.tasks||[]}
+                    accounts={accounts}
+                    user={user}
+                    onEdit={t=>setTaskPanel({...t})}
+                    onAdd={()=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통"})}
+                    onUpdateTask={t=>patchProj(p=>({...p,tasks:(p.tasks||[]).map(x=>x.id===t.id?t:x)}))}
+                    onNotify={n=>setNotifications(p=>[n,...p])}/>
+                )}
+
+                {/* 캘린더 */}
+                {biddingView==="calendar"&&(
+                  <MonthCalendar project={proj} onChange={patchProj} user={user}/>
+                )}
               </div>
             )}
 
