@@ -3696,35 +3696,41 @@ function MonthCalendar({ project, onChange, user }) {
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 
   // ── 프로젝트에서 자동 수집되는 읽기전용 이벤트 ──
+  const [showMeetings, setShowMeetings] = useState(true); // 회의 일정 표시 토글
+  const todayIso = new Date().toISOString().slice(0,10);
 
-  // 태스크 마감일
-  const taskDueEvents = (project.tasks||[])
-    .filter(t => t.due && t.title)
-    .map(t => ({
-      id: "td-"+t.id,
-      title: "📋 "+t.title,
-      start: t.due.slice(0,10),
-      end:   t.due.slice(0,10),
-      color: t.status==="완료" ? "#94a3b8" : t.due.slice(0,10) < new Date().toISOString().slice(0,10) ? "#ef4444" : "#2563eb",
-      isAuto: true, autoType: "task",
-      taskId: t.id,
-      note: (t.assignees||[]).join(", ") || t.assignee || "",
-    }));
+  // 태스크 마감일 — 하위 태스크 우선, 상위 태스크는 하위 없을 때만
+  const allTasks   = project.tasks || [];
+  const hasChild   = new Set(allTasks.filter(t=>t.parentId).map(t=>t.parentId));
+  const dueTasks   = allTasks.filter(t => t.due && t.title && !hasChild.has(t.id));
+  const taskDueEvents = dueTasks.map(t => ({
+    id: "td-"+t.id,
+    title: "📋 "+t.title,
+    start: t.due.slice(0,10),
+    end:   t.due.slice(0,10),
+    color: t.status==="완료" ? "#94a3b8" : t.due.slice(0,10) < todayIso ? "#ef4444" : "#2563eb",
+    isAuto: true, autoType: "task",
+    taskId: t.id,
+    note: (t.assignees||[]).join(", ") || t.assignee || "",
+  }));
 
-  // 태스크 회의 일정
-  const meetingEvents = (project.tasks||[]).flatMap(t =>
-    (t.meetings||[])
-      .filter(m => m.date && m.title)
-      .map(m => ({
-        id: "mt-"+m.id,
-        title: "📅 "+m.title,
-        start: m.date.slice(0,10),
-        end:   m.date.slice(0,10),
-        color: "#7c3aed",
-        isAuto: true, autoType: "meeting",
-        note: m.attendees || "",
-      }))
-  );
+  // 태스크 회의 일정 (토글 적용)
+  const meetingEvents = showMeetings
+    ? allTasks.flatMap(t =>
+        (t.meetings||[])
+          .filter(m => m.date && m.title)
+          .map(m => ({
+            id: "mt-"+m.id,
+            title: "📅 "+m.title,
+            start: m.date.slice(0,10),
+            end:   m.date.slice(0,10),
+            color: "#7c3aed",
+            isAuto: true, autoType: "meeting",
+            note: m.attendees || "",
+            parentTaskTitle: t.title,
+          }))
+      )
+    : [];
 
   // 피드백 마감일
   const feedbackEvents = (project.feedbacks||[])
@@ -4224,8 +4230,17 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
           <button onClick={nextGroup} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>›</button>
           <button onClick={()=>{setBaseYear(today.getFullYear());setBaseMonth(today.getMonth());}} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:C.sub}}>오늘</button>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {!canEdit&&<span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
+          {/* 회의 일정 표시 토글 */}
+          <button
+            onClick={()=>setShowMeetings(v=>!v)}
+            style={{padding:"5px 12px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",
+              border:`1px solid ${showMeetings?"#7c3aed":"#e2e8f0"}`,
+              background:showMeetings?"#f5f3ff":"#f8fafc",
+              color:showMeetings?"#7c3aed":"#94a3b8"}}>
+            📅 회의 일정 {showMeetings?"ON":"OFF"}
+          </button>
           {allEvents.length>0&&<button onClick={exportCalPPT} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #7c3aed`,background:"#f5f3ff",color:"#7c3aed",cursor:"pointer",fontSize:12,fontWeight:600}}>📊 PPT로 내보내기</button>}
           {allEvents.length>0&&<button onClick={exportCalPDF} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #dc2626`,background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>📄 PDF로 내보내기</button>}
           {allEvents.filter(e=>!e.isFeedback).length>0&&(
