@@ -1569,7 +1569,15 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
   };
 
   const addMeeting = () => {
-    const m = {id:"m"+Date.now(), title:"", date:"", attendees:"", link:"", memo:""};
+    const m = {
+      id:"m"+Date.now(), title:"", date:"",
+      attendees:[],        // 배열로 변경 (멤버 이름 배열)
+      meetingType:"내부",  // "내부" | "고객사"
+      location:"",         // 장소
+      videoUrl:"",         // 화상회의 URL
+      link:"",             // 회의록
+      memo:"",
+    };
     set({meetings:[...(task.meetings||[]), m]});
   };
   const updateMeeting = (id, patch) => {
@@ -1905,71 +1913,167 @@ function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, on
                   회의 일정이 없습니다
                 </div>
               )}
-              {(task.meetings||[]).map((m,mi)=>(
-                <div key={m.id} style={{border:"1px solid #e2e8f0",borderRadius:10,
-                  padding:"12px 14px",background:"#fafbfc",position:"relative"}}>
-                  {/* 헤더: 순번 + 삭제 */}
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                    <span style={{fontSize:11,fontWeight:700,color:"#7c3aed",
-                      background:"#f5f3ff",padding:"2px 8px",borderRadius:99}}>
-                      회의 {mi+1}
-                    </span>
-                    <button onClick={()=>deleteMeeting(m.id)}
-                      style={{border:"none",background:"none",cursor:"pointer",
-                        fontSize:13,color:"#94a3b8",padding:0}}>✕</button>
+              {(task.meetings||[]).map((m,mi)=>{
+                // 참석자 배열 정규화 (구버전 string 호환)
+                const attendeeArr = Array.isArray(m.attendees)
+                  ? m.attendees
+                  : (m.attendees ? m.attendees.split(",").map(s=>s.trim()).filter(Boolean) : []);
+                const memberNames = (accounts||[]).map(a=>a.name);
+                const toggleAttendee = (name) => {
+                  const next = attendeeArr.includes(name)
+                    ? attendeeArr.filter(n=>n!==name)
+                    : [...attendeeArr, name];
+                  updateMeeting(m.id, {attendees: next});
+                };
+                const typeColor = m.meetingType==="고객사" ? "#d97706" : "#7c3aed";
+                const typeBg    = m.meetingType==="고객사" ? "#fffbeb"  : "#f5f3ff";
+
+                return (
+                  <div key={m.id} style={{border:"1px solid #e2e8f0",borderRadius:10,
+                    overflow:"hidden",background:"#fafbfc"}}>
+
+                    {/* 헤더 */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,
+                      padding:"9px 12px",borderBottom:"1px solid #f1f5f9",
+                      background:typeBg}}>
+                      {/* 회의 유형 토글 */}
+                      {["내부","고객사"].map(t=>(
+                        <button key={t} type="button"
+                          onClick={()=>updateMeeting(m.id,{meetingType:t})}
+                          style={{padding:"3px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:700,
+                            background:m.meetingType===t?typeColor:"transparent",
+                            color:m.meetingType===t?"#fff":typeColor}}>
+                          {t==="내부"?"🏢 내부":"🤝 고객사"}
+                        </button>
+                      ))}
+                      <span style={{fontSize:11,fontWeight:700,color:typeColor,marginLeft:4}}>
+                        회의 {mi+1}
+                      </span>
+                      <button onClick={()=>deleteMeeting(m.id)}
+                        style={{border:"none",background:"none",cursor:"pointer",
+                          fontSize:13,color:"#94a3b8",padding:0,marginLeft:"auto"}}>✕</button>
+                    </div>
+
+                    <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                      {/* 회의명 + 일시 */}
+                      <div style={{display:"flex",gap:8}}>
+                        <input value={m.title||""} placeholder="회의 제목"
+                          onChange={e=>updateMeeting(m.id,{title:e.target.value})}
+                          style={{flex:1,padding:"7px 10px",borderRadius:7,
+                            border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                            fontFamily:"inherit",fontWeight:600}}/>
+                        <input type="datetime-local" value={m.date||""}
+                          onChange={e=>updateMeeting(m.id,{date:e.target.value})}
+                          style={{width:170,padding:"7px 10px",borderRadius:7,
+                            border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                            fontFamily:"inherit"}}/>
+                      </div>
+
+                      {/* 참석자 토글 */}
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:5}}>
+                          👤 참석자
+                        </div>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                          {memberNames.map(name=>{
+                            const sel = attendeeArr.includes(name);
+                            return (
+                              <button key={name} type="button"
+                                onClick={()=>toggleAttendee(name)}
+                                style={{display:"flex",alignItems:"center",gap:4,
+                                  padding:"4px 10px",borderRadius:99,border:"none",
+                                  cursor:"pointer",fontSize:11,fontWeight:sel?700:400,
+                                  background:sel?"#2563eb":"#f1f5f9",
+                                  color:sel?"#fff":"#475569",
+                                  transition:"all .12s"}}>
+                                <Avatar name={name} size={14}/>
+                                {name}
+                                {sel&&<span style={{fontSize:9,opacity:.8}}>✓</span>}
+                              </button>
+                            );
+                          })}
+                          {memberNames.length===0&&(
+                            <span style={{fontSize:11,color:"#94a3b8"}}>구성원을 먼저 추가해주세요</span>
+                          )}
+                        </div>
+                        {attendeeArr.length>0&&(
+                          <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>
+                            선택됨: {attendeeArr.join(", ")}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 장소 + 화상 URL */}
+                      <div style={{display:"flex",gap:8}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:4}}>📍 장소</div>
+                          <input value={m.location||""} placeholder="회의실, 주소 등"
+                            onChange={e=>updateMeeting(m.id,{location:e.target.value})}
+                            style={{width:"100%",padding:"7px 10px",borderRadius:7,
+                              border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                              fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:4}}>
+                            🎥 화상회의 URL
+                          </div>
+                          <div style={{display:"flex",gap:4}}>
+                            <input value={m.videoUrl||""} placeholder="Zoom, Meet 링크"
+                              onChange={e=>updateMeeting(m.id,{videoUrl:e.target.value})}
+                              style={{flex:1,padding:"7px 10px",borderRadius:7,
+                                border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                                fontFamily:"inherit",minWidth:0}}/>
+                            {m.videoUrl&&(
+                              <a href={m.videoUrl} target="_blank" rel="noreferrer"
+                                style={{padding:"7px 10px",borderRadius:7,
+                                  background:"#eff6ff",border:"1px solid #bfdbfe",
+                                  color:"#2563eb",fontSize:11,fontWeight:700,
+                                  textDecoration:"none",flexShrink:0,whiteSpace:"nowrap"}}>
+                                입장 →
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 회의록 링크 */}
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:4}}>📄 회의록</div>
+                        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                          <input value={m.link||""} placeholder="회의록 URL"
+                            onChange={e=>updateMeeting(m.id,{link:e.target.value})}
+                            style={{flex:1,padding:"7px 10px",borderRadius:7,
+                              border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                              fontFamily:"inherit"}}/>
+                          {m.link
+                            ? <a href={m.link} target="_blank" rel="noreferrer"
+                                style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
+                                  background:"#eff6ff",border:"1px solid #bfdbfe",
+                                  color:"#2563eb",fontSize:12,fontWeight:700,
+                                  textDecoration:"none",whiteSpace:"nowrap"}}>
+                                열기 🔗
+                              </a>
+                            : <span style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
+                                background:"#f1f5f9",color:"#cbd5e1",fontSize:12,fontWeight:700}}>
+                                열기 🔗
+                              </span>
+                          }
+                        </div>
+                      </div>
+
+                      {/* 메모 */}
+                      <textarea value={m.memo||""} placeholder="회의 메모..."
+                        onChange={e=>updateMeeting(m.id,{memo:e.target.value})}
+                        rows={2}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,
+                          border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                          fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",
+                          lineHeight:1.5}}/>
+                    </div>
                   </div>
-                  {/* 회의명 + 일시 */}
-                  <div style={{display:"flex",gap:8,marginBottom:8}}>
-                    <input value={m.title||""} placeholder="회의 제목"
-                      onChange={e=>updateMeeting(m.id,{title:e.target.value})}
-                      style={{flex:1,padding:"7px 10px",borderRadius:7,
-                        border:"1px solid #e2e8f0",fontSize:12,outline:"none",
-                        fontFamily:"inherit",fontWeight:600}}/>
-                    <input type="datetime-local" value={m.date||""}
-                      onChange={e=>updateMeeting(m.id,{date:e.target.value})}
-                      style={{width:175,padding:"7px 10px",borderRadius:7,
-                        border:"1px solid #e2e8f0",fontSize:12,outline:"none",
-                        fontFamily:"inherit"}}/>
-                  </div>
-                  {/* 참석자 */}
-                  <input value={m.attendees||""} placeholder="참석자 (예: 홍길동, 김철수)"
-                    onChange={e=>updateMeeting(m.id,{attendees:e.target.value})}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,
-                      border:"1px solid #e2e8f0",fontSize:12,outline:"none",
-                      fontFamily:"inherit",boxSizing:"border-box",marginBottom:8}}/>
-                  {/* 회의록 링크 */}
-                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-                    <span style={{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0}}>📄 회의록</span>
-                    <input value={m.link||""} placeholder="회의록 URL"
-                      onChange={e=>updateMeeting(m.id,{link:e.target.value})}
-                      style={{flex:1,padding:"6px 10px",borderRadius:7,
-                        border:"1px solid #e2e8f0",fontSize:12,outline:"none",
-                        fontFamily:"inherit"}}/>
-                    {m.link
-                      ? <a href={m.link} target="_blank" rel="noreferrer"
-                          style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
-                            background:"#eff6ff",border:"1px solid #bfdbfe",
-                            color:"#2563eb",fontSize:12,fontWeight:700,
-                            textDecoration:"none",whiteSpace:"nowrap"}}>
-                          열기 🔗
-                        </a>
-                      : <span style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
-                          background:"#f1f5f9",color:"#94a3b8",fontSize:12,
-                          fontWeight:700,whiteSpace:"nowrap"}}>
-                          열기 🔗
-                        </span>
-                    }
-                  </div>
-                  {/* 메모 */}
-                  <textarea value={m.memo||""} placeholder="회의 메모..."
-                    onChange={e=>updateMeeting(m.id,{memo:e.target.value})}
-                    rows={2}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,
-                      border:"1px solid #e2e8f0",fontSize:12,outline:"none",
-                      fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",
-                      lineHeight:1.5}}/>
-                </div>
-              ))}
+                );
+              })}
               <button type="button" onClick={addMeeting}
                 style={{alignSelf:"flex-start",fontSize:12,color:"#7c3aed",
                   background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:7,
@@ -3719,16 +3823,24 @@ function MonthCalendar({ project, onChange, user }) {
     ? allTasks.flatMap(t =>
         (t.meetings||[])
           .filter(m => m.date && m.title)
-          .map(m => ({
-            id: "mt-"+m.id,
-            title: "📅 "+m.title,
-            start: m.date.slice(0,10),
-            end:   m.date.slice(0,10),
-            color: "#7c3aed",
-            isAuto: true, autoType: "meeting",
-            note: m.attendees || "",
-            parentTaskTitle: t.title,
-          }))
+          .map(m => {
+            const attendeeArr = Array.isArray(m.attendees)
+              ? m.attendees : (m.attendees ? String(m.attendees).split(",").map(s=>s.trim()).filter(Boolean) : []);
+            const isClient = m.meetingType === "고객사";
+            return {
+              id: "mt-"+m.id,
+              title: (isClient?"🤝 ":"🏢 ")+m.title,
+              start: m.date.slice(0,10),
+              end:   m.date.slice(0,10),
+              color: isClient ? "#d97706" : "#7c3aed",
+              isAuto: true, autoType: "meeting",
+              meetingType: m.meetingType||"내부",
+              note: attendeeArr.join(", "),
+              location: m.location||"",
+              videoUrl: m.videoUrl||"",
+              parentTaskTitle: t.title,
+            };
+          })
       )
     : [];
 
@@ -4378,18 +4490,50 @@ body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font
               {autoModal.autoType==="task"?"태스크 마감":autoModal.autoType==="meeting"?"회의":autoModal.autoType==="feedback"?"피드백 마감":""}
             </span>
           </div>
-          <div style={{display:"flex",gap:12,marginBottom:12}}>
-            <div style={{flex:1,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            <div style={{padding:"8px 12px",background:"#f8fafc",borderRadius:8,minWidth:90}}>
               <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>날짜</div>
               <div style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{autoModal.start}</div>
             </div>
+            {autoModal.autoType==="meeting"&&autoModal.meetingType&&(
+              <div style={{padding:"8px 12px",borderRadius:8,
+                background:autoModal.meetingType==="고객사"?"#fffbeb":"#f5f3ff"}}>
+                <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>유형</div>
+                <div style={{fontSize:12,fontWeight:700,
+                  color:autoModal.meetingType==="고객사"?"#d97706":"#7c3aed"}}>
+                  {autoModal.meetingType==="고객사"?"🤝 고객사 회의":"🏢 내부 회의"}
+                </div>
+              </div>
+            )}
             {autoModal.note&&(
-              <div style={{flex:2,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
-                <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>담당자 / 참석자</div>
-                <div style={{fontSize:13,color:"#1e293b"}}>{autoModal.note}</div>
+              <div style={{flex:1,minWidth:120,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+                <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>
+                  {autoModal.autoType==="meeting"?"참석자":"담당자"}
+                </div>
+                <div style={{fontSize:12,color:"#1e293b"}}>{autoModal.note}</div>
               </div>
             )}
           </div>
+          {/* 장소 / 화상 URL */}
+          {autoModal.autoType==="meeting"&&(autoModal.location||autoModal.videoUrl)&&(
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+              {autoModal.location&&(
+                <div style={{flex:1,minWidth:120,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>📍 장소</div>
+                  <div style={{fontSize:12,color:"#1e293b"}}>{autoModal.location}</div>
+                </div>
+              )}
+              {autoModal.videoUrl&&(
+                <div style={{flex:1,minWidth:120,padding:"8px 12px",background:"#eff6ff",borderRadius:8}}>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:4}}>🎥 화상회의</div>
+                  <a href={autoModal.videoUrl} target="_blank" rel="noreferrer"
+                    style={{fontSize:12,fontWeight:700,color:"#2563eb",textDecoration:"none"}}>
+                    입장하기 →
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
           <div style={{padding:"12px 14px",background:"#fffbeb",border:"1px solid #fde68a",
             borderRadius:10,marginBottom:12}}>
             <div style={{fontSize:11,color:"#92400e",marginBottom:8,fontWeight:600}}>
