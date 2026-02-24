@@ -9248,19 +9248,34 @@ function BiddingTaskList({ tasks, onAdd, onAddSub, onOpen, onDelete, onUpdate, a
             {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
           </select>
 
-          {/* 마감일 */}
-          <input type="date"
-            key={t.id+"-due-"+(t.due||"")}
-            defaultValue={t.due||""}
-            onClick={e=>e.stopPropagation()}
-            onChange={e=>{e.stopPropagation();if(e.target.value)onUpdate({...t,due:e.target.value});}}
-            onBlur={e=>{e.stopPropagation();onUpdate({...t,due:e.target.value||null});}}
-            style={{fontSize:10,padding:"2px 4px",borderRadius:6,
+          {/* 마감일 — 텍스트 표시 + 숨겨진 date input */}
+          <div style={{position:"relative",width:"100%"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:10,padding:"2px 6px",borderRadius:6,
               border:`1px solid ${overdue?"#fca5a5":"#e2e8f0"}`,
-              color:overdue?"#ef4444":"#64748b",
+              color:overdue?"#ef4444":t.due?"#475569":"#cbd5e1",
               fontWeight:overdue?700:400,
               background:overdue?"#fff1f2":"#fff",
-              width:"100%",outline:"none"}}/>
+              whiteSpace:"nowrap",overflow:"hidden",
+              cursor:"pointer",height:22,lineHeight:"18px",
+              userSelect:"none"}}>
+              {t.due
+                ? (()=>{
+                    const d=t.due.replace("T"," ");
+                    const date=d.slice(5,10).replace("-","/");
+                    const time=d.slice(11,16);
+                    return time ? `${date} ${time}` : date;
+                  })()
+                : "날짜·시간"}
+            </div>
+            <input type="datetime-local"
+              key={t.id+"-due-"+(t.due||"")}
+              defaultValue={t.due||""}
+              onChange={e=>{e.stopPropagation();if(e.target.value)onUpdate({...t,due:e.target.value});}}
+              onBlur={e=>{e.stopPropagation();if(e.target.value!==t.due)onUpdate({...t,due:e.target.value||null});}}
+              style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",
+                opacity:0,cursor:"pointer",border:"none",background:"none"}}/>
+          </div>
 
           {/* 하위 추가 버튼 (상위만) */}
           {!isChild&&(
