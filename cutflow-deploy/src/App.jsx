@@ -9496,18 +9496,8 @@ function App() {
     const projMembers = accounts.filter(a=>
       [pf.pd, pf.director, pf.epd, pf.assistant].includes(a.name)
     );
-    // 비딩 템플릿 태스크 (3단계)
-    const BIDDING_TEMPLATE_TASKS = [
-      {title:"비딩 준비",description:"제안서 작성, 레퍼런스 수집, 전략 수립"},
-      {title:"PT 발표",description:"클라이언트 앞 PT 진행"},
-      {title:"결과 확인",description:"수주 여부 확인 및 후속 조치"},
-    ].map((t,i)=>({
-      id:`bt_${id}_${i}`, ...t,
-      status:"대기", priority:"보통", type:"내부",
-      assignees:[], stage:"PLANNING", createdAt:new Date().toISOString().slice(0,10),
-    }));
     const initTasks = isBidding
-      ? (pf.useBiddingTemplate ? BIDDING_TEMPLATE_TASKS : [])
+      ? []
       : (pf.useTemplate!==false ? generateTasksFromTemplate(id, projMembers) : []);
     const np = {
       id, ...pf,
@@ -10501,17 +10491,7 @@ return (
           </Field>
           <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
             <div style={{fontWeight:700,fontSize:13,color:"#16a34a",marginBottom:10}}>🗂 워크플로우 템플릿</div>
-            {pf.isBidding ? (
-              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"8px 10px",borderRadius:8,background:"#fef9c3",border:"1px solid #fde047"}}>
-                <input type="checkbox" checked={pf.useBiddingTemplate===true}
-                  onChange={e=>setPf(v=>({...v,useBiddingTemplate:e.target.checked}))}
-                  style={{accentColor:"#ca8a04",width:16,height:16}}/>
-                <div>
-                  <div style={{fontWeight:700,fontSize:12,color:"#92400e"}}>🏆 비딩 템플릿 적용</div>
-                  <div style={{fontSize:11,color:"#a16207",marginTop:1}}>비딩 준비 → PT 발표 → 결과 확인 3단계 기본 태스크 자동 생성</div>
-                </div>
-              </label>
-            ) : (
+            {!pf.isBidding && (
               <>
                 <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"8px 10px",borderRadius:8,background:"#f0fdf4",border:"1px solid #86efac"}}>
                   <input type="checkbox" checked={pf.useTemplate!==false}
