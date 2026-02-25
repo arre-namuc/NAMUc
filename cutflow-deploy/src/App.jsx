@@ -9597,6 +9597,7 @@ function App() {
   const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"TVC",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
 
   const [docTab,       setDocTab]       = useState("tasks");
+  const [budgetSubTab, setBudgetSubTab] = useState("quote");
   const [viewMode,     setViewMode]     = useState("phase");
   const [biddingView,  setBiddingView]  = useState("tasks");  // tasks|flow|calendar
   const [taskModal,    setTaskModal]    = useState(null);  // 수정 모달
@@ -10188,20 +10189,38 @@ return (
                 {id:"tasks",icon:"🏆",label:"비딩"},
                 {id:"client-request",icon:"📨",label:"고객 요청"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
-                {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
-                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessProjFinance},
-                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessProjFinance},
+                {id:"budget-mgmt",icon:"💰",label:"예산관리",locked:!canAccessProjFinance},
               ] : [
-                {id:"tasks",icon:"📋",label:"프로젝트"},
+                {id:"tasks",icon:"📋",label:"업무"},
                 {id:"client-request",icon:"📨",label:"고객 요청"},
                 {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
-                {id:"quote",icon:"💵",label:"견적서",locked:!canAccessProjFinance},
-                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessProjFinance},
-                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessProjFinance},
+                {id:"budget-mgmt",icon:"💰",label:"예산관리",locked:!canAccessProjFinance},
               ]}
-              active={docTab} onChange={setDocTab}
+              active={docTab} onChange={id=>{setDocTab(id);if(id==="budget-mgmt")setBudgetSubTab(prev=>prev||"quote");}}
             />
+
+            {/* 예산관리 서브탭 */}
+            {docTab==="budget-mgmt"&&canAccessProjFinance&&(
+              <div style={{display:"flex",gap:4,marginBottom:16,marginTop:-16}}>
+                {[
+                  {id:"quote",icon:"💵",label:"견적서"},
+                  {id:"budget",icon:"📒",label:"실행예산서"},
+                  {id:"settlement",icon:"📊",label:"결산서"},
+                ].map(t=>{
+                  const sel = budgetSubTab===t.id;
+                  return (
+                    <button key={t.id} onClick={()=>setBudgetSubTab(t.id)}
+                      style={{padding:"6px 14px",borderRadius:8,border:`1.5px solid ${sel?C.blue:C.border}`,
+                        background:sel?C.blueLight:C.white,cursor:"pointer",fontSize:12,
+                        fontWeight:sel?700:500,color:sel?C.blue:C.sub,whiteSpace:"nowrap",
+                        transition:"all .12s"}}>
+                      {t.icon} {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* ── 비딩 탭 ── */}
             {docTab==="tasks"&&proj.isBidding&&(
@@ -10431,13 +10450,13 @@ return (
             {docTab==="stafflist"&&<StaffList project={proj} onChange={patchProj} accounts={accounts}/>}
 
             {/* ── 견적서 ── */}
-            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
 
             {/* ── 실행예산서 ── */}
-            {docTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)}/>}
 
             {/* ── 결산서 ── */}
-            {docTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)}/>}
 
 
           </>
