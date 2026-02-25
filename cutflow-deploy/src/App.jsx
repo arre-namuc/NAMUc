@@ -3124,6 +3124,177 @@ function KanbanCol({ stage, tasks, onEdit }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 엑셀 업로드 → 견적 파싱 유틸
+// ═══════════════════════════════════════════════════════════
+let _xlsxLoaded = false;
+async function loadXLSX() {
+  if (_xlsxLoaded && window.XLSX) return window.XLSX;
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => { _xlsxLoaded = true; res(); };
+    s.onerror = () => rej(new Error("SheetJS 로드 실패"));
+    document.head.appendChild(s);
+  });
+  return window.XLSX;
+}
+
+function detectExcelFormat(rows) {
+  // 포맷2 감지: Row 10 (idx 9) 에 "공급가액" 포함
+  for (let i = 8; i < Math.min(12, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("공급가액") && rowStr.includes("매입")) return "B";
+  }
+  // 포맷1 감지: "협의 견적" 헤더 존재
+  for (let i = 8; i < Math.min(12, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("협의") || rowStr.includes("협의 견적")) return "A";
+  }
+  // 기본 헤더 찾기: "품 명" + "수량" + "단위"
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("품") && rowStr.includes("수량") && rowStr.includes("단위")) {
+      // 다음 행에 공급가액이 있으면 B, 아니면 A
+      const nextStr = (rows[i + 1] || []).join(" ");
+      return nextStr.includes("공급가액") ? "B" : "A";
+    }
+  }
+  return "A"; // fallback
+}
+
+function parseFormatA(rows) {
+  // 포맷1: 다건형 (Google 견적서 스타일)
+  // Col A(0): 콘텐츠명, Col B(1): 항목명, E(4): 수량, F(5): 단위, G(6): 단가, H(7): 견적, I(8): 협의견적
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const r = (rows[i] || []).join(" ");
+    if (r.includes("품") && r.includes("수량")) { headerRow = i; break; }
+  }
+  if (headerRow < 0) headerRow = 9; // default
+
+  const categories = [];
+  let curCat = null;
+
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const a = (r[0] || "").toString().replace(/\n/g, " ").trim();
+    const b = (r[1] || r[3] || "").toString().trim(); // 항목명 (B열 또는 D열)
+    const qty = Number(r[4]) || 0;
+    const unit = (r[5] || "").toString().trim();
+    const unitPrice = Number(r[6]) || 0;
+    const negotiated = Number(r[8]) || 0;
+    const remark = (r[9] || "").toString().trim();
+
+    // "총 계" 또는 "공 급 가" → 끝
+    if (a.replace(/\s/g, "").includes("총계") || a.replace(/\s/g, "").includes("공급가") || a.replace(/\s/g, "").includes("최종공급가")) break;
+
+    // "~계" 행 → 소계, 스킵
+    if (a.includes("계") && !b) continue;
+
+    // 새 콘텐츠(대분류) 시작
+    if (a && !a.includes("계")) {
+      curCat = { category: a.replace(/\s+/g, " "), groups: [{ gid: newId(), group: a.replace(/\s+/g, " "), items: [] }] };
+      categories.push(curCat);
+    }
+
+    // 항목 추가
+    if (b && curCat && qty > 0) {
+      const price = negotiated > 0 ? negotiated : unitPrice;
+      curCat.groups[0].items.push({
+        id: newId(), name: b, unit: unit || "건", qty,
+        unitPrice: qty > 0 ? Math.round(price / qty) : price,
+        ...(remark ? { remark } : {})
+      });
+    } else if (b && curCat && unitPrice > 0) {
+      curCat.groups[0].items.push({
+        id: newId(), name: b, unit: unit || "건", qty: 1,
+        unitPrice: negotiated > 0 ? negotiated : unitPrice,
+        ...(remark ? { remark } : {})
+      });
+    }
+  }
+  return categories.filter(c => c.groups[0].items.length > 0);
+}
+
+function parseFormatB(rows) {
+  // 포맷2: 복잡형 (기아 실행예산서 스타일)
+  // Col A(0): 대분류, B(1): 중분류, D(3): 항목명, E(4): 수량, F(5): 단위, G(6): 단가(공급가액)
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const r = (rows[i] || []).join(" ");
+    if (r.includes("공급가액")) { headerRow = i; break; }
+  }
+  if (headerRow < 0) headerRow = 9;
+
+  const catMap = new Map(); // category -> { groups: Map<groupName, items[]> }
+  let curCatName = "";
+  let curGrpName = "";
+
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const a = (r[0] || "").toString().trim();
+    const b = (r[1] || "").toString().trim();
+    const d = (r[3] || "").toString().trim();
+    const qty = Number(r[4]) || 0;
+    const unit = (r[5] || "").toString().trim();
+    const unitPrice = Number(r[6]) || 0;
+    const remark = (r[14] || r[15] || "").toString().trim();
+
+    // 합계 행 스킵
+    if (a.replace(/\s/g, "").includes("합계") || a.replace(/\s/g, "").includes("총계")) break;
+    if (d.includes("합계") || d.includes("소계")) continue;
+
+    // 대분류 업데이트
+    if (a) curCatName = a;
+    if (b) curGrpName = b;
+
+    // 항목 있으면 추가
+    if (d && (unitPrice > 0 || qty > 0)) {
+      if (!catMap.has(curCatName)) catMap.set(curCatName, new Map());
+      const grpMap = catMap.get(curCatName);
+      if (!grpMap.has(curGrpName)) grpMap.set(curGrpName, []);
+      grpMap.get(curGrpName).push({
+        id: newId(), name: d, unit: unit || "건",
+        qty: qty || 1, unitPrice,
+        ...(remark ? { remark } : {})
+      });
+    }
+  }
+
+  const categories = [];
+  for (const [catName, grpMap] of catMap) {
+    const groups = [];
+    for (const [grpName, items] of grpMap) {
+      if (items.length > 0) groups.push({ gid: newId(), group: grpName || catName, items });
+    }
+    if (groups.length > 0) categories.push({ category: catName, groups });
+  }
+  return categories;
+}
+
+async function parseExcelToQuote(file) {
+  const XLSX = await loadXLSX();
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: "array" });
+
+  // 시트 선택 (첫 번째 시트, 또는 이름에 "견적" 또는 "예산" 포함된 시트)
+  let sheetName = wb.SheetNames[0];
+  for (const sn of wb.SheetNames) {
+    if (sn.includes("견적") || sn.includes("예산") || sn.includes("실행")) {
+      sheetName = sn; break;
+    }
+  }
+
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+  const fmt = detectExcelFormat(rows);
+  const items = fmt === "B" ? parseFormatB(rows) : parseFormatA(rows);
+
+  return { items, format: fmt, sheetName, sheetNames: wb.SheetNames };
+}
+
+// ═══════════════════════════════════════════════════════════
 // 견적서 에디터 (대분류 > 중분류 > 소분류 3단계)
 // ═══════════════════════════════════════════════════════════
 function QuoteEditor({ quote, onChange, exportProject, company }) {
@@ -3132,6 +3303,34 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
   const [newItem,     setNewItem]     = useState({name:"",unit:"식",qty:1,unitPrice:0});
   const [addGrpModal, setAddGrpModal] = useState(null); // ci
   const [newGrp,      setNewGrp]      = useState("");
+  const [xlUploading, setXlUploading] = useState(false);
+  const [xlResult,    setXlResult]    = useState(null); // {items, format, sheetName, sheetNames}
+  const xlRef = useRef(null);
+
+  const handleExcelFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setXlUploading(true);
+    try {
+      const result = await parseExcelToQuote(file);
+      if (result.items.length === 0) {
+        alert("파싱된 항목이 없습니다. 엑셀 양식을 확인해주세요.");
+        setXlUploading(false);
+        return;
+      }
+      setXlResult(result);
+    } catch (err) {
+      alert("엑셀 파일 읽기 실패: " + err.message);
+    }
+    setXlUploading(false);
+    if (xlRef.current) xlRef.current.value = "";
+  };
+
+  const applyExcelData = () => {
+    if (!xlResult) return;
+    onChange({ ...q, items: xlResult.items });
+    setXlResult(null);
+  };
 
   /* 소분류 CRUD */
   const patchItem = (ci,gi,id,k,v) => onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
@@ -3191,6 +3390,12 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
           <span style={{fontSize:13,color:C.sub}}>%</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <input ref={xlRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFile} style={{display:"none"}}/>
+          <Btn sm onClick={()=>xlRef.current?.click()}
+            style={{background:"#16a34a18",color:"#16a34a",border:"1px solid #16a34a40"}}
+            disabled={xlUploading}>
+            {xlUploading ? "⏳ 파싱중..." : "📥 엑셀 불러오기"}
+          </Btn>
           {exportProject && (
             <Btn sm onClick={()=>(exportProject.quoteFmt||"A")==="B"?openQuotePDFB(exportProject,q,company):openQuotePDF(exportProject,q,company)}
               style={{background:"#2563eb10",color:C.blue,border:`1px solid #2563eb40`}}>
@@ -3323,6 +3528,80 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
             <Btn onClick={()=>setAddGrpModal(null)}>취소</Btn>
             <Btn primary onClick={()=>addGroup(addGrpModal)}>추가</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 엑셀 업로드 미리보기 모달 */}
+      {xlResult && (
+        <Modal title="📥 엑셀 견적 불러오기" onClose={()=>setXlResult(null)} wide>
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
+              <span style={{fontSize:13,padding:"4px 10px",borderRadius:8,background:"#dbeafe",color:"#1d4ed8",fontWeight:700}}>
+                {xlResult.format==="A"?"다건형 (견적서)":"복잡형 (실행예산서)"}
+              </span>
+              <span style={{fontSize:13,padding:"4px 10px",borderRadius:8,background:"#f0fdf4",color:"#16a34a",fontWeight:700}}>
+                시트: {xlResult.sheetName}
+              </span>
+              <span style={{fontSize:13,color:C.sub}}>
+                대분류 {xlResult.items.length}개 · 총 {xlResult.items.reduce((s,c)=>s+c.groups.reduce((gs,g)=>gs+g.items.length,0),0)}항목
+              </span>
+            </div>
+            <div style={{fontSize:12,color:C.red,fontWeight:600,marginBottom:8}}>
+              ⚠ 적용 시 기존 견적서 데이터가 모두 교체됩니다.
+            </div>
+          </div>
+          <div style={{maxHeight:400,overflow:"auto",border:`1px solid ${C.border}`,borderRadius:10}}>
+            {xlResult.items.map((cat,ci)=>(
+              <div key={ci} style={{borderBottom:`1px solid ${C.border}`}}>
+                <div style={{padding:"8px 12px",background:"#f0f4ff",fontWeight:800,fontSize:14,color:C.blue,position:"sticky",top:0,zIndex:1}}>
+                  {cat.category}
+                  <span style={{fontWeight:400,fontSize:12,color:C.sub,marginLeft:8}}>
+                    ({cat.groups.reduce((s,g)=>s+g.items.length,0)}항목)
+                  </span>
+                </div>
+                {cat.groups.map((grp,gi)=>(
+                  <div key={gi}>
+                    {cat.groups.length > 1 && (
+                      <div style={{padding:"5px 12px 3px",background:"#fafbfc",fontSize:12,fontWeight:700,color:C.slate}}>
+                        ▸ {grp.group}
+                      </div>
+                    )}
+                    <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                      <thead>
+                        <tr style={{background:"#f8f9fa"}}>
+                          <th style={{textAlign:"left",padding:"4px 12px",color:C.sub,fontWeight:600}}>항목</th>
+                          <th style={{textAlign:"center",padding:"4px 8px",color:C.sub,fontWeight:600,width:50}}>수량</th>
+                          <th style={{textAlign:"center",padding:"4px 8px",color:C.sub,fontWeight:600,width:40}}>단위</th>
+                          <th style={{textAlign:"right",padding:"4px 12px",color:C.sub,fontWeight:600,width:100}}>단가</th>
+                          <th style={{textAlign:"right",padding:"4px 12px",color:C.sub,fontWeight:600,width:100}}>금액</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grp.items.map((it,idx)=>(
+                          <tr key={idx} style={{borderTop:`1px solid #f0f0f0`}}>
+                            <td style={{padding:"4px 12px"}}>{it.name}</td>
+                            <td style={{padding:"4px 8px",textAlign:"center"}}>{it.qty}</td>
+                            <td style={{padding:"4px 8px",textAlign:"center"}}>{it.unit}</td>
+                            <td style={{padding:"4px 12px",textAlign:"right"}}>{fmt(it.unitPrice)}</td>
+                            <td style={{padding:"4px 12px",textAlign:"right",fontWeight:600}}>{fmt(it.qty*it.unitPrice)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}}>
+            <span style={{fontSize:15,fontWeight:800,color:C.blue}}>
+              합계: {fmt(xlResult.items.reduce((s,c)=>s+c.groups.reduce((gs,g)=>gs+g.items.reduce((is,it)=>is+it.qty*it.unitPrice,0),0),0))}
+            </span>
+            <div style={{display:"flex",gap:8}}>
+              <Btn onClick={()=>setXlResult(null)}>취소</Btn>
+              <Btn primary onClick={applyExcelData}>견적서에 적용</Btn>
+            </div>
           </div>
         </Modal>
       )}
