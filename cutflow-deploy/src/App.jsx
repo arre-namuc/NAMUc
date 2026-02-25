@@ -3139,25 +3139,26 @@ async function loadXLSX() {
   return window.XLSX;
 }
 
-function detectExcelFormat(rows) {
-  // 포맷2 감지: Row 10 (idx 9) 에 "공급가액" 포함
-  for (let i = 8; i < Math.min(12, rows.length); i++) {
-    const rowStr = (rows[i] || []).join(" ");
-    if (rowStr.includes("공급가액") && rowStr.includes("매입")) return "B";
+function detectExcelFormat(rows, sheetName) {
+  // 포맷B 감지: "세항목" 시트 또는 "N. XXX 부문" 패턴 또는 "견적금액"+"합의금액" 헤더
+  if (sheetName === "세항목") return "B";
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const a = (rows[i]?.[0] || "").toString();
+    if (/^\d+\.\s*.+부문/.test(a)) return "B";
   }
-  // 포맷1 감지: "협의 견적" 헤더 존재
-  for (let i = 8; i < Math.min(12, rows.length); i++) {
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
     const rowStr = (rows[i] || []).join(" ");
-    if (rowStr.includes("협의") || rowStr.includes("협의 견적")) return "A";
+    if (rowStr.includes("견적금액") && rowStr.includes("합의금액") && !rowStr.includes("매입")) return "B";
   }
-  // 기본 헤더 찾기: "품 명" + "수량" + "단위"
+  // 포맷A 감지: "협의 견적" 또는 "협의견적" 헤더
+  for (let i = 8; i < Math.min(15, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("협의")) return "A";
+  }
+  // 기본 헤더 찾기
   for (let i = 0; i < Math.min(15, rows.length); i++) {
     const rowStr = (rows[i] || []).join(" ");
-    if (rowStr.includes("품") && rowStr.includes("수량") && rowStr.includes("단위")) {
-      // 다음 행에 공급가액이 있으면 B, 아니면 A
-      const nextStr = (rows[i + 1] || []).join(" ");
-      return nextStr.includes("공급가액") ? "B" : "A";
-    }
+    if (rowStr.includes("품") && rowStr.includes("수량") && rowStr.includes("단위")) return "A";
   }
   return "A"; // fallback
 }
@@ -3217,59 +3218,96 @@ function parseFormatA(rows) {
 }
 
 function parseFormatB(rows) {
-  // 포맷2: 복잡형 (기아 실행예산서 스타일)
-  // Col A(0): 대분류, B(1): 중분류, D(3): 항목명, E(4): 수량, F(5): 단위, G(6): 단가(공급가액)
-  let headerRow = -1;
-  for (let i = 0; i < Math.min(15, rows.length); i++) {
-    const r = (rows[i] || []).join(" ");
-    if (r.includes("공급가액")) { headerRow = i; break; }
-  }
-  if (headerRow < 0) headerRow = 9;
+  // 포맷2: 복잡형 (NQ5 제작 견적서 세항목 스타일)
+  const sectionRe = /^(\d+)\.\s*(.+부문)/;
 
-  const catMap = new Map(); // category -> { groups: Map<groupName, items[]> }
-  let curCatName = "";
-  let curGrpName = "";
-
-  for (let i = headerRow + 1; i < rows.length; i++) {
-    const r = rows[i] || [];
-    const a = (r[0] || "").toString().trim();
-    const b = (r[1] || "").toString().trim();
-    const d = (r[3] || "").toString().trim();
-    const qty = Number(r[4]) || 0;
-    const unit = (r[5] || "").toString().trim();
-    const unitPrice = Number(r[6]) || 0;
-    const remark = (r[14] || r[15] || "").toString().trim();
-
-    // 합계 행 스킵
-    if (a.replace(/\s/g, "").includes("합계") || a.replace(/\s/g, "").includes("총계")) break;
-    if (d.includes("합계") || d.includes("소계")) continue;
-
-    // 대분류 업데이트
-    if (a) curCatName = a;
-    if (b) curGrpName = b;
-
-    // 항목 있으면 추가
-    if (d && (unitPrice > 0 || qty > 0)) {
-      if (!catMap.has(curCatName)) catMap.set(curCatName, new Map());
-      const grpMap = catMap.get(curCatName);
-      if (!grpMap.has(curGrpName)) grpMap.set(curGrpName, []);
-      grpMap.get(curGrpName).push({
-        id: newId(), name: d, unit: unit || "건",
-        qty: qty || 1, unitPrice,
-        ...(remark ? { remark } : {})
-      });
-    }
+  // ★ 사전 스캔: 합의금액 열에 값이 있는지 확인
+  let hasAnyAgreed = false;
+  for (let i = 0; i < rows.length; i++) {
+    const agrAmt = Number((rows[i] || [])[13]) || 0;
+    if (agrAmt > 0) { hasAnyAgreed = true; break; }
   }
 
   const categories = [];
-  for (const [catName, grpMap] of catMap) {
-    const groups = [];
-    for (const [grpName, items] of grpMap) {
-      if (items.length > 0) groups.push({ gid: newId(), group: grpName || catName, items });
+  let curCatName = "";
+  let curGrpName = "";
+  let curCat = null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const a = (r[0] || "").toString().trim();
+    const c = (r[2] || "").toString().trim();
+
+    const cClean = c.replace(/\s/g, "");
+    if (cClean.includes("소계")) continue;
+    if ((c.endsWith("계") || cClean.endsWith("계")) && !c.includes("세금계산")) continue;
+    if (c === "내 역" || c === "내역") continue;
+
+    const secMatch = a.match(sectionRe);
+    if (secMatch) {
+      curCatName = secMatch[2].replace(/\s+/g, " ").trim();
+      const secNum = parseInt(secMatch[1]);
+      if (secNum >= 15) { curCat = null; continue; }
+      curCat = { category: curCatName, groups: [] };
+      categories.push(curCat);
+      curGrpName = "";
+      continue;
     }
-    if (groups.length > 0) categories.push({ category: catName, groups });
+
+    if (!curCat) continue;
+
+    if (a && !sectionRe.test(a) && !a.includes("부문")) {
+      const aClean = a.replace(/\s+/g, " ");
+      if (aClean !== curGrpName) curGrpName = aClean;
+    }
+
+    if (!c) continue;
+
+    const unitPrice = Number(r[5]) || 0;
+    const qty1 = Number(r[8]) || 0;
+    const unit = (r[10] || r[9] || "").toString().trim();
+    const days = Number(r[10]) || 0;
+    const estAmt = Number(r[11]) || 0;
+    const agrAmt = Number(r[13]) || 0;
+
+    // 합의금액 열이 있는 시트: 합의금액 > 0인 항목만 사용
+    // 합의금액 열이 없는 시트: 견적금액 > 0인 항목 사용
+    if (hasAnyAgreed) {
+      if (agrAmt <= 0) continue;  // 합의 안 된 항목 스킵
+    } else {
+      if (estAmt === 0) continue;
+    }
+
+    const amount = hasAnyAgreed ? agrAmt : estAmt;
+
+    const grpName = curGrpName || curCatName;
+    let grp = curCat.groups.find(g => g.group === grpName);
+    if (!grp) {
+      grp = { gid: newId(), group: grpName, items: [] };
+      curCat.groups.push(grp);
+    }
+
+    let finalQty = 1, finalUnitPrice = amount;
+    if (unitPrice > 0 && qty1 > 0) {
+      const totalQty = days > 1 ? qty1 * days : qty1;
+      finalQty = totalQty;
+      finalUnitPrice = amount > 0 ? Math.round(amount / totalQty) : unitPrice;
+    } else if (unitPrice > 0) {
+      finalQty = 1;
+      finalUnitPrice = amount > 0 ? amount : unitPrice;
+    }
+
+    const cleanUnit = unit.replace(/[0-9.]/g, "").trim() || "건";
+
+    grp.items.push({
+      id: newId(), name: c, unit: cleanUnit,
+      qty: finalQty, unitPrice: finalUnitPrice,
+    });
   }
-  return categories;
+
+  return categories
+    .map(cat => ({ ...cat, groups: cat.groups.filter(g => g.items.length > 0) }))
+    .filter(cat => cat.groups.length > 0);
 }
 
 async function parseExcelToQuote(file) {
@@ -3277,18 +3315,17 @@ async function parseExcelToQuote(file) {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: "array" });
 
-  // 시트 선택 (첫 번째 시트, 또는 이름에 "견적" 또는 "예산" 포함된 시트)
+  // 시트 선택: "세항목" > "견적" 포함 > 첫 번째 시트
   let sheetName = wb.SheetNames[0];
   for (const sn of wb.SheetNames) {
-    if (sn.includes("견적") || sn.includes("예산") || sn.includes("실행")) {
-      sheetName = sn; break;
-    }
+    if (sn === "세항목") { sheetName = sn; break; }
+    if (sn.includes("견적") || sn.includes("예산") || sn.includes("실행")) { sheetName = sn; }
   }
 
   const ws = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-  const fmt = detectExcelFormat(rows);
+  const fmt = detectExcelFormat(rows, sheetName);
   const items = fmt === "B" ? parseFormatB(rows) : parseFormatA(rows);
 
   return { items, format: fmt, sheetName, sheetNames: wb.SheetNames };
