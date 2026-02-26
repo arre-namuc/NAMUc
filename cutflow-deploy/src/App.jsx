@@ -6,6 +6,7 @@ import {
   subscribeMembers, saveMember, deleteMember,
   isConfigured,
   subscribeOffice, saveOffice,
+  subscribeVendors, saveVendorToFirestore, deleteVendorFromFirestore, uploadVendorDoc,
 } from "./firebase.js";
 
 // ═══════════════════════════════════════════════════════════
@@ -3843,9 +3844,32 @@ function BudgetEditor({ project, onSave }) {
   const [vendorInfoPanel, setVendorInfoPanel] = useState(null);
 
   const getVendors = () => { try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; } };
-  const saveToCRM = (vendor) => {
-    const list = getVendors();
+  const saveToCRM = async (vendor) => {
     const entry = {...vendor, id: vendor.id || "v"+Date.now()};
+    // 첨부파일 Firebase Storage 업로드
+    const docs = {...(entry.docs||{})};
+    for(const docType of ["bizReg","bankCopy","idCard"]){
+      const d = docs[docType];
+      if(d?.b64url && !d.url){
+        try {
+          const r = await fetch(d.b64url); const bl = await r.blob();
+          const file = new File([bl], d.name, {type:d.type});
+          const result = await uploadVendorDoc(entry.id, docType, file);
+          docs[docType] = result;
+        } catch(e){ console.error("서류 업로드 실패:",e); }
+      }
+    }
+    entry.docs = docs;
+    // b64url 제거
+    for(const k of Object.keys(entry.docs||{})){
+      if(entry.docs[k]?.b64url){ const {b64url,...rest}=entry.docs[k]; entry.docs[k]=rest; }
+    }
+    // Firestore 저장
+    if(isConfigured){
+      try { await saveVendorToFirestore(entry); } catch(e){ console.error("Firestore 저장 실패:",e); }
+    }
+    // localStorage 폴백 (항상 동기화)
+    const list = getVendors();
     const exists = list.find(v=>v.id===entry.id);
     const next = exists ? list.map(v=>v.id===entry.id?entry:v) : [...list, entry];
     try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
@@ -3902,7 +3926,7 @@ function BudgetEditor({ project, onSave }) {
       const b64=await toB64(file); const isImg=file.type.startsWith("image/");
       let prompt="";
       if(docType==="bizReg")prompt="이 사업자등록증에서 추출. JSON만.\n{\"name\":\"상호명\",\"bizNo\":\"사업자번호\",\"representative\":\"대표자명\"}";
-      else if(docType==="bankCopy")prompt="이 통장사본에서 추출. JSON만.\n{\"bankName\":\"은행명\",\"bankAccount\":\"계좌번호\",\"bankHolder\":\"예금주\"}";
+      else if(docType==="bankCopy")prompt="이 통장사본에서 추출. JSON만 응답.\n예금주(bankHolder)는 상단에 \"님\" 바로 앞에 있는 이름(개인명 또는 법인명)이다. 계좌번호 근처의 숫자가 아닌 텍스트를 찾아라.\n{\"bankName\":\"은행명(예:IBK기업은행,국민은행 등)\",\"bankAccount\":\"계좌번호(숫자와-만)\",\"bankHolder\":\"예금주(님 앞의 이름)\"}";
       else if(docType==="idCard")prompt="이 신분증에서 추출. JSON만.\n{\"name\":\"이름\"}";
       const src=isImg?{type:"image",source:{type:"base64",media_type:file.type,data:b64}}:{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}};
       const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:[src,{type:"text",text:prompt}]}]})});
@@ -3954,9 +3978,9 @@ function BudgetEditor({ project, onSave }) {
     setVendorInfoPanel(p=>p?{...p,voucher:{...p.voucher,paymentStatus:"입금요청"}}:null);
   };
 
-  const registerVendor=()=>{
+  const registerVendor=async()=>{
     if(!newVendor.name?.trim())return alert("업체명을 입력해주세요.");
-    const saved=saveToCRM({...newVendor,vendorType,docs:{bizReg:vendorDocs.bizReg||null,bankCopy:vendorDocs.bankCopy||null,idCard:vendorDocs.idCard||null}});
+    const saved=await saveToCRM({...newVendor,vendorType,docs:{bizReg:vendorDocs.bizReg||null,bankCopy:vendorDocs.bankCopy||null,idCard:vendorDocs.idCard||null}});
     setVf(v=>({...v,vendor:saved.name,vendorId:saved.id}));
     setNewVendorMode(false);
   };
@@ -4229,9 +4253,9 @@ function BudgetEditor({ project, onSave }) {
               <div style={{background:"#fafafa",borderRadius:10,padding:16,marginBottom:16}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.dark,marginBottom:10}}>📎 첨부 서류</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {vendor.docs?.bizReg&&<button onClick={()=>setLightboxImg(vendor.docs.bizReg.b64url)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #2563eb30`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 🔍</button>}
-                  {vendor.docs?.bankCopy&&<button onClick={()=>setLightboxImg(vendor.docs.bankCopy.b64url)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #f59e0b30`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 🔍</button>}
-                  {vendor.docs?.idCard&&<button onClick={()=>setLightboxImg(vendor.docs.idCard.b64url)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #10b98130`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 🔍</button>}
+                  {vendor.docs?.bizReg&&<button onClick={()=>{const d=vendor.docs.bizReg;const src=d.url||d.b64url;src?setLightboxImg(src):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #2563eb30`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 {(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"🔍":"✅"}</button>}
+                  {vendor.docs?.bankCopy&&<button onClick={()=>{const d=vendor.docs.bankCopy;const src=d.url||d.b64url;src?setLightboxImg(src):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #f59e0b30`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 {(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"🔍":"✅"}</button>}
+                  {vendor.docs?.idCard&&<button onClick={()=>{const d=vendor.docs.idCard;const src=d.url||d.b64url;src?setLightboxImg(src):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #10b98130`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 {(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"🔍":"✅"}</button>}
                 </div>
               </div>
             )}
@@ -9293,27 +9317,43 @@ function CRMPage({ projects }) {
   const [search,   setSearch]   = useState("");
   const [selProj,  setSelProj]  = useState(null);
 
-  // ── 외주 목록 (localStorage 로컬 저장) ──────────────────
-  const [vendors, setVendors] = useState(()=>{
+  // ── 외주 목록 (Firestore 우선, localStorage 폴백) ──────
+  const [vendors, setVendorsState] = useState(()=>{
     try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; }
   });
-  const [vModal,  setVModal]  = useState(null); // null | {} | {id}
+  const [vModal,  setVModal]  = useState(null);
   const [vf,      setVf]      = useState({});
-  const [docPreview, setDocPreview] = useState(null); // {name,b64url,type}
+  const [docPreview, setDocPreview] = useState(null);
   const [crmDocAnalyzing, setCrmDocAnalyzing] = useState(null);
+  const [crmSaving, setCrmSaving] = useState(false);
+  const pendingFiles = useRef({}); // {bizReg: File, bankCopy: File, idCard: File}
+
+  // Firestore 실시간 구독
+  useEffect(()=>{
+    const unsub = subscribeVendors((list)=>{
+      if(list) { // Firestore 연결됨
+        setVendorsState(list);
+        try { localStorage.setItem("crm_vendors", JSON.stringify(list)); } catch{}
+      }
+      // null이면 localStorage 폴백 (이미 초기값으로 로드됨)
+    });
+    return unsub;
+  },[]);
+
   const toDataURL = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
   const toB64Only = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
   const analyzeCrmDoc = async (docType,file) => {
     const b64url = await toDataURL(file);
     const docObj = {name:file.name,type:file.type,b64url,size:file.size};
     setVf(v=>({...v,docs:{...(v.docs||{}), [docType]:docObj}}));
+    pendingFiles.current[docType] = file; // 저장 시 업로드할 원본 File 보관
     setCrmDocAnalyzing(docType);
     try {
       const b64 = await toB64Only(file);
       const isImg = file.type.startsWith("image/");
       let prompt = "";
       if(docType==="bizReg") prompt="이 사업자등록증에서 추출. JSON만.\n{\"name\":\"상호명\",\"bizNo\":\"사업자번호\",\"representative\":\"대표자명\"}";
-      else if(docType==="bankCopy") prompt="이 통장사본에서 추출. JSON만.\n{\"bankName\":\"은행명\",\"bankAccount\":\"계좌번호\",\"bankHolder\":\"예금주\"}";
+      else if(docType==="bankCopy") prompt="이 통장사본에서 추출. JSON만 응답.\n예금주(bankHolder)는 상단에 \"님\" 바로 앞에 있는 이름(개인명 또는 법인명)이다. 계좌번호 근처의 숫자가 아닌 텍스트를 찾아라.\n{\"bankName\":\"은행명(예:IBK기업은행,국민은행 등)\",\"bankAccount\":\"계좌번호(숫자와-만)\",\"bankHolder\":\"예금주(님 앞의 이름)\"}";
       const src = isImg ? {type:"image",source:{type:"base64",media_type:file.type,data:b64}} : {type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}};
       const res = await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:[src,{type:"text",text:prompt}]}]})});
       if(res.ok){
@@ -9328,22 +9368,62 @@ function CRMPage({ projects }) {
     setCrmDocAnalyzing(null);
   };
 
-  const saveVendors = (next) => {
-    setVendors(next);
-    try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
-  };
   const openAddVendor = () => {
     setVf({name:"",type:"",status:"활성",phone:"",email:"",contactName:"",note:"",rate:"",rateUnit:"건",bizNo:"",bankName:"",bankAccount:"",bankHolder:"",vendorType:"company",docs:{}});
+    pendingFiles.current = {};
     setVModal({});
   };
-  const openEditVendor = v => { setVf({...v,docs:v.docs||{}}); setVModal({id:v.id}); };
-  const saveVendor = () => {
+  const openEditVendor = v => { setVf({...v,docs:v.docs||{}}); pendingFiles.current={}; setVModal({id:v.id}); };
+
+  const saveVendor = async () => {
     if(!vf.name?.trim()) return;
-    const entry = {...vf, id:vModal.id||"v"+Date.now()};
-    saveVendors(vModal.id ? vendors.map(v=>v.id===vModal.id?entry:v) : [...vendors, entry]);
-    setVModal(null);
+    setCrmSaving(true);
+    const id = vModal.id || "v"+Date.now();
+    try {
+      // 1) 새로 첨부된 파일 → Firebase Storage 업로드
+      const docs = {...(vf.docs||{})};
+      for(const docType of ["bizReg","bankCopy","idCard"]){
+        const file = pendingFiles.current[docType];
+        if(file){
+          const result = await uploadVendorDoc(id, docType, file);
+          docs[docType] = result; // {name, url, type, size, path}
+        }
+      }
+      const entry = {...vf, id, docs};
+      // b64url 제거 (Firestore에 저장하면 안됨)
+      for(const k of Object.keys(entry.docs||{})){
+        if(entry.docs[k]?.b64url) {
+          const {b64url, ...rest} = entry.docs[k];
+          entry.docs[k] = rest;
+        }
+      }
+      // 2) Firestore 저장 (연결 시)
+      if(isConfigured){
+        await saveVendorToFirestore(entry);
+      } else {
+        // localStorage 폴백
+        const list = vendors;
+        const next = vModal.id ? list.map(v=>v.id===vModal.id?entry:v) : [...list, entry];
+        setVendorsState(next);
+        try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
+      }
+      pendingFiles.current = {};
+      setVModal(null);
+    } catch(e) {
+      console.error("업체 저장 실패:",e);
+      alert("저장 실패: "+e.message);
+    }
+    setCrmSaving(false);
   };
-  const deleteVendor = (id) => saveVendors(vendors.filter(v=>v.id!==id));
+  const deleteVendor = async (id) => {
+    if(isConfigured){
+      try { await deleteVendorFromFirestore(id); } catch(e){ alert("삭제 실패"); }
+    } else {
+      const next = vendors.filter(v=>v.id!==id);
+      setVendorsState(next);
+      try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
+    }
+  };
 
   // ── 고객사 집계 (프로젝트 기반) ─────────────────────────
   const clients = {};
@@ -9506,9 +9586,9 @@ function CRMPage({ projects }) {
                   {/* 첨부 서류 */}
                   {(v.docs?.bizReg||v.docs?.bankCopy||v.docs?.idCard)&&(
                     <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
-                      {v.docs?.bizReg&&<button onClick={()=>setDocPreview(v.docs.bizReg)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #2563eb40`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 🔍</button>}
-                      {v.docs?.bankCopy&&<button onClick={()=>setDocPreview(v.docs.bankCopy)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #f59e0b40`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 🔍</button>}
-                      {v.docs?.idCard&&<button onClick={()=>setDocPreview(v.docs.idCard)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #10b98140`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 🔍</button>}
+                      {v.docs?.bizReg&&<button onClick={()=>{const d=v.docs.bizReg;const src=d.url||d.b64url;src?setDocPreview({...d,b64url:src}):alert("첨부 확인: "+d.name);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #2563eb40`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 {(v.docs.bizReg.url||v.docs.bizReg.b64url)?"🔍":"✅"}</button>}
+                      {v.docs?.bankCopy&&<button onClick={()=>{const d=v.docs.bankCopy;const src=d.url||d.b64url;src?setDocPreview({...d,b64url:src}):alert("첨부 확인: "+d.name);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #f59e0b40`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 {(v.docs.bankCopy.url||v.docs.bankCopy.b64url)?"🔍":"✅"}</button>}
+                      {v.docs?.idCard&&<button onClick={()=>{const d=v.docs.idCard;const src=d.url||d.b64url;src?setDocPreview({...d,b64url:src}):alert("첨부 확인: "+d.name);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #10b98140`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 {(v.docs.idCard.url||v.docs.idCard.b64url)?"🔍":"✅"}</button>}
                     </div>
                   )}
                   {/* 메모 */}
@@ -9544,13 +9624,15 @@ function CRMPage({ projects }) {
                           {crmDocAnalyzing==="bizReg"?"⏳ AI분석중":"✅"} <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vf.docs.bizReg.name}</span>
                           <button onClick={()=>setVf(v=>({...v,docs:{...v.docs,bizReg:null}}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
                         </div>
-                        {vf.docs.bizReg.b64url&&(
-                          <div style={{marginTop:6,cursor:"pointer"}} onClick={()=>setDocPreview(vf.docs.bizReg)}>
+                        {(vf.docs.bizReg.b64url||vf.docs.bizReg.url)?(
+                          <div style={{marginTop:6,cursor:"pointer"}} onClick={()=>setDocPreview({...vf.docs.bizReg,b64url:vf.docs.bizReg.b64url||vf.docs.bizReg.url})}>
                             {vf.docs.bizReg.type?.startsWith("image/")
-                              ? <img src={vf.docs.bizReg.b64url} alt="" style={{width:"100%",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                              ? <img src={vf.docs.bizReg.b64url||vf.docs.bizReg.url} alt="" style={{width:"100%",borderRadius:6,border:`1px solid ${C.border}`}}/>
                               : <div style={{background:C.slateLight,borderRadius:6,padding:"12px",textAlign:"center",fontSize:11,color:C.blue}}>📄 PDF 미리보기 클릭</div>
                             }
                           </div>
+                        ):(
+                          <div style={{marginTop:4,fontSize:10,color:C.faint}}>📎 첨부됨</div>
                         )}
                       </div>
                     ) : (
@@ -9568,13 +9650,15 @@ function CRMPage({ projects }) {
                           {crmDocAnalyzing==="bankCopy"?"⏳ AI분석중":"✅"} <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vf.docs.bankCopy.name}</span>
                           <button onClick={()=>setVf(v=>({...v,docs:{...v.docs,bankCopy:null}}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
                         </div>
-                        {vf.docs.bankCopy.b64url&&(
-                          <div style={{marginTop:6,cursor:"pointer"}} onClick={()=>setDocPreview(vf.docs.bankCopy)}>
+                        {(vf.docs.bankCopy.b64url||vf.docs.bankCopy.url)?(
+                          <div style={{marginTop:6,cursor:"pointer"}} onClick={()=>setDocPreview({...vf.docs.bankCopy,b64url:vf.docs.bankCopy.b64url||vf.docs.bankCopy.url})}>
                             {vf.docs.bankCopy.type?.startsWith("image/")
-                              ? <img src={vf.docs.bankCopy.b64url} alt="" style={{width:"100%",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                              ? <img src={vf.docs.bankCopy.b64url||vf.docs.bankCopy.url} alt="" style={{width:"100%",borderRadius:6,border:`1px solid ${C.border}`}}/>
                               : <div style={{background:C.slateLight,borderRadius:6,padding:"12px",textAlign:"center",fontSize:11,color:C.blue}}>📄 PDF 미리보기 클릭</div>
                             }
                           </div>
+                        ):(
+                          <div style={{marginTop:4,fontSize:10,color:C.faint}}>📎 첨부됨</div>
                         )}
                       </div>
                     ) : (
@@ -9691,7 +9775,7 @@ function CRMPage({ projects }) {
                 {vModal.id&&<Btn danger sm onClick={()=>{deleteVendor(vModal.id);setVModal(null);}}>삭제</Btn>}
                 <div style={{flex:1}}/>
                 <Btn onClick={()=>setVModal(null)}>취소</Btn>
-                <Btn primary onClick={saveVendor} disabled={!vf.name?.trim()}>저장</Btn>
+                <Btn primary onClick={saveVendor} disabled={!vf.name?.trim()||crmSaving}>{crmSaving?"저장중...":"저장"}</Btn>
               </div>
             </Modal>
           )}
@@ -9705,12 +9789,12 @@ function CRMPage({ projects }) {
               <span style={{fontWeight:700,fontSize:14}}>📄 {docPreview.name}</span>
               <button onClick={()=>setDocPreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:C.faint}}>✕</button>
             </div>
-            {docPreview.b64url && docPreview.type?.startsWith("image/")
-              ? <img src={docPreview.b64url} alt="" style={{maxWidth:"80vw",maxHeight:"75vh",objectFit:"contain",borderRadius:8}}/>
-              : docPreview.b64url && docPreview.type==="application/pdf"
-                ? <iframe src={docPreview.b64url} style={{width:"80vw",height:"75vh",border:"none",borderRadius:8}} title="PDF"/>
+            {(()=>{const src=docPreview.b64url||docPreview.url; return src && docPreview.type?.startsWith("image/")
+              ? <img src={src} alt="" style={{maxWidth:"80vw",maxHeight:"75vh",objectFit:"contain",borderRadius:8}}/>
+              : src && docPreview.type==="application/pdf"
+                ? <iframe src={src} style={{width:"80vw",height:"75vh",border:"none",borderRadius:8}} title="PDF"/>
                 : <div style={{padding:40,textAlign:"center",color:C.faint}}>미리보기를 지원하지 않는 파일 형식입니다.</div>
-            }
+            })()}
           </div>
         </div>
       )}
