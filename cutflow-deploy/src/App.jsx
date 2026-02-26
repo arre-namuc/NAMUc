@@ -3822,7 +3822,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
 // ═══════════════════════════════════════════════════════════
 // 실행예산서 에디터 (견적서 스타일 수기입력)
 // ═══════════════════════════════════════════════════════════
-function BudgetEditor({ project, onSave }) {
+function BudgetEditor({ project, onSave, user }) {
   const q   = project.quote;
   const bud = project.budget2 || { items: [] };
   const [editingPrice, setEditingPrice] = useState(null);
@@ -3849,8 +3849,62 @@ function BudgetEditor({ project, onSave }) {
   const budgetStatus   = project.budgetStatus || "작성중"; // "작성중"|"경영지원실장결재"|"대표결재"|"결재완료"
   const budgetVersions = project.budgetVersions || [];
 
-  const requestApproval = () => {
+  // ── b64url 정리 유틸 (Firestore 1MB 제한 대비) ──
+  const stripB64 = obj => {
+    if(!obj || typeof obj !== "object") return obj;
+    if(Array.isArray(obj)) return obj.map(stripB64);
+    const out = {};
+    for(const [k, v] of Object.entries(obj)) {
+      if(k === "b64url") continue;
+      out[k] = (typeof v === "object") ? stripB64(v) : v;
+    }
+    return out;
+  };
+
+  // 미업로드 파일 일괄 업로드 (결재 전 실행)
+  const uploadAllPendingFiles = async () => {
+    if(!isConfigured) return;
+    let changed = false;
+    const updated = syncedItems.map(cat => ({
+      ...cat,
+      groups: (cat.groups||[]).map(grp => ({
+        ...grp,
+        items: (grp.items||[]).map(it => {
+          const vouchers = (it.vouchers||[]).map(v => {
+            const pending = (v.files||[]).filter(f => f.b64url && !f.url);
+            if(!pending.length) return v;
+            changed = true;
+            return v; // 마킹만, 실제 업로드는 아래에서
+          });
+          return {...it, vouchers};
+        })
+      }))
+    }));
+    // 실제 업로드
+    for(const cat of syncedItems) {
+      for(const grp of (cat.groups||[])) {
+        for(const it of (grp.items||[])) {
+          for(const v of (it.vouchers||[])) {
+            const pending = (v.files||[]).filter(f => f.b64url && !f.url);
+            if(!pending.length) continue;
+            try {
+              const uploaded = await Promise.all(pending.map(async f => {
+                const r = await fetch(f.b64url); const bl = await r.blob();
+                return await uploadVoucherFile(project.id, v.id||"bv"+Date.now(), new File([bl], f.name, {type:f.type}));
+              }));
+              v.files = [...v.files.filter(f => f.url && !f.b64url), ...uploaded];
+              changed = true;
+            } catch(e) { console.error("파일 업로드 실패:", e); }
+          }
+        }
+      }
+    }
+    if(changed) onSave({...project, budget2:{items:syncedItems}});
+  };
+
+  const requestApproval = async () => {
     if(!confirm(`${budgetVersion}차 실행예산서를 결재 올리시겠습니까?\n결재 진행 중에는 편집이 불가합니다.\n\n결재순서: 경영지원실장 → 대표`)) return;
+    try { await uploadAllPendingFiles(); } catch(e) { console.error("일괄 업로드 실패:", e); }
     onSave({...project, budgetStatus:"경영지원실장결재"});
     alert(`📨 경영지원실장에게 ${budgetVersion}차 실행예산서 결재요청을 전송했습니다.`);
   };
@@ -3861,9 +3915,11 @@ function BudgetEditor({ project, onSave }) {
   };
   const completeApproval = () => {
     if(!confirm(`${budgetVersion}차 실행예산서 대표 결재를 완료하시겠습니까?`)) return;
+    // 스냅샷에서 b64url 완전 제거 → Firestore 문서 크기 절약
+    const cleanData = stripB64(JSON.parse(JSON.stringify(bud)));
     const snapshot = {
       version: budgetVersion,
-      data: JSON.parse(JSON.stringify(bud)),
+      data: cleanData,
       status: "결재완료",
       date: todayStr(),
       time: new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}),
@@ -4105,11 +4161,13 @@ function BudgetEditor({ project, onSave }) {
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {budgetVersions.length>0&&<button onClick={()=>setShowVersionHistory(true)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",color:C.sub,fontWeight:600}}>📂 버전 이력 ({budgetVersions.length})</button>}
           {budgetStatus==="작성중"&&<Btn primary onClick={requestApproval}>📤 결재 올리기</Btn>}
-          {budgetStatus==="경영지원실장결재"&&<Btn primary onClick={approveByManager} style={{background:"#0ea5e9"}}>✅ 경영지원실장 승인</Btn>}
-          {budgetStatus==="대표결재"&&<Btn primary onClick={completeApproval} style={{background:C.green}}>✅ 대표 결재 완료</Btn>}
+          {budgetStatus==="경영지원실장결재"&&user?.role==="경영지원"&&<Btn primary onClick={approveByManager} style={{background:"#0ea5e9"}}>✅ 경영지원실장 승인</Btn>}
+          {budgetStatus==="경영지원실장결재"&&user?.role!=="경영지원"&&<span style={{fontSize:11,color:C.blue,fontStyle:"italic"}}>📋 경영지원실장 결재 대기 중</span>}
+          {budgetStatus==="대표결재"&&user?.role==="대표"&&<Btn primary onClick={completeApproval} style={{background:C.green}}>✅ 대표 결재 완료</Btn>}
+          {budgetStatus==="대표결재"&&user?.role!=="대표"&&<span style={{fontSize:11,color:"#1d4ed8",fontStyle:"italic"}}>📋 대표 결재 대기 중</span>}
           {budgetStatus==="결재완료"&&!project.settlementDate&&<>
             <Btn onClick={startNewVersion}>📝 {budgetVersion+1}차 수정 시작</Btn>
-            <Btn primary onClick={confirmSettlement} style={{background:"#7c3aed"}}>🏁 프로젝트 완료 · 결산 확정</Btn>
+            {["경영지원","대표"].includes(user?.role)&&<Btn primary onClick={confirmSettlement} style={{background:"#7c3aed"}}>🏁 프로젝트 완료 · 결산 확정</Btn>}
           </>}
           {project.settlementDate&&<span style={{fontSize:12,fontWeight:700,padding:"6px 14px",borderRadius:99,background:"#dcfce7",color:C.green}}>🏁 결산확정 {project.settlementDate}</span>}
         </div>
@@ -4447,7 +4505,7 @@ function BudgetEditor({ project, onSave }) {
 // ═══════════════════════════════════════════════════════════
 // 결산서 (증빙자료 + 예산 비교)
 // ═══════════════════════════════════════════════════════════
-function SettlementView({ project, onConfirm, onSave }) {
+function SettlementView({ project, onConfirm, onSave, user }) {
   const q   = project.quote;
   const b   = project.budget  || { vouchers: [] };
   const b2  = project.budget2 || { items: [] };
@@ -4456,106 +4514,17 @@ function SettlementView({ project, onConfirm, onSave }) {
   const supply   = qSupply(q);
   const total    = qTotal(q);
   const b2Spent  = (b2.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).reduce((s4,v)=>s4+(v.amount||0),0),s2),s),0);
-  const spent    = vTotal(b) + b2Spent;
+  const spent    = b2Spent;
   const budgeted = (b2.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),s2),s),0);
   const profit   = supply - spent;
   const margin   = supply ? Math.round(profit/supply*100) : 0;
 
-  const [modal,       setModal]      = useState(false);
-  const [editV,       setEditV]      = useState(null);
-  const [vf,          setVf]         = useState({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:"",group:"",number:"",note:"",files:[]});
   const [preview,     setPreview]    = useState(null);
   const [lightboxImg, setLightboxImg]= useState(null);
-  const [analyzing,   setAnalyzing]  = useState(false);
-  const [uploading,   setUploading]  = useState(false);  // Firebase Storage 업로드 중
-
-  const catOptions   = (q.items||[]).map(c=>c.category);
-  const groupOptions = cat => { const c=(q.items||[]).find(c=>c.category===cat); return c?c.groups.map(g=>g.group):[]; };
-
-  const patchB = fn => onSave({...project, budget: fn(b)});
-
-  const openAdd = () => {
-    setEditV(null);
-    const cat0=catOptions[0]||"", grp0=groupOptions(cat0)[0]||"";
-    setVf({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:cat0,group:grp0,number:"",note:"",files:[]});
-    setModal(true);
-  };
-  const openEdit = v => { setEditV(v); setVf({...v}); setModal(true); };
-  const saveV = async () => {
-    if(!vf.name||!vf.vendor) return alert("항목명과 업체명을 입력해주세요.");
-    const id = editV ? editV.id : "v"+Date.now();
-    let files = vf.files || [];
-
-    // Firebase Storage 업로드 — b64url이 있는 파일만 업로드
-    const needUpload = files.filter(f => f.b64url && !f.url);
-    if (needUpload.length > 0 && isConfigured) {
-      setUploading(true);
-      try {
-        const uploaded = await Promise.all(
-          needUpload.map(async (f) => {
-            // b64url → File 객체로 변환
-            const res = await fetch(f.b64url);
-            const blob = await res.blob();
-            const file = new File([blob], f.name, { type: f.type });
-            const result = await uploadVoucherFile(project.id, id, file);
-            return result; // { name, url, type, size, path }
-          })
-        );
-        // b64url 없애고 url로 교체 (Firestore 문서 크기 절약)
-        files = [
-          ...files.filter(f => f.url && !f.b64url), // 이미 업로드된 파일
-          ...uploaded,
-        ];
-      } catch(e) {
-        console.error("업로드 실패:", e);
-        alert("파일 업로드에 실패했습니다. 다시 시도해주세요.");
-        setUploading(false);
-        return;
-      }
-      setUploading(false);
-    } else {
-      // Firebase 미연결 시 b64url 그대로 유지 (로컬 모드)
-    }
-
-    const entry = {...vf, id, amount:Number(vf.amount)||0, files};
-    patchB(b=>({...b,vouchers:editV?(b.vouchers||[]).map(v=>v.id===editV.id?entry:v):[...(b.vouchers||[]),entry]}));
-    setModal(false);
-  };
-  const removeV = v => patchB(b=>({...b,vouchers:(b.vouchers||[]).filter(x=>x.id!==v.id)}));
-
-  const analyzeFile = async file => {
-    setAnalyzing(true);
-    try {
-      const toB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(f);});
-      const b64=await toB64(file);
-      const isImg=file.type.startsWith("image/"),isPdf=file.type==="application/pdf";
-      const msgContent=isImg
-        ?[{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 영수증/증빙 이미지에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}"}]
-        :isPdf?[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 영수증/증빙 PDF에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}"}]
-        :null;
-      if(!msgContent){setAnalyzing(false);return;}
-      const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:msgContent}]})});
-      if(!res.ok){setAnalyzing(false);return;}
-      const data=await res.json();
-      const text=(data.content||[]).map(c=>c.text||"").join("").trim();
-      const cleaned=text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
-      const match=cleaned.match(/\{[\s\S]*\}/);
-      if(match){try{const p=JSON.parse(match[0]);setVf(v=>({...v,vendor:p.vendor||v.vendor,amount:p.amount?String(p.amount).replace(/[^0-9]/g,""):v.amount,date:p.date||v.date}));}catch(e){}}
-    }catch(e){console.error(e);}
-    setAnalyzing(false);
-  };
-  const handleFile = async file => {
-    const toB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
-    const b64url=await toB64(file);
-    setVf(v=>({...v,files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
-    analyzeFile(file);
-  };
 
   // 결산서 비교: q.items 기준 대분류별 매출 vs 증빙 집행액
   const voucherMap={};
-  // 1) 기존 결산서 증빙
-  (b.vouchers||[]).forEach(v=>{voucherMap[v.category]=(voucherMap[v.category]||0)+(v.amount||0);});
-  // 2) 실행예산 항목별 증빙도 합산
+  // 실행예산 항목별 증빙 합산
   (b2.items||[]).forEach(cat=>{
     (cat.groups||[]).forEach(grp=>{
       (grp.items||[]).forEach(it=>{
@@ -4606,9 +4575,11 @@ function SettlementView({ project, onConfirm, onSave }) {
               {project.budgetVersion||1}차 실행예산서 · {project.budgetStatus==="결재완료"?"결재완료 — 결산 확정 가능":project.budgetStatus==="경영지원실장결재"||project.budgetStatus==="대표결재"?"결재 진행 중":"작성 중 — 결재 완료 후 확정 가능"}
             </div>
           </div>
-          {project.budgetStatus==="결재완료"
+          {project.budgetStatus==="결재완료"&&["경영지원","대표"].includes(user?.role)
             ? <Btn primary onClick={onConfirm} style={{marginLeft:"auto",background:"#7c3aed"}}>🏁 결산 확정하기</Btn>
-            : <span style={{marginLeft:"auto",fontSize:11,color:C.faint,fontStyle:"italic"}}>실행예산서 결재 완료 후 확정 가능</span>
+            : project.budgetStatus==="결재완료"
+              ? <span style={{marginLeft:"auto",fontSize:11,color:C.faint,fontStyle:"italic"}}>경영지원실장/대표만 확정 가능</span>
+              : <span style={{marginLeft:"auto",fontSize:11,color:C.faint,fontStyle:"italic"}}>실행예산서 결재 완료 후 확정 가능</span>
           }
         </div>
       )}
@@ -4640,7 +4611,7 @@ function SettlementView({ project, onConfirm, onSave }) {
         {[
           {label:"수주금액(VAT포함)", val:total,    color:C.blue,  sub:"클라이언트 청구액"},
           {label:"실행예산",          val:budgeted, color:C.purple,sub:"집행 예정액"},
-          {label:"실제 집행(증빙)",   val:spent,    color:C.amber, sub:`${(b.vouchers||[]).length + (b2.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,s2),s),0)}건 증빙`},
+          {label:"실제 집행(증빙)",   val:spent,    color:C.amber, sub:`${b2VoucherCount}건 증빙`},
           {label:"최종 순이익",       val:profit,   color:profit>=0?C.green:C.red, sub:`이익률 ${margin}%`},
         ].map(s=>(
           <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
@@ -4649,47 +4620,6 @@ function SettlementView({ project, onConfirm, onSave }) {
             <div style={{fontSize:11,color:C.faint,marginTop:3}}>{s.sub}</div>
           </div>
         ))}
-      </div>
-
-      <div>
-        <div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{fontSize:13,color:C.sub}}>증빙자료 업로드 및 수기 입력 · AI 자동 분석 지원</div>
-            <Btn primary sm onClick={openAdd}>+ 증빙 추가</Btn>
-          </div>
-          {(b.vouchers||[]).length===0?(
-            <div style={{textAlign:"center",padding:40,color:C.faint,border:`2px dashed ${C.border}`,borderRadius:12}}>
-              <div style={{fontSize:32,marginBottom:8}}>📋</div>
-              <div style={{fontWeight:600,marginBottom:4}}>증빙을 추가하세요</div>
-              <div style={{fontSize:12}}>영수증·세금계산서 등 파일을 업로드하면 AI가 자동으로 항목을 추출합니다</div>
-            </div>
-          ):(
-            <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-                <span>항목명</span><span>구분</span><span>업체명</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span/>
-              </div>
-              {(b.vouchers||[]).map((v,i)=>(
-                <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
-                    <div style={{fontSize:11,color:C.faint}}>{v.category}{v.group?` › ${v.group}`:""}</div>
-                  </div>
-                  <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
-                  <span style={{fontSize:13,color:C.sub}}>{v.vendor}</span>
-                  <span style={{textAlign:"right",fontWeight:700,fontSize:13}}>{fmt(v.amount)}</span>
-                  <span style={{textAlign:"right",fontSize:12,color:C.faint}}>{v.date}</span>
-                  <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-                    {(v.files||[]).length>0&&<button onClick={()=>setPreview(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.blue}}>📎</button>}
-                    <button onClick={()=>openEdit(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub}}>✏️</button>
-                  </div>
-                </div>
-              ))}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:C.slateLight,fontWeight:700,fontSize:13}}>
-                <span>합계</span><span/><span/><span style={{textAlign:"right",color:C.amber}}>{fmt(spent)}</span><span/><span/>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ═══ 실행예산 증빙 리스트 ═══ */}
@@ -4819,61 +4749,6 @@ function SettlementView({ project, onConfirm, onSave }) {
           )}
         </div>
       </div>
-      {modal&&(
-        <Modal title={editV?"증빙 수정":"증빙 추가"} onClose={()=>setModal(false)} wide>
-          <div style={{display:"flex",gap:20}}>
-            <div style={{width:220,flexShrink:0}}>
-              <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:8}}>파일 첨부 (선택)</div>
-              <label style={{display:"block",border:`2px dashed ${analyzing?C.blue:C.border}`,borderRadius:10,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:analyzing?C.blueLight:C.bg,transition:"all .2s"}}>
-                <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);}}/>
-                <div style={{fontSize:24,marginBottom:6}}>{analyzing?"⏳":"📎"}</div>
-                <div style={{fontSize:12,color:C.sub}}>{analyzing?"AI 분석 중...":"클릭 또는 드롭"}</div>
-                <div style={{fontSize:11,color:C.faint,marginTop:4}}>이미지·PDF 지원</div>
-              </label>
-              {(vf.files||[]).map((f,i)=>(
-                <div key={i} style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
-                  <button onClick={()=>setVf(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14,marginLeft:4}}>×</button>
-                </div>
-              ))}
-            </div>
-            <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
-              <Field label="항목명 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.name} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="ex. 카메라 렌탈"/></Field>
-              <Field label="업체명 / 공급처 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.vendor} onChange={e=>setVf(v=>({...v,vendor:e.target.value}))} placeholder="ex. 씨네렌탈"/></Field>
-              <Field label="계산서번호" half><input style={{...inp}} value={vf.number||""} onChange={e=>setVf(v=>({...v,number:e.target.value}))} placeholder="2026-001"/></Field>
-              <Field label="날짜" half><input style={inp} type="date" value={vf.date} onChange={e=>setVf(v=>({...v,date:e.target.value}))}/></Field>
-              <Field label="금액 (원)"><input style={{...inp,fontWeight:700}} type="number" value={vf.amount} onChange={e=>setVf(v=>({...v,amount:e.target.value}))} placeholder="0"/></Field>
-              <Field label="증빙 구분" half>
-                <select style={inp} value={vf.type} onChange={e=>setVf(v=>({...v,type:e.target.value}))}>
-                  {VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </Field>
-              <Field label="대분류" half>
-                <select style={inp} value={vf.category} onChange={e=>{const cat=e.target.value,grp=groupOptions(cat)[0]||"";setVf(v=>({...v,category:cat,group:grp}));}}>
-                  <option value="">- 선택 -</option>
-                  {catOptions.map(c=><option key={c}>{c}</option>)}
-                </select>
-              </Field>
-              <Field label="중분류" half>
-                <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
-                  <option value="">- 선택 -</option>
-                  {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
-                </select>
-              </Field>
-              <Field label="메모 / 비고"><input style={inp} value={vf.note||""} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
-            {editV&&<Btn danger sm onClick={()=>{removeV(editV);setModal(false);}}>삭제</Btn>}
-            <div style={{flex:1}}/>
-            <Btn onClick={()=>setModal(false)} disabled={uploading}>취소</Btn>
-            <Btn primary onClick={saveV} disabled={analyzing||uploading}>
-              {uploading ? "📤 업로드 중..." : analyzing ? "🤖 분석 중..." : "저장"}
-            </Btn>
-          </div>
-        </Modal>
-      )}
-
       {preview&&(
         <Modal title={`첨부파일 — ${preview.name}`} onClose={()=>setPreview(null)} wide>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -10115,6 +9990,55 @@ function FinanceDash({ projects }) {
   })();
   const maxOrder = Math.max(...monthlyData.map(d=>d.order), 1);
 
+  const openBudgetPDF = (p, ver) => {
+    const data = ver.data;
+    if(!data||!data.items) return alert("데이터가 없습니다.");
+    const supply = qSupply(p.quote);
+    const rows = (data.items||[]).flatMap(cat=>
+      (cat.groups||[]).flatMap(grp=>
+        (grp.items||[]).map(it=>({cat:cat.category,grp:grp.group,name:it.name,qty:it.qty||0,unit:it.unitPrice||0,sale:(it.qty||0)*(it.unitPrice||0),purchase:it.purchasePrice||0,vouchers:(it.vouchers||[]).length}))
+      )
+    );
+    const totalSale=rows.reduce((s,r)=>s+r.sale,0);
+    const totalPurchase=rows.reduce((s,r)=>s+r.purchase,0);
+    const profit=supply-totalPurchase;
+    const margin=supply?Math.round(profit/supply*100):0;
+    const f=n=>n.toLocaleString("ko-KR");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${p.name} ${ver.version}차 실행예산서</title>
+<style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Pretendard','Apple SD Gothic Neo',sans-serif}
+body{padding:40px;font-size:12px;color:#1e293b}
+h1{font-size:20px;margin-bottom:4px}h2{font-size:13px;color:#64748b;margin-bottom:20px}
+.info{display:flex;gap:24px;margin-bottom:20px;flex-wrap:wrap}
+.info div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;min-width:140px}
+.info div .label{font-size:10px;color:#94a3b8;margin-bottom:2px}.info div .val{font-size:16px;font-weight:800}
+table{width:100%;border-collapse:collapse;margin-top:12px}
+th{background:#f1f5f9;padding:8px 10px;font-size:11px;text-align:left;border:1px solid #e2e8f0;font-weight:700}
+td{padding:7px 10px;border:1px solid #e2e8f0;font-size:11px}
+.r{text-align:right}.b{font-weight:700}
+.foot td{background:#f8fafc;font-weight:700;font-size:12px}
+@media print{body{padding:20px}button{display:none!important}}
+</style></head><body>
+<h1>${p.name} — ${ver.version}차 실행예산서</h1>
+<h2>${p.client} · 결재완료: ${ver.date} ${ver.time||""}</h2>
+<div class="info">
+<div><div class="label">매출(공급가액)</div><div class="val" style="color:#3b82f6">${f(supply)}원</div></div>
+<div><div class="label">실행예산(매입)</div><div class="val" style="color:#f59e0b">${f(totalPurchase)}원</div></div>
+<div><div class="label">예상이익</div><div class="val" style="color:${profit>=0?"#16a34a":"#ef4444"}">${f(profit)}원 (${margin}%)</div></div>
+<div><div class="label">증빙</div><div class="val">${rows.reduce((s,r)=>s+r.vouchers,0)}건</div></div>
+</div>
+<table><thead><tr><th>대분류</th><th>중분류</th><th>항목명</th><th class="r">수량</th><th class="r">매출단가</th><th class="r">매출소계</th><th class="r">매입(실행)</th><th class="r">차이</th><th class="r">증빙</th></tr></thead><tbody>
+${rows.map(r=>`<tr><td>${r.cat}</td><td>${r.grp||"-"}</td><td>${r.name}</td><td class="r">${r.qty}</td><td class="r">${f(r.unit)}</td><td class="r">${f(r.sale)}</td><td class="r b" style="color:#f59e0b">${f(r.purchase)}</td><td class="r" style="color:${r.sale-r.purchase>=0?"#16a34a":"#ef4444"}">${f(r.sale-r.purchase)}</td><td class="r">${r.vouchers}</td></tr>`).join("")}
+<tr class="foot"><td colspan="5">합계</td><td class="r">${f(totalSale)}</td><td class="r" style="color:#f59e0b">${f(totalPurchase)}</td><td class="r" style="color:${totalSale-totalPurchase>=0?"#16a34a":"#ef4444"}">${f(totalSale-totalPurchase)}</td><td class="r">${rows.reduce((s,r)=>s+r.vouchers,0)}</td></tr>
+</tbody></table>
+<div style="margin-top:24px;display:flex;gap:12px">
+<button onclick="window.print()" style="padding:8px 20px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px">🖨️ 인쇄 / PDF 저장</button>
+</div>
+<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8">NAMUc · ${ver.version}차 실행예산서 · 출력일: ${new Date().toLocaleDateString("ko-KR")}</div>
+</body></html>`;
+    const w=window.open("","_blank");
+    if(w){w.document.write(html);w.document.close();}
+  };
+
   return (
     <div style={{padding:"0 4px"}}>
       {/* 탭 선택 */}
@@ -10183,6 +10107,7 @@ function FinanceDash({ projects }) {
                                 <div style={{fontSize:11,color:C.sub}}>{fmtM(vPurchase)}</div>
                                 <div style={{fontSize:10,color:C.green,fontWeight:600}}>✅ 결재완료 {v.date} {v.time||""}</div>
                                 {v.voucherCount!=null&&<div style={{fontSize:10,color:C.faint}}>증빙 {v.voucherCount}건</div>}
+                                <button onClick={()=>openBudgetPDF(p,v)} style={{marginTop:4,padding:"3px 8px",fontSize:9,fontWeight:700,background:"#eff6ff",color:C.blue,border:`1px solid ${C.blue}30`,borderRadius:4,cursor:"pointer"}}>📄 PDF 열람</button>
                               </div>
                               <div style={{width:24,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:14}}>
                                 <span style={{color:C.faint}}>→</span>
@@ -11806,10 +11731,10 @@ return (
             {docTab==="budget-mgmt"&&budgetSubTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
 
             {/* ── 실행예산서 ── */}
-            {docTab==="budget-mgmt"&&budgetSubTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)} user={user}/>}
 
             {/* ── 결산서 ── */}
-            {docTab==="budget-mgmt"&&budgetSubTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)} user={user}/>}
 
 
           </>
