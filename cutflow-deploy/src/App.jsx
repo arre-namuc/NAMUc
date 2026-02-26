@@ -4283,7 +4283,7 @@ function BudgetEditor({ project, onSave, user }) {
                 <div style={{fontSize:11,color:C.faint,marginTop:4}}>이미지·PDF 지원</div>
               </label>
               {(vf.files||[]).map((f,i)=>(<div key={i} style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,cursor:"pointer",color:C.blue}} onClick={()=>{if(f.b64url||f.url)setLightboxImg(f.b64url||f.url);}}>{f.name}</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,cursor:"pointer",color:C.blue}} onClick={()=>{const src=f.b64url||f.url;if(src)setLightboxImg({src,type:f.type||"image/",name:f.name});}}>{f.name}</span>
                 <button onClick={()=>setVf(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14,marginLeft:4}}>×</button>
               </div>))}
             </div>
@@ -4368,8 +4368,8 @@ function BudgetEditor({ project, onSave, user }) {
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {(previewVoucher.files||[]).map((f,i)=>(<div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:f.type==="application/pdf"?"100%":320,width:f.type==="application/pdf"?"100%":"auto",position:"relative",background:C.slateLight}}>
               {f.type?.startsWith("image/")?(
-                <><img src={f.b64url||f.url} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg(f.b64url||f.url)}/>
-                <button onClick={()=>setLightboxImg(f.b64url||f.url)} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button></>
+                <><img src={f.b64url||f.url} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg({src:f.b64url||f.url,type:f.type,name:f.name})}/>
+                <button onClick={()=>setLightboxImg({src:f.b64url||f.url,type:f.type,name:f.name})} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button></>
               ):f.type==="application/pdf"?(<iframe src={f.b64url||f.url} title={f.name} style={{width:"100%",height:400,border:"none"}}/>
               ):(<div style={{padding:16,textAlign:"center",color:C.sub}}>📄 {f.name}</div>)}
               <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white}}>{f.name}</div>
@@ -4378,16 +4378,28 @@ function BudgetEditor({ project, onSave, user }) {
         </Modal>
       )}
 
-      {/* ═══ 라이트박스 (확대) ═══ */}
-      {lightboxImg&&(
+      {/* ═══ 라이트박스 (확대 — 이미지+PDF 지원) ═══ */}
+      {lightboxImg&&(()=>{
+        const lb = typeof lightboxImg==="string" ? {src:lightboxImg,type:"image/",name:""} : lightboxImg;
+        const isPdf = lb.type==="application/pdf" || lb.src?.includes(".pdf");
+        return (
         <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",backdropFilter:"blur(6px)"}}>
-          <div onClick={e=>e.stopPropagation()} style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh"}}>
-            <img src={lightboxImg} alt="확대" style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh",cursor:"default"}}>
+            {isPdf?(
+              <iframe src={lb.src} title={lb.name||"PDF"} style={{width:"80vw",height:"85vh",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)"}}/>
+            ):(
+              <img src={lb.src} alt={lb.name||"확대"} style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}
+                onError={e=>{e.target.style.display="none";e.target.parentElement.insertAdjacentHTML("afterbegin","<div style='padding:40px;color:#fff;text-align:center'>미리보기를 표시할 수 없습니다.<br><a href=\""+lb.src+"\" target=\"_blank\" style=\"color:#60a5fa\">새 탭에서 열기</a></div>");}}/>
+            )}
             <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:-14,right:-14,width:32,height:32,borderRadius:"50%",border:"none",background:"#fff",color:"#1e293b",cursor:"pointer",fontSize:18,fontWeight:700,boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-            <div style={{textAlign:"center",color:"rgba(255,255,255,.5)",fontSize:12,marginTop:10}}>클릭하여 닫기</div>
+            <div style={{textAlign:"center",color:"rgba(255,255,255,.5)",fontSize:12,marginTop:10,display:"flex",gap:12,justifyContent:"center"}}>
+              <span>클릭하여 닫기</span>
+              {lb.src&&<a href={lb.src} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:"#60a5fa",textDecoration:"none"}}>↗ 새 탭에서 열기</a>}
+            </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ═══ 업체정보 / 입금현황 패널 ═══ */}
       {vendorInfoPanel&&(()=>{
@@ -4417,9 +4429,9 @@ function BudgetEditor({ project, onSave, user }) {
               <div style={{background:"#fafafa",borderRadius:10,padding:16,marginBottom:16}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.dark,marginBottom:10}}>📎 첨부 서류</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {vendor.docs?.bizReg&&<button onClick={()=>{const d=vendor.docs.bizReg;const src=d.url||d.b64url;src?setLightboxImg(src):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #2563eb30`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 {(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"🔍":"✅"}</button>}
-                  {vendor.docs?.bankCopy&&<button onClick={()=>{const d=vendor.docs.bankCopy;const src=d.url||d.b64url;src?setLightboxImg(src):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #f59e0b30`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 {(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"🔍":"✅"}</button>}
-                  {vendor.docs?.idCard&&<button onClick={()=>{const d=vendor.docs.idCard;const src=d.url||d.b64url;src?setLightboxImg(src):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #10b98130`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 {(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"🔍":"✅"}</button>}
+                  {vendor.docs?.bizReg&&<button onClick={()=>{const d=vendor.docs.bizReg;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"사업자등록증"}):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #2563eb30`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 {(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"🔍":"✅"}</button>}
+                  {vendor.docs?.bankCopy&&<button onClick={()=>{const d=vendor.docs.bankCopy;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"통장사본"}):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #f59e0b30`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 {(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"🔍":"✅"}</button>}
+                  {vendor.docs?.idCard&&<button onClick={()=>{const d=vendor.docs.idCard;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"신분증"}):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #10b98130`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 {(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"🔍":"✅"}</button>}
                 </div>
               </div>
             )}
@@ -4758,8 +4770,8 @@ function SettlementView({ project, onConfirm, onSave, user }) {
                   <div style={{padding:16,textAlign:"center",color:C.faint,fontSize:12}}>📄 {f.name}<br/><span style={{fontSize:10}}>미리보기 불가</span></div>
                 ):f.type?.startsWith("image/")?(
                   <>
-                    <img src={src} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg(src)}/>
-                    <button onClick={()=>setLightboxImg(src)} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
+                    <img src={src} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg({src,type:f.type,name:f.name})}/>
+                    <button onClick={()=>setLightboxImg({src,type:f.type,name:f.name})} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
                     <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white}}>{f.name}</div>
                   </>
                 ):f.type==="application/pdf"?(
@@ -4779,15 +4791,27 @@ function SettlementView({ project, onConfirm, onSave, user }) {
         </Modal>
       )}
 
-      {lightboxImg&&(
+      {lightboxImg&&(()=>{
+        const lb = typeof lightboxImg==="string" ? {src:lightboxImg,type:"image/",name:""} : lightboxImg;
+        const isPdf = lb.type==="application/pdf" || lb.src?.includes(".pdf");
+        return (
         <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",backdropFilter:"blur(6px)"}}>
-          <div onClick={e=>e.stopPropagation()} style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh"}}>
-            <img src={lightboxImg} alt="확대 보기" style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh",cursor:"default"}}>
+            {isPdf?(
+              <iframe src={lb.src} title={lb.name||"PDF"} style={{width:"80vw",height:"85vh",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)"}}/>
+            ):(
+              <img src={lb.src} alt={lb.name||"확대"} style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}
+                onError={e=>{e.target.style.display="none";e.target.parentElement.insertAdjacentHTML("afterbegin","<div style='padding:40px;color:#fff;text-align:center'>미리보기를 표시할 수 없습니다.<br><a href=\""+lb.src+"\" target=\"_blank\" style=\"color:#60a5fa\">새 탭에서 열기</a></div>");}}/>
+            )}
             <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:-14,right:-14,width:32,height:32,borderRadius:"50%",border:"none",background:"#fff",color:"#1e293b",cursor:"pointer",fontSize:18,fontWeight:700,boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
-            <div style={{textAlign:"center",color:"rgba(255,255,255,.6)",fontSize:12,marginTop:10}}>클릭하거나 × 버튼으로 닫기</div>
+            <div style={{textAlign:"center",color:"rgba(255,255,255,.5)",fontSize:12,marginTop:10,display:"flex",gap:12,justifyContent:"center"}}>
+              <span>클릭하여 닫기</span>
+              {lb.src&&<a href={lb.src} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:"#60a5fa",textDecoration:"none"}}>↗ 새 탭에서 열기</a>}
+            </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -9864,11 +9888,22 @@ function CRMPage({ projects }) {
               <span style={{fontWeight:700,fontSize:14}}>📄 {docPreview.name}</span>
               <button onClick={()=>setDocPreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:C.faint}}>✕</button>
             </div>
-            {(()=>{const src=docPreview.b64url||docPreview.url; return src && docPreview.type?.startsWith("image/")
-              ? <img src={src} alt="" style={{maxWidth:"80vw",maxHeight:"75vh",objectFit:"contain",borderRadius:8}}/>
-              : src && docPreview.type==="application/pdf"
-                ? <iframe src={src} style={{width:"80vw",height:"75vh",border:"none",borderRadius:8}} title="PDF"/>
-                : <div style={{padding:40,textAlign:"center",color:C.faint}}>미리보기를 지원하지 않는 파일 형식입니다.</div>
+            {(()=>{
+              const src=docPreview.b64url||docPreview.url;
+              if(!src) return <div style={{padding:40,textAlign:"center",color:C.faint}}>파일 URL이 없습니다.</div>;
+              const t=docPreview.type||"";
+              const isImg=t.startsWith("image/")||/\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(src);
+              const isPdf=t==="application/pdf"||/\.pdf(\?|$)/i.test(src)||src.includes("application%2Fpdf");
+              return isImg
+                ? <img src={src} alt="" style={{maxWidth:"80vw",maxHeight:"75vh",objectFit:"contain",borderRadius:8}}
+                    onError={e=>{e.target.style.display="none";e.target.insertAdjacentHTML("afterend","<div style='padding:40px;text-align:center;color:#94a3b8'>이미지를 표시할 수 없습니다.<br><a href=\""+src+"\" target=\"_blank\" style=\"color:#3b82f6;font-weight:700\">새 탭에서 열기</a></div>");}}/>
+                : isPdf
+                  ? <iframe src={src} style={{width:"80vw",height:"75vh",border:"none",borderRadius:8}} title="PDF"/>
+                  : <div style={{padding:40,textAlign:"center",color:C.faint}}>
+                      <div style={{fontSize:32,marginBottom:8}}>📄</div>
+                      <div style={{marginBottom:8}}>{docPreview.name}</div>
+                      <a href={src} target="_blank" rel="noreferrer" style={{color:C.blue,fontWeight:700,textDecoration:"none"}}>↗ 새 탭에서 열기</a>
+                    </div>;
             })()}
           </div>
         </div>
