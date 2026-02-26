@@ -3825,26 +3825,23 @@ function BudgetEditor({ project, onSave }) {
   const q   = project.quote;
   const bud = project.budget2 || { items: [] };
   const [editingPrice, setEditingPrice] = useState(null);
-  const [voucherModal, setVoucherModal] = useState(null); // {ci,gi,itemId} or {ci,gi,itemId,editV}
+  const [voucherModal, setVoucherModal] = useState(null);
   const [undoStack, setUndoStack] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-
-  // 증빙 폼 — 결산서 양식과 동일
   const catOptions   = (q.items||[]).map(c=>c.category);
   const groupOptions = cat => { const c=(q.items||[]).find(c=>c.category===cat); return c?c.groups.map(g=>g.group):[]; };
   const [vf, setVf] = useState({name:"",vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",number:"",note:"",category:"",group:"",files:[]});
-  // 업체 검색
-  const [vendorSearch, setVendorSearch] = useState("");
   const [showVendorDD, setShowVendorDD] = useState(false);
-  // 신규 업체 등록
   const [newVendorMode, setNewVendorMode] = useState(false);
-  const [vendorType, setVendorType] = useState("company"); // "company" | "freelancer"
+  const [vendorType, setVendorType] = useState("company");
   const [newVendor, setNewVendor] = useState({name:"",bizNo:"",phone:"",email:"",contactName:"",type:"기타",status:"활성",bankName:"",bankAccount:"",bankHolder:"",note:""});
   const [vendorDocs, setVendorDocs] = useState({bizReg:null,bankCopy:null,idCard:null});
-  const [docAnalyzing, setDocAnalyzing] = useState(null); // "bizReg"|"bankCopy"|"idCard"|null
+  const [docAnalyzing, setDocAnalyzing] = useState(null);
+  const [previewVoucher, setPreviewVoucher] = useState(null);
+  const [lightboxImg, setLightboxImg] = useState(null);
+  const [vendorInfoPanel, setVendorInfoPanel] = useState(null);
 
-  // CRM 외주업체
   const getVendors = () => { try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; } };
   const saveToCRM = (vendor) => {
     const list = getVendors();
@@ -3855,194 +3852,136 @@ function BudgetEditor({ project, onSave }) {
     return entry;
   };
 
-  // 견적 → 실행예산 동기화
   const syncedItems = (q.items || []).map(cat => {
     const existing = (bud.items || []).find(b => b.category === cat.category);
     return {
       category: cat.category, disabled: cat.disabled,
       groups: (cat.groups || []).map(grp => {
         const exGrp = existing ? (existing.groups || []).find(g => g.group === grp.group) : null;
-        return {
-          group: grp.group,
-          items: (grp.items || []).map(it => {
-            const exIt = exGrp ? (exGrp.items || []).find(i => i.id === it.id) : null;
-            return {
-              id: it.id, name: it.name || it.desc || '',
-              qty: it.qty || 0, unitPrice: it.unitPrice || 0,
-              purchasePrice: exIt ? (exIt.purchasePrice || 0) : 0,
-              purchaseNote: exIt ? (exIt.purchaseNote || '') : '',
-              vouchers: exIt ? (exIt.vouchers || []) : [],
-            };
-          }),
-        };
+        return { group: grp.group, items: (grp.items || []).map(it => {
+          const exIt = exGrp ? (exGrp.items || []).find(i => i.id === it.id) : null;
+          return { id:it.id, name:it.name||it.desc||'', qty:it.qty||0, unitPrice:it.unitPrice||0,
+            purchasePrice: exIt?(exIt.purchasePrice||0):0, purchaseNote: exIt?(exIt.purchaseNote||''):'',
+            vouchers: exIt?(exIt.vouchers||[]):[] };
+        })};
       }),
     };
   });
-
-  const patch = (ci, gi, id, val) => {
-    const updated = syncedItems.map((cat, i) => i !== ci ? cat : {
-      ...cat, groups: cat.groups.map((grp, j) => j !== gi ? grp : {
-        ...grp, items: grp.items.map(it => it.id !== id ? it : { ...it, ...val }),
-      }),
-    });
-    onSave({ ...project, budget2: { items: updated } });
+  const patch = (ci,gi,id,val) => {
+    const updated = syncedItems.map((cat,i)=>i!==ci?cat:{...cat,groups:cat.groups.map((grp,j)=>j!==gi?grp:{...grp,items:grp.items.map(it=>it.id!==id?it:{...it,...val})})});
+    onSave({...project, budget2:{items:updated}});
   };
+  const pushUndo = label => setUndoStack(prev=>[...prev.slice(-9),{label,data:JSON.parse(JSON.stringify(bud))}]);
+  const doUndo = () => { if(!undoStack.length)return; onSave({...project,budget2:undoStack[undoStack.length-1].data}); setUndoStack(p=>p.slice(0,-1)); };
 
-  // Undo
-  const pushUndo = (label) => { setUndoStack(prev => [...prev.slice(-9), { label, data: JSON.parse(JSON.stringify(bud)) }]); };
-  const doUndo = () => { if (!undoStack.length) return; onSave({ ...project, budget2: undoStack[undoStack.length - 1].data }); setUndoStack(prev => prev.slice(0, -1)); };
-
-  // 파일 → AI 분석 (증빙)
+  // 파일 AI 분석 — 항목명/금액/날짜만 (업체는 CRM 검색)
   const handleVoucherFile = async file => {
-    const toB64Full = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
-    const toB64 = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
-    const b64url = await toB64Full(file);
-    setVf(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
-    // AI 분석
+    const toB64F=f=>new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
+    const toB64=f=>new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
+    const b64url=await toB64F(file);
+    setVf(v=>({...v,files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
     setAnalyzing(true);
-    try {
-      const b64 = await toB64(file);
-      const isImg = file.type.startsWith("image/"), isPdf = file.type==="application/pdf";
-      const prompt = "이 영수증/증빙에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}";
-      const msgContent = isImg
-        ?[{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:prompt}]
-        :isPdf?[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:prompt}]
-        :null;
-      if(msgContent){
-        const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:msgContent}]})});
-        if(res.ok){const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim();const cleaned=text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const match=cleaned.match(/\{[\s\S]*\}/);if(match){try{const p=JSON.parse(match[0]);setVf(v=>({...v,name:p.name||v.name,vendor:p.vendor||v.vendor,amount:p.amount?String(Number(String(p.amount).replace(/[^0-9]/g,""))):v.amount,date:p.date||v.date}));}catch(e){}}}
-      }
+    try{
+      const b64=await toB64(file); const isImg=file.type.startsWith("image/"),isPdf=file.type==="application/pdf";
+      const prompt="이 영수증/증빙에서 항목명, 금액, 날짜만 추출. JSON만 답해.\n{\"name\":\"항목명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}";
+      const src=isImg?{type:"image",source:{type:"base64",media_type:file.type,data:b64}}:isPdf?{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}}:null;
+      if(src){const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:[src,{type:"text",text:prompt}]}]})});
+        if(res.ok){const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim().replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const m=text.match(/\{[\s\S]*\}/);if(m){try{const p=JSON.parse(m[0]);setVf(v=>({...v,name:p.name||v.name,amount:p.amount?String(Number(String(p.amount).replace(/[^0-9]/g,""))):v.amount,date:p.date||v.date}));}catch(e){}}}}
     }catch(e){console.error(e);}
     setAnalyzing(false);
   };
 
-  // AI 분석: 사업자등록증/통장사본/신분증
-  const analyzeDoc = async (docType, file) => {
-    const toB64 = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
-    const toB64Full = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
-    const b64url = await toB64Full(file);
+  // AI 서류 분석
+  const analyzeDoc = async (docType,file) => {
+    const toB64=f=>new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
+    const toB64F=f=>new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
+    const b64url=await toB64F(file);
     setVendorDocs(d=>({...d,[docType]:{name:file.name,type:file.type,b64url,size:file.size}}));
     setDocAnalyzing(docType);
-    try {
-      const b64 = await toB64(file);
-      const isImg = file.type.startsWith("image/"), isPdf = file.type==="application/pdf";
-      let prompt = "";
-      if(docType==="bizReg") prompt="이 사업자등록증에서 정보를 추출해서 반드시 아래 JSON만 답해줘.\n{\"name\":\"상호명\",\"bizNo\":\"사업자번호\",\"representative\":\"대표자명\",\"address\":\"주소\",\"bizType\":\"업태\",\"bizItem\":\"종목\"}";
-      else if(docType==="bankCopy") prompt="이 통장사본에서 정보를 추출해서 반드시 아래 JSON만 답해줘.\n{\"bankName\":\"은행명\",\"bankAccount\":\"계좌번호\",\"bankHolder\":\"예금주\"}";
-      else if(docType==="idCard") prompt="이 신분증에서 정보를 추출해서 반드시 아래 JSON만 답해줘.\n{\"name\":\"이름\",\"birthDate\":\"생년월일\",\"idNumber\":\"주민번호 앞자리만\"}";
-      const src = isImg?{type:"image",source:{type:"base64",media_type:file.type,data:b64}}:{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}};
+    try{
+      const b64=await toB64(file); const isImg=file.type.startsWith("image/");
+      let prompt="";
+      if(docType==="bizReg")prompt="이 사업자등록증에서 추출. JSON만.\n{\"name\":\"상호명\",\"bizNo\":\"사업자번호\",\"representative\":\"대표자명\"}";
+      else if(docType==="bankCopy")prompt="이 통장사본에서 추출. JSON만.\n{\"bankName\":\"은행명\",\"bankAccount\":\"계좌번호\",\"bankHolder\":\"예금주\"}";
+      else if(docType==="idCard")prompt="이 신분증에서 추출. JSON만.\n{\"name\":\"이름\"}";
+      const src=isImg?{type:"image",source:{type:"base64",media_type:file.type,data:b64}}:{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}};
       const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:[src,{type:"text",text:prompt}]}]})});
-      if(res.ok){
-        const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim();
-        const cleaned=text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
-        const match=cleaned.match(/\{[\s\S]*\}/);
-        if(match){
-          try{
-            const p=JSON.parse(match[0]);
-            if(docType==="bizReg") setNewVendor(v=>({...v,name:p.name||v.name,bizNo:p.bizNo||v.bizNo,contactName:p.representative||v.contactName}));
-            else if(docType==="bankCopy") setNewVendor(v=>({...v,bankName:p.bankName||v.bankName,bankAccount:p.bankAccount||v.bankAccount,bankHolder:p.bankHolder||v.bankHolder}));
-            else if(docType==="idCard") setNewVendor(v=>({...v,name:p.name||v.name,contactName:p.name||v.contactName}));
-          }catch(e){}
-        }
-      }
+      if(res.ok){const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim().replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const m=text.match(/\{[\s\S]*\}/);if(m){try{const p=JSON.parse(m[0]);
+        if(docType==="bizReg")setNewVendor(v=>({...v,name:p.name||v.name,bizNo:p.bizNo||v.bizNo,contactName:p.representative||v.contactName}));
+        else if(docType==="bankCopy")setNewVendor(v=>({...v,bankName:p.bankName||v.bankName,bankAccount:p.bankAccount||v.bankAccount,bankHolder:p.bankHolder||v.bankHolder}));
+        else if(docType==="idCard")setNewVendor(v=>({...v,name:p.name||v.name,contactName:p.name||v.contactName}));
+      }catch(e){}}}
     }catch(e){console.error(e);}
     setDocAnalyzing(null);
   };
 
-  // 증빙 모달 열기
-  const openVoucherAdd = (ci, gi, itemId) => {
-    const catName = syncedItems[ci]?.category||"";
-    const grpName = syncedItems[ci]?.groups[gi]?.group||"";
-    const itemName = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId)?.name||"";
+  const openVoucherAdd = (ci,gi,itemId) => {
+    const catName=syncedItems[ci]?.category||"",grpName=syncedItems[ci]?.groups[gi]?.group||"",itemName=syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId)?.name||"";
     setVoucherModal({ci,gi,itemId});
     setVf({name:itemName,vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",number:"",note:"",category:catName,group:grpName,files:[]});
-    setVendorSearch("");setShowVendorDD(false);setNewVendorMode(false);
+    setShowVendorDD(false);setNewVendorMode(false);
     setNewVendor({name:"",bizNo:"",phone:"",email:"",contactName:"",type:"기타",status:"활성",bankName:"",bankAccount:"",bankHolder:"",note:""});
-    setVendorDocs({bizReg:null,bankCopy:null,idCard:null});
-    setVendorType("company");
+    setVendorDocs({bizReg:null,bankCopy:null,idCard:null});setVendorType("company");
   };
 
-  // 증빙 저장
   const saveVoucher = async () => {
-    if(!vf.name||!vf.vendor) return alert("항목명과 업체명을 입력해주세요.");
-    const { ci, gi, itemId } = voucherModal;
-    const it = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);
-    if (!it) return;
-
-    let files = vf.files || [];
-    const needUpload = files.filter(f => f.b64url && !f.url);
-    if (needUpload.length > 0 && isConfigured) {
-      setUploading(true);
-      try {
-        const vid = "bv"+Date.now();
-        const uploaded = await Promise.all(needUpload.map(async (f) => {
-          const res = await fetch(f.b64url); const blob = await res.blob();
-          const file = new File([blob], f.name, { type: f.type });
-          return await uploadVoucherFile(project.id, vid, file);
-        }));
-        files = [...files.filter(f => f.url && !f.b64url), ...uploaded];
-      } catch(e) { alert("파일 업로드 실패"); setUploading(false); return; }
-      setUploading(false);
-    }
-
-    pushUndo("증빙 추가");
-    const isEdit = voucherModal.editV;
-    const entry = { id: isEdit ? isEdit.id : "bv"+Date.now(), ...vf, amount:Number(vf.amount)||0, files };
-    const newVouchers = isEdit
-      ? (it.vouchers||[]).map(v=>v.id===isEdit.id?entry:v)
-      : [...(it.vouchers||[]), entry];
-    const totalVoucherAmt = newVouchers.reduce((s,v)=>s+(v.amount||0),0);
-    patch(ci, gi, itemId, { vouchers: newVouchers, purchasePrice: totalVoucherAmt });
+    if(!vf.name||!vf.vendor) return alert("항목명과 업체를 선택해주세요.");
+    const {ci,gi,itemId}=voucherModal; const it=syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId); if(!it)return;
+    let files=vf.files||[];
+    const needUpload=files.filter(f=>f.b64url&&!f.url);
+    if(needUpload.length>0&&isConfigured){setUploading(true);try{const vid="bv"+Date.now();const uploaded=await Promise.all(needUpload.map(async f=>{const r=await fetch(f.b64url);const bl=await r.blob();return await uploadVoucherFile(project.id,vid,new File([bl],f.name,{type:f.type}));}));files=[...files.filter(f=>f.url&&!f.b64url),...uploaded];}catch(e){alert("업로드 실패");setUploading(false);return;}setUploading(false);}
+    pushUndo("증빙 저장");
+    const isEdit=voucherModal.editV;
+    const entry={id:isEdit?isEdit.id:"bv"+Date.now(),...vf,amount:Number(vf.amount)||0,files,paymentStatus:isEdit?(isEdit.paymentStatus||"미입금"):"미입금"};
+    const newV=isEdit?(it.vouchers||[]).map(v=>v.id===isEdit.id?entry:v):[...(it.vouchers||[]),entry];
+    patch(ci,gi,itemId,{vouchers:newV,purchasePrice:newV.reduce((s,v)=>s+(v.amount||0),0)});
     setVoucherModal(null);
   };
-  const removeVoucher = (ci, gi, itemId, vid) => {
-    const it = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);
-    if (!it) return;
-    pushUndo("증빙 삭제");
-    const newVouchers = (it.vouchers||[]).filter(v=>v.id!==vid);
-    const totalVoucherAmt = newVouchers.reduce((s,v)=>s+(v.amount||0),0);
-    patch(ci, gi, itemId, { vouchers: newVouchers, purchasePrice: totalVoucherAmt });
+  const removeVoucher=(ci,gi,itemId,vid)=>{const it=syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);if(!it)return;pushUndo("증빙 삭제");const nv=(it.vouchers||[]).filter(v=>v.id!==vid);patch(ci,gi,itemId,{vouchers:nv,purchasePrice:nv.reduce((s,v)=>s+(v.amount||0),0)});};
+
+  const setPaymentStatus=(ci,gi,itemId,vid,status)=>{
+    const it=syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);if(!it)return;
+    pushUndo("입금상태");
+    const nv=(it.vouchers||[]).map(v=>v.id===vid?{...v,paymentStatus:status,paymentDate:status==="입금완료"?todayStr():(v.paymentDate||null)}:v);
+    patch(ci,gi,itemId,{vouchers:nv});
   };
 
-  // 신규 업체 등록
-  const registerVendor = () => {
-    if(!newVendor.name?.trim()) return alert("업체명을 입력해주세요.");
-    const saved = saveToCRM({
-      ...newVendor,
-      vendorType,
-      docs: { bizReg: vendorDocs.bizReg||null, bankCopy: vendorDocs.bankCopy||null, idCard: vendorDocs.idCard||null },
-    });
-    setVf(v=>({...v, vendor:saved.name, vendorId:saved.id}));
+  const requestPayment=(voucher)=>{
+    const vendor=getVendors().find(v=>v.id===voucher.vendorId)||{};
+    const msg=`[입금요청]\n항목: ${voucher.name}\n업체: ${voucher.vendor}\n금액: ${fmtN(voucher.amount||0)}원\n계좌: ${vendor.bankName||""} ${vendor.bankAccount||""} (${vendor.bankHolder||""})\n프로젝트: ${project.name}`;
+    alert("📨 재무담당자에게 입금요청을 전송했습니다.\n\n"+msg);
+    if(vendorInfoPanel) setPaymentStatus(vendorInfoPanel.ci,vendorInfoPanel.gi,vendorInfoPanel.itemId,voucher.id,"입금요청");
+    setVendorInfoPanel(p=>p?{...p,voucher:{...p.voucher,paymentStatus:"입금요청"}}:null);
+  };
+
+  const registerVendor=()=>{
+    if(!newVendor.name?.trim())return alert("업체명을 입력해주세요.");
+    const saved=saveToCRM({...newVendor,vendorType,docs:{bizReg:vendorDocs.bizReg||null,bankCopy:vendorDocs.bankCopy||null,idCard:vendorDocs.idCard||null}});
+    setVf(v=>({...v,vendor:saved.name,vendorId:saved.id}));
     setNewVendorMode(false);
   };
 
-  // CRM 업체 선택 시 정보 자동 채우기
-  const selectVendor = (v) => {
-    setVf(f=>({...f, vendor:v.name, vendorId:v.id}));
-    setShowVendorDD(false);
+  const salesTotal=(q.items||[]).reduce((s,cat)=>s+(cat.disabled?0:catAmt(cat)),0);
+  const purchaseTotal=syncedItems.reduce((s,cat)=>cat.disabled?s:s+(cat.groups||[]).reduce((s2,g)=>s2+(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),0),0),0);
+  const profit=salesTotal-purchaseTotal;
+  const margin=salesTotal?Math.round(profit/salesTotal*100):0;
+
+  const PayBadge=({status})=>{
+    const m={"미입금":{bg:"#fee2e2",c:C.red},"입금요청":{bg:"#fef3c7",c:C.amber},"입금완료":{bg:"#dcfce7",c:C.green}};
+    const s=m[status]||m["미입금"];
+    return <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99,background:s.bg,color:s.c,whiteSpace:"nowrap"}}>{status||"미입금"}</span>;
   };
-
-  // 합계
-  const salesTotal = (q.items || []).reduce((s, cat) => s + (cat.disabled?0:catAmt(cat)), 0);
-  const purchaseTotal = syncedItems.reduce((s, cat) =>
-    cat.disabled ? s : s + (cat.groups || []).reduce((s2, grp) =>
-      s2 + (grp.items || []).reduce((s3, it) => s3 + (it.purchasePrice || 0), 0), 0), 0);
-  const profit = salesTotal - purchaseTotal;
-  const margin = salesTotal ? Math.round(profit / salesTotal * 100) : 0;
-
-  // 문서 업로드 UI 헬퍼
-  const DocUpload = ({label,docKey,icon}) => (
+  const DocUpload=({label,docKey,icon})=>(
     <div style={{flex:"1 1 0",minWidth:0}}>
       <div style={{fontSize:11,fontWeight:600,color:C.sub,marginBottom:4}}>{icon} {label}</div>
-      {vendorDocs[docKey] ? (
+      {vendorDocs[docKey]?(
         <div style={{fontSize:11,background:docAnalyzing===docKey?C.blueLight:C.white,border:`1px solid ${docAnalyzing===docKey?C.blue:C.border}`,borderRadius:6,padding:"6px 8px",display:"flex",alignItems:"center",gap:4}}>
-          {docAnalyzing===docKey?"⏳ AI 분석중...":"✅"} {vendorDocs[docKey].name.slice(0,12)}
+          {docAnalyzing===docKey?"⏳ AI분석":"✅"} {vendorDocs[docKey].name.slice(0,12)}
           <button onClick={()=>setVendorDocs(d=>({...d,[docKey]:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,marginLeft:"auto"}}>×</button>
         </div>
-      ) : (
+      ):(
         <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:6,padding:"8px 6px",textAlign:"center",cursor:"pointer",fontSize:11,color:C.faint}}>
-          <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeDoc(docKey,f);}}/>
-          파일 선택
+          <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeDoc(docKey,f);}}/> 파일 선택
         </label>
       )}
     </div>
@@ -4050,14 +3989,8 @@ function BudgetEditor({ project, onSave }) {
 
   return (
     <div>
-      {/* 요약 카드 */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
-        {[
-          {label:"매출 (공급가액)", val:salesTotal, color:C.blue, sub:"견적서 기준"},
-          {label:"매입 (실행예산)", val:purchaseTotal, color:C.amber, sub:"증빙 기반 자동계산"},
-          {label:"예상 잔여", val:profit, color:profit>=0?C.green:C.red, sub:"매출 - 매입"},
-          {label:"예상 이익률", val:margin, color:margin>=0?C.green:C.red, sub:`순이익 ${fmtM(profit)}`, isPct:true},
-        ].map(s=>(
+        {[{label:"매출 (공급가액)",val:salesTotal,color:C.blue,sub:"견적서 기준"},{label:"매입 (실행예산)",val:purchaseTotal,color:C.amber,sub:"증빙 기반"},{label:"예상 잔여",val:profit,color:profit>=0?C.green:C.red,sub:"매출-매입"},{label:"예상 이익률",val:margin,color:margin>=0?C.green:C.red,sub:`순이익 ${fmtM(profit)}`,isPct:true}].map(s=>(
           <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
             <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
             <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.isPct?margin+"%":fmtM(s.val)}</div>
@@ -4065,289 +3998,261 @@ function BudgetEditor({ project, onSave }) {
           </div>
         ))}
       </div>
-
-      {/* Undo + 힌트 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontSize:11,color:C.faint}}>💡 매입 금액 클릭 시 만원 단위 편집 · 📎 증빙 첨부 → 결산서 자동 반영</div>
-        {undoStack.length>0 && (
-          <button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>
-            ↩️ 되돌리기 ({undoStack[undoStack.length-1].label})
-          </button>
-        )}
+        <div style={{fontSize:11,color:C.faint}}>💡 매입 클릭 → 만원 단위 · 📎 증빙 → 결산 반영 · 업체명 클릭 → 업체정보/입금현황</div>
+        {undoStack.length>0&&<button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>↩️ 되돌리기 ({undoStack[undoStack.length-1].label})</button>}
       </div>
-
-      {/* 헤더 */}
       <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",gap:0}}>
-        <div style={{padding:"8px 12px",background:C.slateLight,borderRadius:"8px 0 0 0",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.sub}}/>
-        <div style={{padding:"8px 12px",background:"#eff6ff",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.blue,textAlign:"center"}}>📈 매출 (견적 기준)</div>
+        <div style={{padding:"8px 12px",background:C.slateLight,borderRadius:"8px 0 0 0",border:`1px solid ${C.border}`,borderRight:"none"}}/>
+        <div style={{padding:"8px 12px",background:"#eff6ff",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.blue,textAlign:"center"}}>📈 매출 (견적)</div>
         <div style={{background:C.slateLight,border:`1px solid ${C.border}`,borderLeft:"none",borderRight:"none"}}/>
-        <div style={{padding:"8px 12px",background:"#fffbeb",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.amber,textAlign:"center"}}>📉 매입 (실행예산)</div>
+        <div style={{padding:"8px 12px",background:"#fffbeb",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.amber,textAlign:"center"}}>📉 매입 (실행)</div>
         <div style={{background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:"0 8px 0 0",fontSize:10,fontWeight:600,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>증빙</div>
       </div>
-
-      {(q.items||[]).length===0 ? (
-        <div style={{textAlign:"center",padding:48,color:C.faint,border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px"}}>
-          <div style={{fontSize:32,marginBottom:8}}>📋</div>
-          <div style={{fontWeight:600,marginBottom:4}}>견적서 항목이 없습니다</div>
-          <div style={{fontSize:12}}>먼저 견적서 탭에서 항목을 추가하면 자동으로 연동됩니다</div>
-        </div>
-      ) : (
+      {(q.items||[]).length===0?(
+        <div style={{textAlign:"center",padding:48,color:C.faint,border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px"}}><div style={{fontSize:32,marginBottom:8}}>📋</div><div style={{fontWeight:600}}>견적서 항목이 없습니다</div></div>
+      ):(
         <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
-          {syncedItems.map((cat, ci) => {
-            if(cat.disabled) return null;
-            const catSales = (q.items[ci] ? catAmt(q.items[ci]) : 0);
-            const catPurchase = (cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
-            return (
-              <div key={cat.category}>
-                <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
-                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,borderRight:`1px solid ${C.border}`}}>{cat.category}</div>
-                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catSales)}</div>
-                  <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
-                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catPurchase)}</div>
-                  <div/>
+          {syncedItems.map((cat,ci)=>{
+            if(cat.disabled)return null;
+            const catSales=(q.items[ci]?catAmt(q.items[ci]):0), catPurchase=(cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
+            return(<div key={cat.category}>
+              <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
+                <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,borderRight:`1px solid ${C.border}`}}>{cat.category}</div>
+                <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catSales)}</div>
+                <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/><div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catPurchase)}</div><div/>
+              </div>
+              {(cat.groups||[]).map((grp,gi)=>(<div key={grp.group}>
+                <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{padding:"7px 12px 7px 20px",fontWeight:600,fontSize:12,color:C.slate,borderRight:`1px solid ${C.border}`}}>{grp.group}</div>
+                  <div style={{padding:"7px 12px",fontSize:12,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM((q.items[ci]?.groups[gi]?.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0))}</div>
+                  <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/><div style={{padding:"7px 12px",fontSize:12,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM((grp.items||[]).reduce((s,it)=>s+(it.purchasePrice||0),0))}</div><div/>
                 </div>
-                {(cat.groups||[]).map((grp, gi) => (
-                  <div key={grp.group}>
-                    <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
-                      <div style={{padding:"7px 12px 7px 20px",fontWeight:600,fontSize:12,color:C.slate,borderRight:`1px solid ${C.border}`}}>{grp.group}</div>
-                      <div style={{padding:"7px 12px",fontSize:12,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>
-                        {fmtM((q.items[ci]?.groups[gi]?.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0))}
+                {(grp.items||[]).map((it,idx)=>{
+                  const qIt=q.items[ci]?.groups[gi]?.items[idx], salesAmt=qIt?(qIt.qty||0)*(qIt.unitPrice||0):0;
+                  const priceKey=`${ci}-${gi}-${it.id}`, isEditing=editingPrice===priceKey, vCount=(it.vouchers||[]).length;
+                  return(<div key={it.id}>
+                    <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
+                      <div style={{padding:"8px 12px 8px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>{it.name}</div>
+                      <div style={{padding:"8px 12px",borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
+                        <span style={{fontSize:11,color:C.faint}}>{qIt?.qty||0}× {fmtN(qIt?.unitPrice||0)}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:C.blue,minWidth:70,textAlign:"right"}}>{fmtN(salesAmt)}</span>
                       </div>
                       <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
-                      <div style={{padding:"7px 12px",fontSize:12,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>
-                        {fmtM((grp.items||[]).reduce((s,it)=>s+(it.purchasePrice||0),0))}
+                      <div style={{padding:"6px 8px",display:"flex",alignItems:"center",gap:6,borderRight:`1px solid ${C.border}`}}>
+                        <input value={isEditing?toMan(it.purchasePrice):fmtN(it.purchasePrice)}
+                          onChange={e=>{pushUndo("금액");patch(ci,gi,it.id,{purchasePrice:fromMan(e.target.value)});}}
+                          onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
+                          onFocus={e=>{e.target.style.borderColor=C.amber;setEditingPrice(priceKey);setTimeout(()=>e.target.select(),0);}}
+                          onBlur={e=>{e.target.style.borderColor=C.border;setEditingPrice(null);}}
+                          placeholder="만원" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:isEditing?13:12,textAlign:"right",outline:"none",color:isEditing?C.text:C.sub,background:C.white,minWidth:0}}/>
+                        <input value={it.purchaseNote||""} onChange={e=>patch(ci,gi,it.id,{purchaseNote:e.target.value})} placeholder="메모" style={{width:60,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 6px",fontSize:10,outline:"none",color:C.sub,minWidth:0}}/>
                       </div>
-                      <div/>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <button onClick={()=>openVoucherAdd(ci,gi,it.id)} title="증빙" style={{background:"none",border:"none",cursor:"pointer",fontSize:14,position:"relative"}}>
+                          📎{vCount>0&&<span style={{position:"absolute",top:-4,right:-6,background:C.amber,color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,padding:"0 4px",lineHeight:"16px"}}>{vCount}</span>}
+                        </button>
+                      </div>
                     </div>
-                    {(grp.items||[]).map((it, idx) => {
-                      const qIt = q.items[ci]?.groups[gi]?.items[idx];
-                      const salesAmt = qIt ? (qIt.qty||0)*(qIt.unitPrice||0) : 0;
-                      const priceKey = `${ci}-${gi}-${it.id}`;
-                      const isEditing = editingPrice === priceKey;
-                      const vCount = (it.vouchers||[]).length;
-                      return (
-                        <div key={it.id}>
-                          <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
-                            <div style={{padding:"8px 12px 8px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>{it.name}</div>
-                            <div style={{padding:"8px 12px",borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
-                              <span style={{fontSize:11,color:C.faint}}>{qIt?.qty||0}× {fmtN(qIt?.unitPrice||0)}</span>
-                              <span style={{fontSize:13,fontWeight:600,color:C.blue,minWidth:70,textAlign:"right"}}>{fmtN(salesAmt)}</span>
-                            </div>
-                            <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
-                            <div style={{padding:"6px 8px",display:"flex",alignItems:"center",gap:6,borderRight:`1px solid ${C.border}`}}>
-                              <input
-                                value={isEditing ? toMan(it.purchasePrice) : fmtN(it.purchasePrice)}
-                                onChange={e=>{pushUndo("금액 변경");patch(ci,gi,it.id,{purchasePrice:fromMan(e.target.value)});}}
-                                onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
-                                onFocus={e=>{e.target.style.borderColor=C.amber;setEditingPrice(priceKey);setTimeout(()=>e.target.select(),0);}}
-                                onBlur={e=>{e.target.style.borderColor=C.border;setEditingPrice(null);}}
-                                placeholder="만원"
-                                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:isEditing?13:12,textAlign:"right",outline:"none",color:isEditing?C.text:C.sub,background:C.white,minWidth:0}}
-                              />
-                              <input value={it.purchaseNote||""} onChange={e=>{patch(ci,gi,it.id,{purchaseNote:e.target.value});}}
-                                placeholder="메모" style={{width:60,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 6px",fontSize:10,outline:"none",color:C.sub,minWidth:0}}/>
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-                              <button onClick={()=>openVoucherAdd(ci,gi,it.id)} title="증빙 추가"
-                                style={{background:"none",border:"none",cursor:"pointer",fontSize:14,position:"relative"}}>
-                                📎{vCount>0&&<span style={{position:"absolute",top:-4,right:-6,background:C.amber,color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,padding:"0 4px",lineHeight:"16px"}}>{vCount}</span>}
-                              </button>
-                            </div>
-                          </div>
-                          {vCount>0 && (
-                            <div style={{background:"#fffbeb",borderBottom:`1px solid ${C.border}`,padding:"4px 12px 4px 32px"}}>
-                              {(it.vouchers||[]).map(v=>(
-                                <div key={v.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:C.sub,background:C.white,border:`1px solid ${C.border}`,borderRadius:4,padding:"2px 6px",marginRight:4,marginBottom:2,cursor:"pointer"}}
-                                  onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}}>
-                                  <span style={{fontWeight:600}}>{v.vendor}</span>
-                                  <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
-                                  {(v.files||[]).length>0&&<span>📄{v.files.length}</span>}
-                                  <button onClick={e=>{e.stopPropagation();removeVoucher(ci,gi,it.id,v.id);}} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1}}>×</button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            );
+                    {vCount>0&&(<div style={{background:"#fffbeb",borderBottom:`1px solid ${C.border}`,padding:"4px 12px 4px 32px",display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
+                      {(it.vouchers||[]).map(v=>(<div key={v.id} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:C.sub,background:C.white,border:`1px solid ${C.border}`,borderRadius:4,padding:"2px 6px"}}>
+                        <PayBadge status={v.paymentStatus}/>
+                        <span style={{fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:C.border}} onClick={()=>setVendorInfoPanel({ci,gi,itemId:it.id,voucher:v})} title="업체정보 / 입금현황">{v.vendor}</span>
+                        <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
+                        {(v.files||[]).length>0&&<button onClick={()=>setPreviewVoucher(v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.blue,padding:0}} title="미리보기">📄{v.files.length}</button>}
+                        <button onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.sub,padding:0}} title="수정">✏️</button>
+                        <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1}}>×</button>
+                      </div>))}
+                    </div>)}
+                  </div>);
+                })}
+              </div>))}
+            </div>);
           })}
-          {/* 합계 */}
           <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderTop:`2px solid ${C.border}`,fontWeight:700}}>
             <div style={{padding:"10px 12px",fontSize:13,borderRight:`1px solid ${C.border}`}}>합계</div>
             <div style={{padding:"10px 12px",fontSize:14,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(salesTotal)}</div>
             <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
             <div style={{padding:"10px 12px",fontSize:14,color:C.amber,textAlign:"right",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:12,borderRight:`1px solid ${C.border}`}}>
-              <span>{fmtM(purchaseTotal)}</span>
-              <span style={{fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99,
-                background:profit>=0?"#dcfce7":"#fee2e2",color:profit>=0?C.green:C.red}}>
-                {profit>=0?"▲":"▼"} {margin}%
-              </span>
-            </div>
-            <div/>
+              <span>{fmtM(purchaseTotal)}</span><span style={{fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99,background:profit>=0?"#dcfce7":"#fee2e2",color:profit>=0?C.green:C.red}}>{profit>=0?"▲":"▼"} {margin}%</span>
+            </div><div/>
           </div>
         </div>
       )}
 
-      {/* ═══ 증빙 추가/수정 모달 (결산서와 동일 양식) ═══ */}
-      {voucherModal && !newVendorMode && (
+      {/* ═══ 증빙 추가/수정 모달 ═══ */}
+      {voucherModal&&!newVendorMode&&(
         <Modal title={voucherModal.editV?"증빙 수정":"증빙 추가"} onClose={()=>setVoucherModal(null)} wide>
           <div style={{display:"flex",gap:20}}>
-            {/* 좌측: 파일 첨부 */}
             <div style={{width:220,flexShrink:0}}>
               <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:8}}>파일 첨부 (선택)</div>
-              <label style={{display:"block",border:`2px dashed ${analyzing?C.blue:C.border}`,borderRadius:10,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:analyzing?C.blueLight:C.bg,transition:"all .2s"}}>
+              <label style={{display:"block",border:`2px dashed ${analyzing?C.blue:C.border}`,borderRadius:10,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:analyzing?C.blueLight:C.bg}}>
                 <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleVoucherFile(e.target.files[0]);}}/>
                 <div style={{fontSize:24,marginBottom:6}}>{analyzing?"⏳":"📎"}</div>
                 <div style={{fontSize:12,color:C.sub}}>{analyzing?"AI 분석 중...":"클릭 또는 드롭"}</div>
                 <div style={{fontSize:11,color:C.faint,marginTop:4}}>이미지·PDF 지원</div>
               </label>
-              {(vf.files||[]).map((f,i)=>(
-                <div key={i} style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
-                  <button onClick={()=>setVf(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14,marginLeft:4}}>×</button>
-                </div>
-              ))}
+              {(vf.files||[]).map((f,i)=>(<div key={i} style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,cursor:"pointer",color:C.blue}} onClick={()=>{if(f.b64url||f.url)setLightboxImg(f.b64url||f.url);}}>{f.name}</span>
+                <button onClick={()=>setVf(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14,marginLeft:4}}>×</button>
+              </div>))}
             </div>
-            {/* 우측: 폼 필드 */}
             <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
               <Field label="항목명 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.name} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="ex. 카메라 렌탈"/></Field>
-              <Field label="업체명 / 공급처 *">
+              <Field label="업체명 / 공급처 * (CRM 검색)">
                 <div style={{position:"relative"}}>
-                  <input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.vendor}
-                    onChange={e=>{setVf(v=>({...v,vendor:e.target.value,vendorId:""}));setVendorSearch(e.target.value);setShowVendorDD(true);}}
-                    onFocus={()=>{if(vf.vendor)setShowVendorDD(true);}}
-                    placeholder="ex. 씨네렌탈 (입력하면 CRM 검색)"/>
-                  {showVendorDD && vf.vendor && (()=>{
-                    const matches = getVendors().filter(v=>v.name.includes(vf.vendor));
-                    return matches.length>0 ? (
-                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.12)",zIndex:10,maxHeight:180,overflowY:"auto"}}>
-                        {matches.map(v=>(
-                          <div key={v.id} onClick={()=>selectVendor(v)}
-                            style={{padding:"8px 12px",cursor:"pointer",fontSize:12,borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}
-                            onMouseEnter={e=>e.currentTarget.style.background=C.slateLight} onMouseLeave={e=>e.currentTarget.style.background=""}>
-                            <div>
-                              <span style={{fontWeight:600}}>{v.name}</span>
-                              <span style={{color:C.faint,marginLeft:8,fontSize:11}}>{v.vendorType==="freelancer"?"프리랜서":"업체"} · {v.type||""}</span>
-                            </div>
-                            <span style={{fontSize:11,color:C.faint}}>{v.phone||v.contactName||""}</span>
-                          </div>
-                        ))}
+                  <input style={inp} value={vf.vendor} onChange={e=>{setVf(v=>({...v,vendor:e.target.value,vendorId:""}));setShowVendorDD(true);}} onFocus={()=>setShowVendorDD(true)} placeholder="업체명 입력하여 CRM 검색..."/>
+                  {showVendorDD&&(()=>{
+                    const all=getVendors(), matches=vf.vendor?all.filter(v=>v.name.includes(vf.vendor)):all.slice(0,8);
+                    return(<div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.12)",zIndex:10,maxHeight:220,overflowY:"auto"}}>
+                      {matches.length>0?matches.map(v=>(<div key={v.id} onClick={()=>{setVf(f=>({...f,vendor:v.name,vendorId:v.id}));setShowVendorDD(false);}}
+                        style={{padding:"8px 12px",cursor:"pointer",fontSize:12,borderBottom:`1px solid ${C.border}`}}
+                        onMouseEnter={e=>e.currentTarget.style.background=C.slateLight} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                        <div style={{display:"flex",justifyContent:"space-between"}}><span><strong>{v.name}</strong> <span style={{fontSize:11,color:C.faint}}>{v.vendorType==="freelancer"?"프리랜서":"업체"} · {v.type||""}</span></span><span style={{fontSize:11,color:C.faint}}>{v.phone||""}</span></div>
+                        {(v.bankName||v.bankAccount)&&<div style={{fontSize:10,color:C.blue,marginTop:2}}>🏦 {v.bankName} {v.bankAccount} ({v.bankHolder||""})</div>}
+                      </div>)):(<div style={{padding:"12px",textAlign:"center",fontSize:12,color:C.faint}}>검색 결과 없음</div>)}
+                      <div onClick={()=>{setNewVendorMode(true);setNewVendor(v=>({...v,name:vf.vendor}));}}
+                        style={{padding:"10px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:C.blue,borderTop:`1px solid ${C.border}`,background:"#eff6ff",textAlign:"center"}}>
+                        + 「{vf.vendor||"새 업체"}」 신규 등록
                       </div>
-                    ) : null;
+                    </div>);
                   })()}
                 </div>
-                <button onClick={()=>{ setNewVendorMode(true); setNewVendor(v=>({...v,name:vf.vendor})); }}
-                  style={{marginTop:4,background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.blue,textDecoration:"underline"}}>
-                  + 신규 업체 등록 (CRM에 자동 추가)
-                </button>
               </Field>
               <Field label="계산서번호" half><input style={inp} value={vf.number||""} onChange={e=>setVf(v=>({...v,number:e.target.value}))} placeholder="2026-001"/></Field>
               <Field label="날짜" half><input style={inp} type="date" value={vf.date} onChange={e=>setVf(v=>({...v,date:e.target.value}))}/></Field>
               <Field label="금액 (원)"><input style={{...inp,fontWeight:700}} type="number" value={vf.amount} onChange={e=>setVf(v=>({...v,amount:e.target.value}))} placeholder="0"/></Field>
-              <Field label="증빙 구분" half>
-                <select style={inp} value={vf.type} onChange={e=>setVf(v=>({...v,type:e.target.value}))}>
-                  {VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </Field>
-              <Field label="대분류" half>
-                <select style={inp} value={vf.category} onChange={e=>{const cat=e.target.value,grp=groupOptions(cat)[0]||"";setVf(v=>({...v,category:cat,group:grp}));}}>
-                  <option value="">- 선택 -</option>
-                  {catOptions.map(c=><option key={c}>{c}</option>)}
-                </select>
-              </Field>
-              <Field label="중분류">
-                <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
-                  <option value="">- 선택 -</option>
-                  {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
-                </select>
-              </Field>
-              <Field label="메모 / 비고"><input style={inp} value={vf.note||""} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
+              <Field label="증빙 구분" half><select style={inp} value={vf.type} onChange={e=>setVf(v=>({...v,type:e.target.value}))}>{VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}</select></Field>
+              <Field label="대분류" half><select style={inp} value={vf.category} onChange={e=>{const cat=e.target.value;setVf(v=>({...v,category:cat,group:groupOptions(cat)[0]||""}));}}><option value="">-</option>{catOptions.map(c=><option key={c}>{c}</option>)}</select></Field>
+              <Field label="중분류"><select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}><option value="">-</option>{groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}</select></Field>
+              <Field label="메모 / 비고"><input style={inp} value={vf.note||""} onChange={e=>setVf(v=>({...v,note:e.target.value}))}/></Field>
             </div>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
             {voucherModal.editV&&<Btn danger sm onClick={()=>{removeVoucher(voucherModal.ci,voucherModal.gi,voucherModal.itemId,voucherModal.editV.id);setVoucherModal(null);}}>삭제</Btn>}
-            <div style={{flex:1}}/>
-            <Btn onClick={()=>setVoucherModal(null)} disabled={uploading}>취소</Btn>
-            <Btn primary onClick={saveVoucher} disabled={analyzing||uploading}>
-              {uploading ? "📤 업로드 중..." : analyzing ? "🤖 분석 중..." : "저장"}
-            </Btn>
+            <div style={{flex:1}}/><Btn onClick={()=>setVoucherModal(null)} disabled={uploading}>취소</Btn>
+            <Btn primary onClick={saveVoucher} disabled={analyzing||uploading}>{uploading?"📤 업로드 중...":analyzing?"🤖 분석 중...":"저장"}</Btn>
           </div>
         </Modal>
       )}
 
-      {/* ═══ 신규 업체 등록 모달 ═══ */}
-      {voucherModal && newVendorMode && (
+      {/* ═══ 신규 업체 등록 ═══ */}
+      {voucherModal&&newVendorMode&&(
         <Modal title="📋 신규 업체 등록" onClose={()=>setNewVendorMode(false)} wide>
-          <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.blue,display:"flex",alignItems:"center",gap:8}}>
-            ℹ️ 등록된 업체는 CRM 외주관리 탭에 자동 추가됩니다. 서류를 업로드하면 AI가 자동 분석합니다.
-          </div>
-
-          {/* 프리랜서/업체 토글 */}
+          <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.blue}}>ℹ️ CRM 외주관리 탭에 자동 등록. 서류 업로드 시 AI 자동 분석.</div>
           <div style={{display:"flex",gap:0,marginBottom:16,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",width:"fit-content"}}>
-            {[{id:"company",label:"🏢 업체/법인"},{id:"freelancer",label:"👤 프리랜서/개인"}].map(t=>(
-              <button key={t.id} onClick={()=>setVendorType(t.id)}
-                style={{padding:"8px 20px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",
-                  background:vendorType===t.id?C.blue:"transparent",color:vendorType===t.id?"#fff":C.sub}}>
-                {t.label}
-              </button>
-            ))}
+            {[{id:"company",label:"🏢 업체/법인"},{id:"freelancer",label:"👤 프리랜서"}].map(t=>(<button key={t.id} onClick={()=>setVendorType(t.id)} style={{padding:"8px 20px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:vendorType===t.id?C.blue:"transparent",color:vendorType===t.id?"#fff":C.sub}}>{t.label}</button>))}
           </div>
-
           <div style={{display:"flex",gap:20}}>
-            {/* 좌측: 서류 업로드 */}
             <div style={{width:240,flexShrink:0}}>
-              <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:10}}>📄 서류 업로드 (AI 자동분석)</div>
+              <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:10}}>📄 서류 (AI 자동분석)</div>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <DocUpload label={vendorType==="company"?"사업자등록증":"사업자/위촉장"} docKey="bizReg" icon="🏢"/>
+                <DocUpload label={vendorType==="company"?"사업자등록증":"위촉장"} docKey="bizReg" icon="🏢"/>
                 <DocUpload label="통장사본" docKey="bankCopy" icon="🏦"/>
-                {vendorType==="freelancer" && <DocUpload label="신분증" docKey="idCard" icon="🪪"/>}
+                {vendorType==="freelancer"&&<DocUpload label="신분증" docKey="idCard" icon="🪪"/>}
               </div>
             </div>
-            {/* 우측: 업체 정보 */}
             <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
-              <Field label={vendorType==="company"?"상호명 *":"성명 *"}>
-                <input style={{...inp,background:docAnalyzing?C.blueLight:C.white}} value={newVendor.name} onChange={e=>setNewVendor(v=>({...v,name:e.target.value}))}/>
-              </Field>
-              <Field label="사업자번호 / 주민번호" half>
-                <input style={{...inp,background:docAnalyzing==="bizReg"?C.blueLight:C.white}} value={newVendor.bizNo||""} onChange={e=>setNewVendor(v=>({...v,bizNo:e.target.value}))} placeholder="000-00-00000"/>
-              </Field>
-              <Field label={vendorType==="company"?"대표자명":"담당자명"} half>
-                <input style={{...inp,background:docAnalyzing==="bizReg"?C.blueLight:C.white}} value={newVendor.contactName||""} onChange={e=>setNewVendor(v=>({...v,contactName:e.target.value}))}/>
-              </Field>
+              <Field label={vendorType==="company"?"상호명 *":"성명 *"}><input style={{...inp,background:docAnalyzing?C.blueLight:C.white}} value={newVendor.name} onChange={e=>setNewVendor(v=>({...v,name:e.target.value}))}/></Field>
+              <Field label="사업자번호" half><input style={{...inp,background:docAnalyzing==="bizReg"?C.blueLight:C.white}} value={newVendor.bizNo||""} onChange={e=>setNewVendor(v=>({...v,bizNo:e.target.value}))} placeholder="000-00-00000"/></Field>
+              <Field label={vendorType==="company"?"대표자명":"담당자명"} half><input style={{...inp,background:docAnalyzing==="bizReg"?C.blueLight:C.white}} value={newVendor.contactName||""} onChange={e=>setNewVendor(v=>({...v,contactName:e.target.value}))}/></Field>
               <Field label="연락처" half><input style={inp} value={newVendor.phone||""} onChange={e=>setNewVendor(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
-              <Field label="이메일" half><input style={inp} value={newVendor.email||""} onChange={e=>setNewVendor(v=>({...v,email:e.target.value}))} placeholder="email@example.com"/></Field>
-              <Field label="업종" half>
-                <select style={inp} value={newVendor.type||"기타"} onChange={e=>setNewVendor(v=>({...v,type:e.target.value}))}>
-                  {OUTSOURCE_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </Field>
-              <Field label="은행명" half>
-                <input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankName||""} onChange={e=>setNewVendor(v=>({...v,bankName:e.target.value}))} placeholder="국민은행"/>
-              </Field>
-              <Field label="계좌번호" half>
-                <input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankAccount||""} onChange={e=>setNewVendor(v=>({...v,bankAccount:e.target.value}))} placeholder="000-000-000-000"/>
-              </Field>
-              <Field label="예금주" half>
-                <input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankHolder||""} onChange={e=>setNewVendor(v=>({...v,bankHolder:e.target.value}))}/>
-              </Field>
-              <Field label="비고"><input style={inp} value={newVendor.note||""} onChange={e=>setNewVendor(v=>({...v,note:e.target.value}))} placeholder="참고사항"/></Field>
+              <Field label="이메일" half><input style={inp} value={newVendor.email||""} onChange={e=>setNewVendor(v=>({...v,email:e.target.value}))}/></Field>
+              <Field label="업종" half><select style={inp} value={newVendor.type||"기타"} onChange={e=>setNewVendor(v=>({...v,type:e.target.value}))}>{OUTSOURCE_TYPES.map(t=><option key={t}>{t}</option>)}</select></Field>
+              <Field label="은행명" half><input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankName||""} onChange={e=>setNewVendor(v=>({...v,bankName:e.target.value}))}/></Field>
+              <Field label="계좌번호" half><input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankAccount||""} onChange={e=>setNewVendor(v=>({...v,bankAccount:e.target.value}))}/></Field>
+              <Field label="예금주" half><input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankHolder||""} onChange={e=>setNewVendor(v=>({...v,bankHolder:e.target.value}))}/></Field>
+              <Field label="비고"><input style={inp} value={newVendor.note||""} onChange={e=>setNewVendor(v=>({...v,note:e.target.value}))}/></Field>
             </div>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"space-between",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
-            <Btn onClick={()=>setNewVendorMode(false)}>← 증빙 입력으로 돌아가기</Btn>
-            <Btn primary onClick={registerVendor} disabled={!!docAnalyzing}>
-              {docAnalyzing ? "🤖 AI 분석 중..." : "업체 등록 후 증빙 입력으로"}
-            </Btn>
+            <Btn onClick={()=>setNewVendorMode(false)}>← 돌아가기</Btn>
+            <Btn primary onClick={registerVendor} disabled={!!docAnalyzing}>{docAnalyzing?"🤖 분석 중...":"업체 등록 후 증빙 입력으로"}</Btn>
           </div>
         </Modal>
       )}
+
+      {/* ═══ 증빙 파일 미리보기 ═══ */}
+      {previewVoucher&&(
+        <Modal title={`📄 첨부파일 — ${previewVoucher.name||previewVoucher.vendor}`} onClose={()=>setPreviewVoucher(null)} wide>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            {(previewVoucher.files||[]).map((f,i)=>(<div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:f.type==="application/pdf"?"100%":320,width:f.type==="application/pdf"?"100%":"auto",position:"relative",background:C.slateLight}}>
+              {f.type?.startsWith("image/")?(
+                <><img src={f.b64url||f.url} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg(f.b64url||f.url)}/>
+                <button onClick={()=>setLightboxImg(f.b64url||f.url)} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button></>
+              ):f.type==="application/pdf"?(<iframe src={f.b64url||f.url} title={f.name} style={{width:"100%",height:400,border:"none"}}/>
+              ):(<div style={{padding:16,textAlign:"center",color:C.sub}}>📄 {f.name}</div>)}
+              <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white}}>{f.name}</div>
+            </div>))}
+          </div>
+        </Modal>
+      )}
+
+      {/* ═══ 라이트박스 (확대) ═══ */}
+      {lightboxImg&&(
+        <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",backdropFilter:"blur(6px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh"}}>
+            <img src={lightboxImg} alt="확대" style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}/>
+            <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:-14,right:-14,width:32,height:32,borderRadius:"50%",border:"none",background:"#fff",color:"#1e293b",cursor:"pointer",fontSize:18,fontWeight:700,boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+            <div style={{textAlign:"center",color:"rgba(255,255,255,.5)",fontSize:12,marginTop:10}}>클릭하여 닫기</div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 업체정보 / 입금현황 패널 ═══ */}
+      {vendorInfoPanel&&(()=>{
+        const v=vendorInfoPanel.voucher, vendor=getVendors().find(x=>x.id===v.vendorId)||{};
+        return(
+          <Modal title={`🏢 ${v.vendor} — 업체정보 / 입금현황`} onClose={()=>setVendorInfoPanel(null)}>
+            <div style={{background:C.slateLight,borderRadius:10,padding:16,marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:C.dark,marginBottom:10}}>📋 업체 정보</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 16px",fontSize:12}}>
+                <div><span style={{color:C.faint}}>상호명:</span> <strong>{vendor.name||v.vendor}</strong></div>
+                <div><span style={{color:C.faint}}>유형:</span> {vendor.vendorType==="freelancer"?"👤 프리랜서":"🏢 업체"} · {vendor.type||"-"}</div>
+                <div><span style={{color:C.faint}}>사업자번호:</span> {vendor.bizNo||"-"}</div>
+                <div><span style={{color:C.faint}}>대표/담당:</span> {vendor.contactName||"-"}</div>
+                <div><span style={{color:C.faint}}>연락처:</span> {vendor.phone||"-"}</div>
+                <div><span style={{color:C.faint}}>이메일:</span> {vendor.email||"-"}</div>
+              </div>
+            </div>
+            <div style={{background:"#eff6ff",borderRadius:10,padding:16,marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:C.blue,marginBottom:8}}>🏦 입금 계좌</div>
+              {(vendor.bankName||vendor.bankAccount)?(<div style={{fontSize:13}}>
+                <strong>{vendor.bankName||""}</strong> {vendor.bankAccount||""}<br/>
+                <span style={{color:C.sub}}>예금주: {vendor.bankHolder||"-"}</span>
+              </div>):(<div style={{fontSize:12,color:C.faint}}>등록된 계좌 정보 없음. CRM에서 업체 정보를 수정해주세요.</div>)}
+            </div>
+            <div style={{background:v.paymentStatus==="입금완료"?"#f0fdf4":v.paymentStatus==="입금요청"?"#fffbeb":"#fff5f5",borderRadius:10,padding:16,marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:700}}>💰 입금 현황</div>
+                <PayBadge status={v.paymentStatus}/>
+              </div>
+              <div style={{fontSize:13,marginBottom:10}}>
+                <span style={{color:C.sub}}>증빙 금액:</span> <strong style={{color:C.amber,fontSize:15}}>{fmtN(v.amount||0)}원</strong>
+                {v.paymentDate&&<span style={{marginLeft:12,fontSize:11,color:C.faint}}>처리일: {v.paymentDate}</span>}
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {["미입금","입금요청","입금완료"].map(st=>(<button key={st}
+                  onClick={()=>{setPaymentStatus(vendorInfoPanel.ci,vendorInfoPanel.gi,vendorInfoPanel.itemId,v.id,st);setVendorInfoPanel(p=>({...p,voucher:{...v,paymentStatus:st,paymentDate:st==="입금완료"?todayStr():(v.paymentDate||null)}}));}}
+                  style={{padding:"6px 16px",fontSize:11,fontWeight:600,borderRadius:6,cursor:"pointer",
+                    border:(v.paymentStatus||"미입금")===st?`2px solid ${st==="입금완료"?C.green:st==="입금요청"?C.amber:C.red}`:`1px solid ${C.border}`,
+                    background:(v.paymentStatus||"미입금")===st?(st==="입금완료"?"#dcfce7":st==="입금요청"?"#fef3c7":"#fee2e2"):C.white,
+                    color:(v.paymentStatus||"미입금")===st?(st==="입금완료"?C.green:st==="입금요청"?C.amber:C.red):C.sub}}>
+                  {st}
+                </button>))}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <Btn onClick={()=>setVendorInfoPanel(null)}>닫기</Btn>
+              <Btn primary onClick={()=>requestPayment(v)}>📨 입금요청 (재무담당자 알림)</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // 결산서 (증빙자료 + 예산 비교)
