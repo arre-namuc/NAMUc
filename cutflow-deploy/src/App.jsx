@@ -9978,19 +9978,20 @@ function App() {
     return () => { u3(); uAuth(); };
   }, []);
 
-  // 2) 로그인 후 데이터 구독 (user가 설정되면 시작, 로그아웃 시 정리)
+  // 2) 로그인 후 데이터 구독 — !!user로 안정화 (true/false만 비교)
+  const isLoggedIn = !!user;
   useEffect(() => {
-    if (!isConfigured || !user) return;
+    if (!isConfigured || !isLoggedIn) return;
+    console.log("[CutFlow] 🔵 Firestore 구독 시작");
     const u1 = subscribeProjects(fb => {
-      if(fb.length>0){
-        setProjects(fb);
-        setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);
-      }
+      console.log("[CutFlow] 📦 프로젝트 수신:", fb.length, "개");
+      setProjects(fb);
+      setSelId(p => fb.find(x => x.id === p) ? p : fb[0]?.id || "");
     });
     const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
     const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
-    return () => { u1(); u2(); u4(); };
-  }, [user]);
+    return () => { console.log("[CutFlow] 🔴 Firestore 구독 해제"); u1(); u2(); u4(); };
+  }, [isLoggedIn]);
   // D-day 알림 자동 생성
   useEffect(() => {
     const today = new Date(); today.setHours(0,0,0,0);
