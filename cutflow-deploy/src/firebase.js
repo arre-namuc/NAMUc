@@ -80,7 +80,7 @@ export function subscribeProjects(callback) {
   });
 }
 
-/** undefined 값 제거 + b64url 제거 (Firestore 호환 + 용량 절약) */
+/** undefined 값 제거 (Firestore 호환) */
 function cleanUndefined(obj) {
   if (obj === null || obj === undefined) return null;
   if (Array.isArray(obj)) return obj.map(cleanUndefined);
@@ -88,7 +88,6 @@ function cleanUndefined(obj) {
     const cleaned = {};
     for (const [k, v] of Object.entries(obj)) {
       if (v === undefined) continue;
-      if (k === "b64url") continue; // base64 데이터 Firestore 저장 방지 (Storage URL만 보존)
       cleaned[k] = cleanUndefined(v);
     }
     return cleaned;
@@ -96,12 +95,24 @@ function cleanUndefined(obj) {
   return obj;
 }
 
-/** 프로젝트 저장 (생성/수정 통합) */
+/** b64url 제거 (프로젝트 데이터 전용 — Firestore 1MB 제한 대비) */
+function stripB64FromProject(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(stripB64FromProject);
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === "b64url") continue;
+    out[k] = (typeof v === "object") ? stripB64FromProject(v) : v;
+  }
+  return out;
+}
+
+/** 프로젝트 저장 (생성/수정 통합) — b64url 자동 제거 */
 export async function saveProject(project) {
   if (!isConfigured) return;
   const { id, ...data } = project;
   await setDoc(doc(db, "projects", id), {
-    ...cleanUndefined(data),
+    ...stripB64FromProject(cleanUndefined(data)),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
