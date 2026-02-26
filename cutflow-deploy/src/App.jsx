@@ -3842,6 +3842,41 @@ function BudgetEditor({ project, onSave }) {
   const [previewVoucher, setPreviewVoucher] = useState(null);
   const [lightboxImg, setLightboxImg] = useState(null);
   const [vendorInfoPanel, setVendorInfoPanel] = useState(null);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+
+  // ── 실행예산 버전 관리 ──────────────────────────────────
+  const budgetVersion  = project.budgetVersion || 1;
+  const budgetStatus   = project.budgetStatus || "작성중"; // "작성중" | "결재진행" | "결재완료"
+  const budgetVersions = project.budgetVersions || [];
+
+  const requestApproval = () => {
+    if(!confirm(`${budgetVersion}차 실행예산서를 결재 올리시겠습니까?\n결재 진행 중에는 편집이 불가합니다.`)) return;
+    onSave({...project, budgetStatus:"결재진행"});
+  };
+  const completeApproval = () => {
+    if(!confirm(`${budgetVersion}차 실행예산서 결재를 완료하시겠습니까?`)) return;
+    const snapshot = {
+      version: budgetVersion,
+      data: JSON.parse(JSON.stringify(bud)),
+      status: "결재완료",
+      date: todayStr(),
+      time: new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}),
+      purchaseTotal: syncedItems.reduce((s,cat)=>cat.disabled?s:s+(cat.groups||[]).reduce((s2,g)=>s2+(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),0),0),0),
+      voucherCount: syncedItems.reduce((s,cat)=>(cat.groups||[]).reduce((s2,g)=>s2+(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,0),s),0),
+    };
+    const updatedVersions = [...budgetVersions.filter(v=>v.version!==budgetVersion), snapshot];
+    onSave({...project, budgetStatus:"결재완료", budgetVersions:updatedVersions});
+  };
+  const startNewVersion = () => {
+    if(!confirm(`${budgetVersion+1}차 수정을 시작하시겠습니까?`)) return;
+    onSave({...project, budgetVersion:budgetVersion+1, budgetStatus:"작성중"});
+  };
+  const confirmSettlement = () => {
+    if(budgetStatus!=="결재완료") return alert("현재 차수의 결재가 완료되어야 결산 확정이 가능합니다.");
+    if(!confirm(`프로젝트 완료 및 결산을 확정하시겠습니까?\n\n${budgetVersion}차 실행예산서 기준으로 결산이 확정됩니다.\n확정 후에는 수정이 불가합니다.`)) return;
+    onSave({...project, settlementDate:todayStr(), settled:true});
+  };
+  const isEditable = budgetStatus === "작성중";
 
   const getVendors = () => { try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; } };
   const saveToCRM = async (vendor) => {
@@ -3892,6 +3927,7 @@ function BudgetEditor({ project, onSave }) {
     };
   });
   const patch = (ci,gi,id,val) => {
+    if(!isEditable) return;
     const updated = syncedItems.map((cat,i)=>i!==ci?cat:{...cat,groups:cat.groups.map((grp,j)=>j!==gi?grp:{...grp,items:grp.items.map(it=>it.id!==id?it:{...it,...val})})});
     onSave({...project, budget2:{items:updated}});
   };
@@ -3955,8 +3991,11 @@ function BudgetEditor({ project, onSave }) {
     const needUpload=files.filter(f=>f.b64url&&!f.url);
     if(needUpload.length>0&&isConfigured){setUploading(true);try{const vid="bv"+Date.now();const uploaded=await Promise.all(needUpload.map(async f=>{const r=await fetch(f.b64url);const bl=await r.blob();return await uploadVoucherFile(project.id,vid,new File([bl],f.name,{type:f.type}));}));files=[...files.filter(f=>f.url&&!f.b64url),...uploaded];}catch(e){alert("업로드 실패");setUploading(false);return;}setUploading(false);}
     pushUndo("증빙 저장");
+    const now=new Date().toISOString();
     const isEdit=voucherModal.editV;
-    const entry={id:isEdit?isEdit.id:"bv"+Date.now(),...vf,amount:Number(vf.amount)||0,files,paymentStatus:isEdit?(isEdit.paymentStatus||"미입금"):"미입금"};
+    const prevHistory=isEdit?(isEdit.history||[]):[];
+    const history=isEdit?[...prevHistory,{action:"수정",date:now,changes:`금액:${isEdit.amount}→${vf.amount}, 업체:${isEdit.vendor}→${vf.vendor}`}]:[];
+    const entry={id:isEdit?isEdit.id:"bv"+Date.now(),...vf,amount:Number(vf.amount)||0,files,paymentStatus:isEdit?(isEdit.paymentStatus||"미입금"):"미입금",createdAt:isEdit?(isEdit.createdAt||now):now,updatedAt:now,history};
     const newV=isEdit?(it.vouchers||[]).map(v=>v.id===isEdit.id?entry:v):[...(it.vouchers||[]),entry];
     patch(ci,gi,itemId,{vouchers:newV,purchasePrice:newV.reduce((s,v)=>s+(v.amount||0),0)});
     setVoucherModal(null);
@@ -4013,6 +4052,42 @@ function BudgetEditor({ project, onSave }) {
 
   return (
     <div>
+      {/* ── 실행예산 버전 상태바 ── */}
+      <div style={{background:budgetStatus==="결재완료"?"#f0fdf4":budgetStatus==="결재진행"?"#eff6ff":"#fff",border:`1px solid ${budgetStatus==="결재완료"?C.green+"40":budgetStatus==="결재진행"?C.blue+"40":C.border}`,borderRadius:12,padding:"12px 18px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:20}}>{budgetStatus==="결재완료"?"✅":budgetStatus==="결재진행"?"📋":"✏️"}</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:C.dark}}>{budgetVersion}차 실행예산서</div>
+            <div style={{fontSize:12,color:C.sub}}>
+              {budgetStatus==="작성중"&&"작성 중 — 편집 가능"}
+              {budgetStatus==="결재진행"&&"결재 진행 중 — 편집 불가"}
+              {budgetStatus==="결재완료"&&`${budgetVersion}차 결재 완료`}
+            </div>
+          </div>
+          {/* 버전 진행 표시 */}
+          <div style={{display:"flex",gap:4,marginLeft:8}}>
+            {[...Array(Math.max(budgetVersion,1))].map((_,i)=>{
+              const ver=i+1;const saved=budgetVersions.find(v=>v.version===ver);
+              return <span key={ver} style={{width:24,height:24,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,
+                background:saved?"#dcfce7":ver===budgetVersion?(budgetStatus==="결재진행"?"#dbeafe":"#fef3c7"):"#f1f5f9",
+                color:saved?C.green:ver===budgetVersion?(budgetStatus==="결재진행"?C.blue:C.amber):C.faint,
+                border:ver===budgetVersion?`2px solid ${budgetStatus==="결재진행"?C.blue:budgetStatus==="결재완료"?C.green:C.amber}`:"1px solid #e2e8f0"
+              }}>{ver}</span>;
+            })}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {budgetVersions.length>0&&<button onClick={()=>setShowVersionHistory(true)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",color:C.sub,fontWeight:600}}>📂 버전 이력 ({budgetVersions.length})</button>}
+          {budgetStatus==="작성중"&&<Btn primary onClick={requestApproval}>📤 결재 올리기</Btn>}
+          {budgetStatus==="결재진행"&&<Btn primary onClick={completeApproval} style={{background:C.green}}>✅ 결재 완료</Btn>}
+          {budgetStatus==="결재완료"&&!project.settlementDate&&<>
+            <Btn onClick={startNewVersion}>📝 {budgetVersion+1}차 수정 시작</Btn>
+            <Btn primary onClick={confirmSettlement} style={{background:"#7c3aed"}}>🏁 프로젝트 완료 · 결산 확정</Btn>
+          </>}
+          {project.settlementDate&&<span style={{fontSize:12,fontWeight:700,padding:"6px 14px",borderRadius:99,background:"#dcfce7",color:C.green}}>🏁 결산확정 {project.settlementDate}</span>}
+        </div>
+      </div>
+
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
         {[{label:"매출 (공급가액)",val:salesTotal,color:C.blue,sub:"견적서 기준"},{label:"매입 (실행예산)",val:purchaseTotal,color:C.amber,sub:"증빙 기반"},{label:"예상 잔여",val:profit,color:profit>=0?C.green:C.red,sub:"매출-매입"},{label:"예상 이익률",val:margin,color:margin>=0?C.green:C.red,sub:`순이익 ${fmtM(profit)}`,isPct:true}].map(s=>(
           <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
@@ -4023,9 +4098,11 @@ function BudgetEditor({ project, onSave }) {
         ))}
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontSize:11,color:C.faint}}>💡 매입 클릭 → 만원 단위 · 📎 증빙 → 결산 반영 · 업체명 클릭 → 업체정보/입금현황</div>
-        {undoStack.length>0&&<button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>↩️ 되돌리기 ({undoStack[undoStack.length-1].label})</button>}
+        <div style={{fontSize:11,color:C.faint}}>{isEditable?"💡 매입 클릭 → 만원 단위 · 📎 증빙 → 결산 반영 · 업체명 클릭 → 업체정보/입금현황":"🔒 "+budgetVersion+"차 실행예산서 "+budgetStatus+" — 편집 불가"}</div>
+        {undoStack.length>0&&isEditable&&<button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>↩️ 되돌리기 ({undoStack[undoStack.length-1].label})</button>}
       </div>
+      <div style={{opacity:isEditable?1:0.6,pointerEvents:isEditable?"auto":"none",position:"relative"}}>
+      {!isEditable&&<div style={{position:"absolute",inset:0,zIndex:10,cursor:"not-allowed"}}/>}
       <div style={{display:"grid",gridTemplateColumns:"160px 1fr 10px 150px minmax(180px,2fr)",gap:0}}>
         <div style={{padding:"8px 12px",background:C.slateLight,borderRadius:"8px 0 0 0",border:`1px solid ${C.border}`,borderRight:"none"}}/>
         <div style={{padding:"8px 12px",background:"#eff6ff",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.blue,textAlign:"center"}}>📈 매출 (견적)</div>
@@ -4286,6 +4363,53 @@ function BudgetEditor({ project, onSave }) {
           </Modal>
         );
       })()}
+
+      {/* ═══ 버전 이력 모달 ═══ */}
+      {showVersionHistory&&(
+        <Modal title="📂 실행예산서 버전 이력" onClose={()=>setShowVersionHistory(false)} wide>
+          {budgetVersions.length===0?(
+            <div style={{padding:40,textAlign:"center",color:C.faint}}>저장된 버전이 없습니다.</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {budgetVersions.sort((a,b)=>b.version-a.version).map(ver=>{
+                const totalPurchase=(ver.data?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),s2),s),0);
+                const totalVouchers=(ver.data?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,s2),s),0);
+                return (
+                  <div key={ver.version} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 20px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{width:32,height:32,borderRadius:"50%",background:"#dcfce7",color:C.green,display:"inline-flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14}}>{ver.version}</span>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:14}}>{ver.version}차 실행예산서</div>
+                          <div style={{fontSize:12,color:C.faint}}>결재완료: {ver.date} {ver.time||""}</div>
+                        </div>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:99,background:"#dcfce7",color:C.green}}>✅ 결재완료</span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                      <div style={{background:C.slateLight,borderRadius:8,padding:"10px 12px"}}>
+                        <div style={{fontSize:10,color:C.faint,marginBottom:2}}>실행예산 합계</div>
+                        <div style={{fontSize:15,fontWeight:800,color:C.amber}}>{fmtM(totalPurchase)}</div>
+                      </div>
+                      <div style={{background:C.slateLight,borderRadius:8,padding:"10px 12px"}}>
+                        <div style={{fontSize:10,color:C.faint,marginBottom:2}}>증빙 건수</div>
+                        <div style={{fontSize:15,fontWeight:800,color:C.blue}}>{totalVouchers}건</div>
+                      </div>
+                      <div style={{background:C.slateLight,borderRadius:8,padding:"10px 12px"}}>
+                        <div style={{fontSize:10,color:C.faint,marginBottom:2}}>항목 수</div>
+                        <div style={{fontSize:15,fontWeight:800,color:C.sub}}>{(ver.data?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>s2+(g.items||[]).length,s),0)}개</div>
+                      </div>
+                    </div>
+                    {ver.version===budgetVersion&&budgetStatus==="결재완료"&&(
+                      <div style={{marginTop:8,fontSize:11,color:C.green,fontWeight:600}}>← 현재 확정 버전</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -4439,13 +4563,47 @@ function SettlementView({ project, onConfirm, onSave }) {
       {confirmed?(
         <div style={{background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:20}}>✅</span>
-          <div><div style={{fontWeight:700,fontSize:14,color:C.green}}>결산 확정 완료</div><div style={{fontSize:13,color:C.sub}}>확정일: {project.settlementDate}</div></div>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:C.green}}>결산 확정 완료</div>
+            <div style={{fontSize:13,color:C.sub}}>확정일: {project.settlementDate} · {project.budgetVersion||1}차 실행예산서 기준</div>
+          </div>
         </div>
       ):(
         <div style={{background:C.amberLight,border:`1px solid ${C.amber}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:20}}>⚠️</span>
-          <div><div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div><div style={{fontSize:13,color:C.sub}}>프로젝트 완료 후 확정하면 경영관리 대시보드에 반영됩니다.</div></div>
-          <Btn primary onClick={onConfirm} style={{marginLeft:"auto"}}>결산 확정하기</Btn>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div>
+            <div style={{fontSize:13,color:C.sub}}>
+              {project.budgetVersion||1}차 실행예산서 · {project.budgetStatus==="결재완료"?"결재완료 — 결산 확정 가능":project.budgetStatus==="결재진행"?"결재 진행 중":"작성 중 — 결재 완료 후 확정 가능"}
+            </div>
+          </div>
+          {project.budgetStatus==="결재완료"
+            ? <Btn primary onClick={onConfirm} style={{marginLeft:"auto",background:"#7c3aed"}}>🏁 결산 확정하기</Btn>
+            : <span style={{marginLeft:"auto",fontSize:11,color:C.faint,fontStyle:"italic"}}>실행예산서 결재 완료 후 확정 가능</span>
+          }
+        </div>
+      )}
+
+      {/* 실행예산서 결재 이력 */}
+      {(project.budgetVersions||[]).length>0&&(
+        <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 18px",marginBottom:20}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.dark,marginBottom:10}}>📂 실행예산서 결재 이력</div>
+          <div style={{display:"flex",gap:0,alignItems:"center",flexWrap:"wrap"}}>
+            {(project.budgetVersions||[]).sort((a,b)=>a.version-b.version).map((v,i)=>(
+              <div key={v.version} style={{display:"flex",alignItems:"center"}}>
+                <div style={{background:"#dcfce7",borderRadius:8,padding:"8px 12px",minWidth:120}}>
+                  <div style={{fontSize:12,fontWeight:700}}>{v.version}차 실행예산서</div>
+                  <div style={{fontSize:11,color:C.sub}}>{fmtM(v.purchaseTotal||0)}</div>
+                  <div style={{fontSize:10,color:C.green}}>✅ {v.date} {v.time||""}</div>
+                </div>
+                <span style={{padding:"0 6px",color:C.faint,fontSize:12}}>→</span>
+              </div>
+            ))}
+            <div style={{background:confirmed?"#f0fdf4":"#fef3c7",borderRadius:8,padding:"8px 12px",minWidth:120,border:`2px ${confirmed?"solid":"dashed"} ${confirmed?C.green:C.amber}50`}}>
+              <div style={{fontSize:12,fontWeight:700}}>{confirmed?"🏁 결산 확정":"⏳ 진행 중"}</div>
+              <div style={{fontSize:10,color:confirmed?C.green:C.amber,fontWeight:600}}>{confirmed?project.settlementDate:`${project.budgetVersion||1}차 ${project.budgetStatus||"작성중"}`}</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4510,31 +4668,42 @@ function SettlementView({ project, onConfirm, onSave }) {
         <div style={{marginTop:20}}>
           <div style={{fontSize:14,fontWeight:700,color:C.dark,marginBottom:12}}>📋 실행예산 증빙 내역 <span style={{fontSize:12,fontWeight:400,color:C.faint}}>({b2VoucherCount}건)</span></div>
           <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-            <div style={{display:"grid",gridTemplateColumns:"120px 1fr 100px 100px 100px 90px 70px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-              <span>대분류</span><span>항목명</span><span>업체명</span><span>증빙구분</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span style={{textAlign:"center"}}>입금</span>
+            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 80px 70px 90px 70px 60px 34px 34px",background:C.slateLight,padding:"8px 10px",fontSize:10,fontWeight:700,color:C.sub,gap:4}}>
+              <span>대분류</span><span>항목명</span><span>업체명</span><span>구분</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span style={{textAlign:"center"}}>입금</span><span style={{textAlign:"center"}}>📎</span><span style={{textAlign:"center"}}>🕐</span>
             </div>
             {(b2.items||[]).map((cat,ci)=>
               (cat.groups||[]).map((grp,gi)=>
                 (grp.items||[]).filter(it=>(it.vouchers||[]).length>0).map(it=>
-                  (it.vouchers||[]).map((v,vi)=>(
-                    <div key={v.id||`${ci}-${gi}-${it.id}-${vi}`} style={{display:"grid",gridTemplateColumns:"120px 1fr 100px 100px 100px 90px 70px",padding:"8px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:vi%2===0?C.white:"#fafbfc"}}>
-                      <span style={{fontSize:11,color:C.faint,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.category}</span>
+                  (it.vouchers||[]).map((v,vi)=>{
+                    const fmtTs=(iso)=>{if(!iso)return"-";try{const d=new Date(iso);return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;}catch{return "-";}};
+                    return (
+                    <div key={v.id||`${ci}-${gi}-${it.id}-${vi}`} style={{display:"grid",gridTemplateColumns:"90px 1fr 80px 70px 90px 70px 60px 34px 34px",padding:"6px 10px",borderTop:`1px solid ${C.border}`,gap:4,alignItems:"center",background:vi%2===0?C.white:"#fafbfc"}}>
+                      <span style={{fontSize:10,color:C.faint,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.category}</span>
                       <div>
-                        <div style={{fontSize:12,fontWeight:600}}>{it.name}</div>
-                        {grp.group&&<div style={{fontSize:10,color:C.faint}}>{grp.group}</div>}
+                        <div style={{fontSize:11,fontWeight:600}}>{it.name}</div>
+                        {grp.group&&<div style={{fontSize:9,color:C.faint}}>{grp.group}</div>}
                       </div>
-                      <span style={{fontSize:12,color:C.sub}}>{v.vendor||"-"}</span>
-                      <span style={{fontSize:10,background:C.slateLight,color:C.slate,padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap",textAlign:"center"}}>{v.type||"-"}</span>
-                      <span style={{textAlign:"right",fontWeight:700,fontSize:12,color:C.amber}}>{fmt(v.amount||0)}</span>
-                      <span style={{textAlign:"right",fontSize:11,color:C.faint}}>{v.date||"-"}</span>
-                      <span style={{textAlign:"center"}}>{(()=>{const m={"미입금":{bg:"#fee2e2",c:"#ef4444"},"입금요청":{bg:"#fef3c7",c:"#d97706"},"입금완료":{bg:"#dcfce7",c:"#16a34a"}};const s=m[v.paymentStatus]||m["미입금"];return <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:99,background:s.bg,color:s.c,whiteSpace:"nowrap"}}>{v.paymentStatus||"미입금"}</span>;})()}</span>
-                    </div>
-                  ))
+                      <span style={{fontSize:11,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.vendor||"-"}</span>
+                      <span style={{fontSize:9,background:C.slateLight,color:C.slate,padding:"1px 4px",borderRadius:99,whiteSpace:"nowrap",textAlign:"center"}}>{v.type||"-"}</span>
+                      <span style={{textAlign:"right",fontWeight:700,fontSize:11,color:C.amber}}>{fmt(v.amount||0)}</span>
+                      <span style={{textAlign:"right",fontSize:10,color:C.faint}}>{v.date||"-"}</span>
+                      <span style={{textAlign:"center"}}>{(()=>{const m={"미입금":{bg:"#fee2e2",c:"#ef4444"},"입금요청":{bg:"#fef3c7",c:"#d97706"},"입금완료":{bg:"#dcfce7",c:"#16a34a"}};const s=m[v.paymentStatus]||m["미입금"];return <span style={{fontSize:8,fontWeight:700,padding:"2px 4px",borderRadius:99,background:s.bg,color:s.c,whiteSpace:"nowrap"}}>{v.paymentStatus||"미입금"}</span>;})()}</span>
+                      {/* 첨부파일 미리보기 */}
+                      <span style={{textAlign:"center"}}>{(v.files||[]).length>0?<button onClick={()=>setPreview(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:12,color:C.blue,padding:0}} title={`첨부 ${(v.files||[]).length}건`}>📎</button>:<span style={{fontSize:9,color:C.faint}}>-</span>}</span>
+                      {/* 이력 버튼 */}
+                      <span style={{textAlign:"center"}}><button onClick={()=>{
+                        const lines=[`📋 ${v.name} — ${v.vendor}`,``,`등록: ${fmtTs(v.createdAt)}`,`최종수정: ${fmtTs(v.updatedAt)}`];
+                        if((v.history||[]).length>0){lines.push(``,`── 수정 이력 ──`);v.history.forEach((h,i)=>lines.push(`${i+1}. ${fmtTs(h.date)} ${h.action} — ${h.changes||""}`));}
+                        else{lines.push(``,`(수정 이력 없음)`);}
+                        alert(lines.join("\n"));
+                      }} style={{border:"none",background:"none",cursor:"pointer",fontSize:11,color:C.sub,padding:0}} title={`등록: ${fmtTs(v.createdAt)}\n수정: ${fmtTs(v.updatedAt)}\n이력: ${(v.history||[]).length}건`}>🕐</button></span>
+                    </div>);
+                  })
                 )
               )
             )}
-            <div style={{display:"grid",gridTemplateColumns:"120px 1fr 100px 100px 100px 90px 70px",padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:C.slateLight,fontWeight:700,fontSize:13}}>
-              <span>합계</span><span/><span/><span/><span style={{textAlign:"right",color:C.amber}}>{fmt(b2Spent)}</span><span/><span/>
+            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 80px 70px 90px 70px 60px 34px 34px",padding:"10px 10px",borderTop:`2px solid ${C.border}`,gap:4,background:C.slateLight,fontWeight:700,fontSize:12}}>
+              <span>합계</span><span/><span/><span/><span style={{textAlign:"right",color:C.amber}}>{fmt(b2Spent)}</span><span/><span/><span/><span/>
             </div>
           </div>
         </div>
@@ -9885,6 +10054,7 @@ function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMe
 // 경영관리 대시보드
 // ═══════════════════════════════════════════════════════════
 function FinanceDash({ projects }) {
+  const [finTab, setFinTab] = useState("dashboard"); // "dashboard" | "projects"
   const active  = projects.filter(p=>!p.settled);
   const settled = projects.filter(p=>p.settled);
 
@@ -9916,6 +10086,110 @@ function FinanceDash({ projects }) {
 
   return (
     <div style={{padding:"0 4px"}}>
+      {/* 탭 선택 */}
+      <div style={{display:"flex",gap:4,marginBottom:20}}>
+        {[{id:"dashboard",label:"📊 대시보드"},{id:"projects",label:"📂 프로젝트별 예산"}].map(t=>(
+          <button key={t.id} onClick={()=>setFinTab(t.id)} style={{padding:"8px 20px",fontSize:13,fontWeight:finTab===t.id?700:400,border:"none",cursor:"pointer",borderRadius:"8px 8px 0 0",background:finTab===t.id?C.white:"transparent",color:finTab===t.id?C.dark:C.faint,borderBottom:finTab===t.id?`2px solid ${C.blue}`:"2px solid transparent"}}>{t.label}</button>
+        ))}
+      </div>
+
+      {finTab==="projects"?(
+        <div>
+          <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>프로젝트별 실행예산 관리</h2>
+          {projects.length===0?(
+            <div style={{padding:60,textAlign:"center",color:C.faint}}>프로젝트가 없습니다.</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              {projects.map(p=>{
+                const ver = p.budgetVersion||1;
+                const status = p.budgetStatus||"작성중";
+                const versions = p.budgetVersions||[];
+                const sup = qSupply(p.quote);
+                const b2Purchase = (p.budget2?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),s2),s),0);
+                const b2Vouchers = (p.budget2?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,s2),s),0);
+                const b2VoucherAmt = (p.budget2?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).reduce((s4,v)=>s4+(v.amount||0),0),s2),s),0);
+                const profit = sup - b2Purchase;
+                const margin = sup?Math.round(profit/sup*100):0;
+                const isSettled = !!p.settlementDate;
+                const statusMap = {"작성중":{bg:"#fef3c7",c:C.amber,icon:"✏️"},"결재진행":{bg:"#dbeafe",c:C.blue,icon:"📋"},"결재완료":{bg:"#dcfce7",c:C.green,icon:"✅"}};
+                const st = statusMap[status]||statusMap["작성중"];
+                return (
+                  <div key={p.id} style={{background:C.white,border:`1px solid ${isSettled?"#16a34a40":C.border}`,borderRadius:14,overflow:"hidden",borderLeft:isSettled?`4px solid ${C.green}`:"none"}}>
+                    {/* 프로젝트 헤더 */}
+                    <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:16,color:C.dark}}>{p.name}</div>
+                        <div style={{fontSize:12,color:C.sub}}>{p.client} · {p.stage||"기획"}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        {isSettled
+                          ? <span style={{fontSize:12,fontWeight:700,padding:"5px 14px",borderRadius:99,background:"#dcfce7",color:C.green}}>🏁 결산확정 {p.settlementDate}</span>
+                          : <span style={{fontSize:12,fontWeight:700,padding:"5px 14px",borderRadius:99,background:st.bg,color:st.c}}>{st.icon} {ver}차 — {status}</span>
+                        }
+                      </div>
+                    </div>
+                    {/* 현재 예산 요약 */}
+                    <div style={{padding:"14px 20px",display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12}}>
+                      <div><div style={{fontSize:10,color:C.faint}}>매출(공급가액)</div><div style={{fontSize:15,fontWeight:800,color:C.blue}}>{fmtM(sup)}</div></div>
+                      <div><div style={{fontSize:10,color:C.faint}}>실행예산(매입)</div><div style={{fontSize:15,fontWeight:800,color:C.amber}}>{fmtM(b2Purchase)}</div></div>
+                      <div><div style={{fontSize:10,color:C.faint}}>실제집행(증빙)</div><div style={{fontSize:15,fontWeight:800,color:"#9333ea"}}>{fmtM(b2VoucherAmt)}</div></div>
+                      <div><div style={{fontSize:10,color:C.faint}}>예상이익 (이익률)</div><div style={{fontSize:15,fontWeight:800,color:profit>=0?C.green:C.red}}>{fmtM(profit)} <span style={{fontSize:11}}>({margin}%)</span></div></div>
+                      <div><div style={{fontSize:10,color:C.faint}}>증빙</div><div style={{fontSize:15,fontWeight:800,color:C.sub}}>{b2Vouchers}건</div></div>
+                    </div>
+                    {/* 워크플로우 타임라인 */}
+                    <div style={{padding:"0 20px 16px"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:10}}>📂 실행예산서 결재 이력</div>
+                      <div style={{display:"flex",gap:0,alignItems:"flex-start",overflow:"auto"}}>
+                        {versions.sort((a,b)=>a.version-b.version).map((v,i)=>{
+                          const vPurchase=v.purchaseTotal||(v.data?.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),s2),s),0);
+                          return (
+                            <div key={v.version} style={{display:"flex",alignItems:"flex-start"}}>
+                              <div style={{background:"#dcfce7",borderRadius:10,padding:"10px 14px",minWidth:150,position:"relative"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                                  <span style={{width:22,height:22,borderRadius:"50%",background:C.green,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:10}}>{v.version}</span>
+                                  <span style={{fontSize:13,fontWeight:700,color:C.dark}}>{v.version}차 실행예산서</span>
+                                </div>
+                                <div style={{fontSize:11,color:C.sub}}>{fmtM(vPurchase)}</div>
+                                <div style={{fontSize:10,color:C.green,fontWeight:600}}>✅ 결재완료 {v.date} {v.time||""}</div>
+                                {v.voucherCount!=null&&<div style={{fontSize:10,color:C.faint}}>증빙 {v.voucherCount}건</div>}
+                              </div>
+                              <div style={{width:24,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:14}}>
+                                <span style={{color:C.faint}}>→</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* 현재 진행 중인 차수 */}
+                        {!isSettled&&(
+                          <div style={{background:st.bg,borderRadius:10,padding:"10px 14px",minWidth:150,borderStyle:"dashed",borderWidth:2,borderColor:st.c+"50"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                              <span style={{width:22,height:22,borderRadius:"50%",background:st.c+"20",color:st.c,display:"inline-flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:10,border:`2px solid ${st.c}`}}>{ver}</span>
+                              <span style={{fontSize:13,fontWeight:700,color:C.dark}}>{ver}차 실행예산서</span>
+                            </div>
+                            <div style={{fontSize:11,color:C.sub}}>{fmtM(b2Purchase)}</div>
+                            <div style={{fontSize:10,color:st.c,fontWeight:600}}>{st.icon} {status}</div>
+                          </div>
+                        )}
+                        {/* 결산 확정 */}
+                        {isSettled&&(
+                          <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",minWidth:150,border:`2px solid ${C.green}`}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                              <span style={{fontSize:16}}>🏁</span>
+                              <span style={{fontSize:13,fontWeight:700,color:C.green}}>결산 확정</span>
+                            </div>
+                            <div style={{fontSize:10,color:C.green,fontWeight:600}}>{p.settlementDate}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ):(
+      <div>
       <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>경영관리 대시보드</h2>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
@@ -10048,6 +10322,8 @@ function FinanceDash({ projects }) {
             })}
           </div>
         </>
+      )}
+      </div>
       )}
     </div>
   );
