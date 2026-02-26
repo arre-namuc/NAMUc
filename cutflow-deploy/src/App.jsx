@@ -3359,6 +3359,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
   const [newGrp,      setNewGrp]      = useState("");
   const [xlUploading, setXlUploading] = useState(false);
   const [xlResult,    setXlResult]    = useState(null); // {items, format, sheetName, sheetNames}
+  const [editingPrice, setEditingPrice] = useState(null); // "ci-gi-id"
   const xlRef = useRef(null);
 
   const handleExcelFile = async (e) => {
@@ -3471,7 +3472,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
         </div>
       </div>
 
-      <div style={{fontSize:11,color:C.faint,marginBottom:8,textAlign:"right"}}>💡 단가·수량은 <b>만원</b> 단위 입력</div>
+      <div style={{fontSize:11,color:C.faint,marginBottom:8,textAlign:"right"}}>💡 단가 클릭 시 만원 단위로 편집, 엔터로 확정 (예: 500 입력 → 5,000,000 표시)</div>
 
       {/* 대분류 반복 */}
       {q.items.map((cat,ci)=>{
@@ -3511,7 +3512,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
               {/* 소분류 테이블 헤더 */}
               {gi===0&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",background:C.slateLight,padding:"6px 14px",fontSize:11,fontWeight:700,color:C.faint,gap:8}}>
-                  <span>소분류 항목</span><span>단위</span><span style={{textAlign:"right"}}>수량</span><span style={{textAlign:"right"}}>단가(만원)</span><span style={{textAlign:"right"}}>금액</span><span/>
+                  <span>소분류 항목</span><span>단위</span><span style={{textAlign:"right"}}>수량</span><span style={{textAlign:"right"}}>단가</span><span style={{textAlign:"right"}}>금액</span><span/>
                 </div>
               )}
               {/* 소분류 행 */}
@@ -3528,11 +3529,13 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
                     <input value={it.qty} onChange={e=>patchItem(ci,gi,it.id,"qty",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
                       onFocus={e=>{e.target.style.borderColor=cc.accent;e.target.select();}} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <input value={toMan(it.unitPrice)}
+                    <input
+                      value={editingPrice===`${ci}-${gi}-${it.id}` ? toMan(it.unitPrice) : fmtN(it.unitPrice)}
                       onChange={e=>patchItem(ci,gi,it.id,"unitPrice",fromMan(e.target.value))}
-                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
-                      onFocus={e=>{e.target.style.borderColor=cc.accent;e.target.select();}}
-                      onBlur={e=>{e.target.style.borderColor="transparent";}}/>
+                      onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}}}
+                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right",fontSize:editingPrice===`${ci}-${gi}-${it.id}`?13:12,color:editingPrice===`${ci}-${gi}-${it.id}`?C.text:C.sub}}
+                      onFocus={e=>{e.target.style.borderColor=cc.accent;setEditingPrice(`${ci}-${gi}-${it.id}`);setTimeout(()=>e.target.select(),0);}}
+                      onBlur={e=>{e.target.style.borderColor="transparent";setEditingPrice(null);}}/>
                     <span style={{textAlign:"right",fontSize:13,fontWeight:600,color:cc.text}}>{fmt(itemAmt(it))}</span>
                     <button onClick={()=>removeItem(ci,gi,it.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
                   </div>
