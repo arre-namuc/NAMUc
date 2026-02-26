@@ -3824,18 +3824,27 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
 function BudgetEditor({ project, onSave }) {
   const q   = project.quote;
   const bud = project.budget2 || { items: [] };
-  const [editingPrice, setEditingPrice] = useState(null); // "ci-gi-id"
-  const [voucherModal, setVoucherModal] = useState(null); // {ci,gi,itemId}
+  const [editingPrice, setEditingPrice] = useState(null);
+  const [voucherModal, setVoucherModal] = useState(null); // {ci,gi,itemId} or {ci,gi,itemId,editV}
+  const [undoStack, setUndoStack] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  // 증빙 폼 — 결산서 양식과 동일
+  const catOptions   = (q.items||[]).map(c=>c.category);
+  const groupOptions = cat => { const c=(q.items||[]).find(c=>c.category===cat); return c?c.groups.map(g=>g.group):[]; };
+  const [vf, setVf] = useState({name:"",vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",number:"",note:"",category:"",group:"",files:[]});
+  // 업체 검색
   const [vendorSearch, setVendorSearch] = useState("");
   const [showVendorDD, setShowVendorDD] = useState(false);
+  // 신규 업체 등록
   const [newVendorMode, setNewVendorMode] = useState(false);
-  const [newVendor, setNewVendor] = useState({name:"",bizNo:"",phone:"",contactName:"",type:"기타",status:"활성",bankInfo:"",note:"",isWithholding:false,bizRegFile:null,bankCopyFile:null,withholdingFile:null});
-  const [voucherForm, setVoucherForm] = useState({vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",note:"",files:[]});
-  const [undoStack, setUndoStack] = useState([]); // [{label, data}]
-  const [uploading, setUploading] = useState(false);
-  const vFileRef = useRef(null);
+  const [vendorType, setVendorType] = useState("company"); // "company" | "freelancer"
+  const [newVendor, setNewVendor] = useState({name:"",bizNo:"",phone:"",email:"",contactName:"",type:"기타",status:"활성",bankName:"",bankAccount:"",bankHolder:"",note:""});
+  const [vendorDocs, setVendorDocs] = useState({bizReg:null,bankCopy:null,idCard:null});
+  const [docAnalyzing, setDocAnalyzing] = useState(null); // "bizReg"|"bankCopy"|"idCard"|null
 
-  // CRM 외주업체 읽기
+  // CRM 외주업체
   const getVendors = () => { try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; } };
   const saveToCRM = (vendor) => {
     const list = getVendors();
@@ -3846,7 +3855,7 @@ function BudgetEditor({ project, onSave }) {
     return entry;
   };
 
-  // 견적서 → 실행예산 동기화
+  // 견적 → 실행예산 동기화
   const syncedItems = (q.items || []).map(cat => {
     const existing = (bud.items || []).find(b => b.category === cat.category);
     return {
@@ -3879,25 +3888,88 @@ function BudgetEditor({ project, onSave }) {
     onSave({ ...project, budget2: { items: updated } });
   };
 
-  // Undo: 삭제 전 스냅샷 저장
-  const pushUndo = (label) => {
-    setUndoStack(prev => [...prev.slice(-9), { label, data: JSON.parse(JSON.stringify(bud)) }]);
-  };
-  const doUndo = () => {
-    if (!undoStack.length) return;
-    const last = undoStack[undoStack.length - 1];
-    setUndoStack(prev => prev.slice(0, -1));
-    onSave({ ...project, budget2: last.data });
+  // Undo
+  const pushUndo = (label) => { setUndoStack(prev => [...prev.slice(-9), { label, data: JSON.parse(JSON.stringify(bud)) }]); };
+  const doUndo = () => { if (!undoStack.length) return; onSave({ ...project, budget2: undoStack[undoStack.length - 1].data }); setUndoStack(prev => prev.slice(0, -1)); };
+
+  // 파일 → AI 분석 (증빙)
+  const handleVoucherFile = async file => {
+    const toB64Full = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
+    const toB64 = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
+    const b64url = await toB64Full(file);
+    setVf(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
+    // AI 분석
+    setAnalyzing(true);
+    try {
+      const b64 = await toB64(file);
+      const isImg = file.type.startsWith("image/"), isPdf = file.type==="application/pdf";
+      const prompt = "이 영수증/증빙에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}";
+      const msgContent = isImg
+        ?[{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:prompt}]
+        :isPdf?[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:prompt}]
+        :null;
+      if(msgContent){
+        const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:msgContent}]})});
+        if(res.ok){const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim();const cleaned=text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const match=cleaned.match(/\{[\s\S]*\}/);if(match){try{const p=JSON.parse(match[0]);setVf(v=>({...v,name:p.name||v.name,vendor:p.vendor||v.vendor,amount:p.amount?String(Number(String(p.amount).replace(/[^0-9]/g,""))):v.amount,date:p.date||v.date}));}catch(e){}}}
+      }
+    }catch(e){console.error(e);}
+    setAnalyzing(false);
   };
 
-  // 증빙 추가/삭제
-  const addVoucher = async () => {
-    if (!voucherForm.vendor) return alert("업체명을 입력해주세요.");
+  // AI 분석: 사업자등록증/통장사본/신분증
+  const analyzeDoc = async (docType, file) => {
+    const toB64 = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
+    const toB64Full = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
+    const b64url = await toB64Full(file);
+    setVendorDocs(d=>({...d,[docType]:{name:file.name,type:file.type,b64url,size:file.size}}));
+    setDocAnalyzing(docType);
+    try {
+      const b64 = await toB64(file);
+      const isImg = file.type.startsWith("image/"), isPdf = file.type==="application/pdf";
+      let prompt = "";
+      if(docType==="bizReg") prompt="이 사업자등록증에서 정보를 추출해서 반드시 아래 JSON만 답해줘.\n{\"name\":\"상호명\",\"bizNo\":\"사업자번호\",\"representative\":\"대표자명\",\"address\":\"주소\",\"bizType\":\"업태\",\"bizItem\":\"종목\"}";
+      else if(docType==="bankCopy") prompt="이 통장사본에서 정보를 추출해서 반드시 아래 JSON만 답해줘.\n{\"bankName\":\"은행명\",\"bankAccount\":\"계좌번호\",\"bankHolder\":\"예금주\"}";
+      else if(docType==="idCard") prompt="이 신분증에서 정보를 추출해서 반드시 아래 JSON만 답해줘.\n{\"name\":\"이름\",\"birthDate\":\"생년월일\",\"idNumber\":\"주민번호 앞자리만\"}";
+      const src = isImg?{type:"image",source:{type:"base64",media_type:file.type,data:b64}}:{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}};
+      const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:[src,{type:"text",text:prompt}]}]})});
+      if(res.ok){
+        const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim();
+        const cleaned=text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
+        const match=cleaned.match(/\{[\s\S]*\}/);
+        if(match){
+          try{
+            const p=JSON.parse(match[0]);
+            if(docType==="bizReg") setNewVendor(v=>({...v,name:p.name||v.name,bizNo:p.bizNo||v.bizNo,contactName:p.representative||v.contactName}));
+            else if(docType==="bankCopy") setNewVendor(v=>({...v,bankName:p.bankName||v.bankName,bankAccount:p.bankAccount||v.bankAccount,bankHolder:p.bankHolder||v.bankHolder}));
+            else if(docType==="idCard") setNewVendor(v=>({...v,name:p.name||v.name,contactName:p.name||v.contactName}));
+          }catch(e){}
+        }
+      }
+    }catch(e){console.error(e);}
+    setDocAnalyzing(null);
+  };
+
+  // 증빙 모달 열기
+  const openVoucherAdd = (ci, gi, itemId) => {
+    const catName = syncedItems[ci]?.category||"";
+    const grpName = syncedItems[ci]?.groups[gi]?.group||"";
+    const itemName = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId)?.name||"";
+    setVoucherModal({ci,gi,itemId});
+    setVf({name:itemName,vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",number:"",note:"",category:catName,group:grpName,files:[]});
+    setVendorSearch("");setShowVendorDD(false);setNewVendorMode(false);
+    setNewVendor({name:"",bizNo:"",phone:"",email:"",contactName:"",type:"기타",status:"활성",bankName:"",bankAccount:"",bankHolder:"",note:""});
+    setVendorDocs({bizReg:null,bankCopy:null,idCard:null});
+    setVendorType("company");
+  };
+
+  // 증빙 저장
+  const saveVoucher = async () => {
+    if(!vf.name||!vf.vendor) return alert("항목명과 업체명을 입력해주세요.");
     const { ci, gi, itemId } = voucherModal;
     const it = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);
     if (!it) return;
 
-    let files = voucherForm.files || [];
+    let files = vf.files || [];
     const needUpload = files.filter(f => f.b64url && !f.url);
     if (needUpload.length > 0 && isConfigured) {
       setUploading(true);
@@ -3914,8 +3986,11 @@ function BudgetEditor({ project, onSave }) {
     }
 
     pushUndo("증빙 추가");
-    const entry = { id:"bv"+Date.now(), ...voucherForm, amount:Number(voucherForm.amount)||0, files };
-    const newVouchers = [...(it.vouchers||[]), entry];
+    const isEdit = voucherModal.editV;
+    const entry = { id: isEdit ? isEdit.id : "bv"+Date.now(), ...vf, amount:Number(vf.amount)||0, files };
+    const newVouchers = isEdit
+      ? (it.vouchers||[]).map(v=>v.id===isEdit.id?entry:v)
+      : [...(it.vouchers||[]), entry];
     const totalVoucherAmt = newVouchers.reduce((s,v)=>s+(v.amount||0),0);
     patch(ci, gi, itemId, { vouchers: newVouchers, purchasePrice: totalVoucherAmt });
     setVoucherModal(null);
@@ -3929,29 +4004,22 @@ function BudgetEditor({ project, onSave }) {
     patch(ci, gi, itemId, { vouchers: newVouchers, purchasePrice: totalVoucherAmt });
   };
 
-  // 파일 핸들러
-  const handleVFile = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const toB64 = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
-    const b64url = await toB64(file);
-    setVoucherForm(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
-    if(vFileRef.current) vFileRef.current.value="";
-  };
-
-  // 신규 업체 등록 → CRM
+  // 신규 업체 등록
   const registerVendor = () => {
     if(!newVendor.name?.trim()) return alert("업체명을 입력해주세요.");
     const saved = saveToCRM({
       ...newVendor,
-      docs: {
-        bizReg: newVendor.bizRegFile || null,
-        bankCopy: newVendor.bankCopyFile || null,
-        withholding: newVendor.withholdingFile || null,
-      },
+      vendorType,
+      docs: { bizReg: vendorDocs.bizReg||null, bankCopy: vendorDocs.bankCopy||null, idCard: vendorDocs.idCard||null },
     });
-    setVoucherForm(v=>({...v, vendor:saved.name, vendorId:saved.id}));
+    setVf(v=>({...v, vendor:saved.name, vendorId:saved.id}));
     setNewVendorMode(false);
-    setNewVendor({name:"",bizNo:"",phone:"",contactName:"",type:"기타",status:"활성",bankInfo:"",note:"",isWithholding:false,bizRegFile:null,bankCopyFile:null,withholdingFile:null});
+  };
+
+  // CRM 업체 선택 시 정보 자동 채우기
+  const selectVendor = (v) => {
+    setVf(f=>({...f, vendor:v.name, vendorId:v.id}));
+    setShowVendorDD(false);
   };
 
   // 합계
@@ -3961,6 +4029,24 @@ function BudgetEditor({ project, onSave }) {
       s2 + (grp.items || []).reduce((s3, it) => s3 + (it.purchasePrice || 0), 0), 0), 0);
   const profit = salesTotal - purchaseTotal;
   const margin = salesTotal ? Math.round(profit / salesTotal * 100) : 0;
+
+  // 문서 업로드 UI 헬퍼
+  const DocUpload = ({label,docKey,icon}) => (
+    <div style={{flex:"1 1 0",minWidth:0}}>
+      <div style={{fontSize:11,fontWeight:600,color:C.sub,marginBottom:4}}>{icon} {label}</div>
+      {vendorDocs[docKey] ? (
+        <div style={{fontSize:11,background:docAnalyzing===docKey?C.blueLight:C.white,border:`1px solid ${docAnalyzing===docKey?C.blue:C.border}`,borderRadius:6,padding:"6px 8px",display:"flex",alignItems:"center",gap:4}}>
+          {docAnalyzing===docKey?"⏳ AI 분석중...":"✅"} {vendorDocs[docKey].name.slice(0,12)}
+          <button onClick={()=>setVendorDocs(d=>({...d,[docKey]:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,marginLeft:"auto"}}>×</button>
+        </div>
+      ) : (
+        <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:6,padding:"8px 6px",textAlign:"center",cursor:"pointer",fontSize:11,color:C.faint}}>
+          <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeDoc(docKey,f);}}/>
+          파일 선택
+        </label>
+      )}
+    </div>
+  );
 
   return (
     <div>
@@ -3982,7 +4068,7 @@ function BudgetEditor({ project, onSave }) {
 
       {/* Undo + 힌트 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontSize:11,color:C.faint}}>💡 매입 금액 클릭 시 만원 단위 편집 · 각 항목에 증빙 첨부 가능</div>
+        <div style={{fontSize:11,color:C.faint}}>💡 매입 금액 클릭 시 만원 단위 편집 · 📎 증빙 첨부 → 결산서 자동 반영</div>
         {undoStack.length>0 && (
           <button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>
             ↩️ 되돌리기 ({undoStack[undoStack.length-1].label})
@@ -4062,25 +4148,21 @@ function BudgetEditor({ project, onSave }) {
                                 placeholder="메모" style={{width:60,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 6px",fontSize:10,outline:"none",color:C.sub,minWidth:0}}/>
                             </div>
                             <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-                              <button onClick={()=>{
-                                setVoucherModal({ci,gi,itemId:it.id});
-                                setVoucherForm({vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",note:"",files:[]});
-                                setVendorSearch("");setShowVendorDD(false);setNewVendorMode(false);
-                              }} title="증빙 추가"
+                              <button onClick={()=>openVoucherAdd(ci,gi,it.id)} title="증빙 추가"
                                 style={{background:"none",border:"none",cursor:"pointer",fontSize:14,position:"relative"}}>
                                 📎{vCount>0&&<span style={{position:"absolute",top:-4,right:-6,background:C.amber,color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,padding:"0 4px",lineHeight:"16px"}}>{vCount}</span>}
                               </button>
                             </div>
                           </div>
-                          {/* 증빙 목록 인라인 */}
                           {vCount>0 && (
                             <div style={{background:"#fffbeb",borderBottom:`1px solid ${C.border}`,padding:"4px 12px 4px 32px"}}>
                               {(it.vouchers||[]).map(v=>(
-                                <div key={v.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:C.sub,background:C.white,border:`1px solid ${C.border}`,borderRadius:4,padding:"2px 6px",marginRight:4,marginBottom:2}}>
-                                  <span>{v.vendor}</span>
-                                  <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount)}</span>
+                                <div key={v.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:C.sub,background:C.white,border:`1px solid ${C.border}`,borderRadius:4,padding:"2px 6px",marginRight:4,marginBottom:2,cursor:"pointer"}}
+                                  onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}}>
+                                  <span style={{fontWeight:600}}>{v.vendor}</span>
+                                  <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
                                   {(v.files||[]).length>0&&<span>📄{v.files.length}</span>}
-                                  <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1}}>×</button>
+                                  <button onClick={e=>{e.stopPropagation();removeVoucher(ci,gi,it.id,v.id);}} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1}}>×</button>
                                 </div>
                               ))}
                             </div>
@@ -4110,143 +4192,157 @@ function BudgetEditor({ project, onSave }) {
         </div>
       )}
 
-      {/* 증빙 추가 모달 */}
-      {voucherModal && (
-        <Modal title={`📎 증빙 추가 — ${syncedItems[voucherModal.ci]?.groups[voucherModal.gi]?.items.find(x=>x.id===voucherModal.itemId)?.name||""}`}
-          onClose={()=>setVoucherModal(null)}>
-          {!newVendorMode ? (<>
-            {/* 업체 선택 */}
-            <Field label="업체명 *">
-              <div style={{position:"relative"}}>
-                <input style={inp} value={voucherForm.vendor}
-                  onChange={e=>{setVoucherForm(v=>({...v,vendor:e.target.value,vendorId:""}));setVendorSearch(e.target.value);setShowVendorDD(true);}}
-                  onFocus={()=>setShowVendorDD(true)}
-                  placeholder="업체명 입력 또는 검색"/>
-                {showVendorDD && vendorSearch && (()=>{
-                  const matches = getVendors().filter(v=>v.name.includes(vendorSearch));
-                  return matches.length>0 ? (
-                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:10,maxHeight:160,overflowY:"auto"}}>
-                      {matches.map(v=>(
-                        <div key={v.id} onClick={()=>{setVoucherForm(f=>({...f,vendor:v.name,vendorId:v.id}));setShowVendorDD(false);}}
-                          style={{padding:"8px 12px",cursor:"pointer",fontSize:12,borderBottom:`1px solid ${C.border}`}}>
-                          <span style={{fontWeight:600}}>{v.name}</span>
-                          <span style={{color:C.faint,marginLeft:8}}>{v.type||""} · {v.contactName||""}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              <button onClick={()=>{setNewVendorMode(true);setNewVendor(v=>({...v,name:voucherForm.vendor}));}}
-                style={{marginTop:4,background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.blue,textDecoration:"underline"}}>
-                + 신규 업체 등록 (CRM에 추가)
-              </button>
-            </Field>
-            <div style={{display:"flex",gap:12}}>
-              <Field label="증빙유형" style={{flex:1}}>
-                <select style={inp} value={voucherForm.type} onChange={e=>setVoucherForm(v=>({...v,type:e.target.value}))}>
+      {/* ═══ 증빙 추가/수정 모달 (결산서와 동일 양식) ═══ */}
+      {voucherModal && !newVendorMode && (
+        <Modal title={voucherModal.editV?"증빙 수정":"증빙 추가"} onClose={()=>setVoucherModal(null)} wide>
+          <div style={{display:"flex",gap:20}}>
+            {/* 좌측: 파일 첨부 */}
+            <div style={{width:220,flexShrink:0}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:8}}>파일 첨부 (선택)</div>
+              <label style={{display:"block",border:`2px dashed ${analyzing?C.blue:C.border}`,borderRadius:10,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:analyzing?C.blueLight:C.bg,transition:"all .2s"}}>
+                <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleVoucherFile(e.target.files[0]);}}/>
+                <div style={{fontSize:24,marginBottom:6}}>{analyzing?"⏳":"📎"}</div>
+                <div style={{fontSize:12,color:C.sub}}>{analyzing?"AI 분석 중...":"클릭 또는 드롭"}</div>
+                <div style={{fontSize:11,color:C.faint,marginTop:4}}>이미지·PDF 지원</div>
+              </label>
+              {(vf.files||[]).map((f,i)=>(
+                <div key={i} style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                  <button onClick={()=>setVf(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:14,marginLeft:4}}>×</button>
+                </div>
+              ))}
+            </div>
+            {/* 우측: 폼 필드 */}
+            <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
+              <Field label="항목명 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.name} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="ex. 카메라 렌탈"/></Field>
+              <Field label="업체명 / 공급처 *">
+                <div style={{position:"relative"}}>
+                  <input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.vendor}
+                    onChange={e=>{setVf(v=>({...v,vendor:e.target.value,vendorId:""}));setVendorSearch(e.target.value);setShowVendorDD(true);}}
+                    onFocus={()=>{if(vf.vendor)setShowVendorDD(true);}}
+                    placeholder="ex. 씨네렌탈 (입력하면 CRM 검색)"/>
+                  {showVendorDD && vf.vendor && (()=>{
+                    const matches = getVendors().filter(v=>v.name.includes(vf.vendor));
+                    return matches.length>0 ? (
+                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.12)",zIndex:10,maxHeight:180,overflowY:"auto"}}>
+                        {matches.map(v=>(
+                          <div key={v.id} onClick={()=>selectVendor(v)}
+                            style={{padding:"8px 12px",cursor:"pointer",fontSize:12,borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                            onMouseEnter={e=>e.currentTarget.style.background=C.slateLight} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                            <div>
+                              <span style={{fontWeight:600}}>{v.name}</span>
+                              <span style={{color:C.faint,marginLeft:8,fontSize:11}}>{v.vendorType==="freelancer"?"프리랜서":"업체"} · {v.type||""}</span>
+                            </div>
+                            <span style={{fontSize:11,color:C.faint}}>{v.phone||v.contactName||""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+                <button onClick={()=>{ setNewVendorMode(true); setNewVendor(v=>({...v,name:vf.vendor})); }}
+                  style={{marginTop:4,background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.blue,textDecoration:"underline"}}>
+                  + 신규 업체 등록 (CRM에 자동 추가)
+                </button>
+              </Field>
+              <Field label="계산서번호" half><input style={inp} value={vf.number||""} onChange={e=>setVf(v=>({...v,number:e.target.value}))} placeholder="2026-001"/></Field>
+              <Field label="날짜" half><input style={inp} type="date" value={vf.date} onChange={e=>setVf(v=>({...v,date:e.target.value}))}/></Field>
+              <Field label="금액 (원)"><input style={{...inp,fontWeight:700}} type="number" value={vf.amount} onChange={e=>setVf(v=>({...v,amount:e.target.value}))} placeholder="0"/></Field>
+              <Field label="증빙 구분" half>
+                <select style={inp} value={vf.type} onChange={e=>setVf(v=>({...v,type:e.target.value}))}>
                   {VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="금액 (만원)" style={{flex:1}}>
-                <input style={inp} type="number" value={voucherForm.amount?toMan(voucherForm.amount):""} onChange={e=>setVoucherForm(v=>({...v,amount:fromMan(e.target.value)}))} placeholder="만원 단위"/>
+              <Field label="대분류" half>
+                <select style={inp} value={vf.category} onChange={e=>{const cat=e.target.value,grp=groupOptions(cat)[0]||"";setVf(v=>({...v,category:cat,group:grp}));}}>
+                  <option value="">- 선택 -</option>
+                  {catOptions.map(c=><option key={c}>{c}</option>)}
+                </select>
               </Field>
-              <Field label="일자" style={{flex:1}}>
-                <input style={inp} type="date" value={voucherForm.date} onChange={e=>setVoucherForm(v=>({...v,date:e.target.value}))}/>
+              <Field label="중분류">
+                <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
+                  <option value="">- 선택 -</option>
+                  {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
+                </select>
               </Field>
+              <Field label="메모 / 비고"><input style={inp} value={vf.note||""} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
             </div>
-            <Field label="메모"><input style={inp} value={voucherForm.note} onChange={e=>setVoucherForm(v=>({...v,note:e.target.value}))} placeholder="선택사항"/></Field>
-            <Field label="첨부파일 (세금계산서, 영수증 등)">
-              <input ref={vFileRef} type="file" accept="image/*,.pdf" onChange={handleVFile} style={{fontSize:12}}/>
-              {(voucherForm.files||[]).length>0 && (
-                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4}}>
-                  {voucherForm.files.map((f,i)=>(
-                    <span key={i} style={{fontSize:11,background:C.slateLight,padding:"2px 8px",borderRadius:4}}>
-                      📄 {f.name}
-                      <button onClick={()=>setVoucherForm(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))}
-                        style={{background:"none",border:"none",cursor:"pointer",color:C.faint,marginLeft:4}}>×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </Field>
-            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <Btn onClick={()=>setVoucherModal(null)}>취소</Btn>
-              <Btn primary onClick={addVoucher} disabled={uploading}>{uploading?"업로드 중...":"증빙 추가"}</Btn>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+            {voucherModal.editV&&<Btn danger sm onClick={()=>{removeVoucher(voucherModal.ci,voucherModal.gi,voucherModal.itemId,voucherModal.editV.id);setVoucherModal(null);}}>삭제</Btn>}
+            <div style={{flex:1}}/>
+            <Btn onClick={()=>setVoucherModal(null)} disabled={uploading}>취소</Btn>
+            <Btn primary onClick={saveVoucher} disabled={analyzing||uploading}>
+              {uploading ? "📤 업로드 중..." : analyzing ? "🤖 분석 중..." : "저장"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ═══ 신규 업체 등록 모달 ═══ */}
+      {voucherModal && newVendorMode && (
+        <Modal title="📋 신규 업체 등록" onClose={()=>setNewVendorMode(false)} wide>
+          <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.blue,display:"flex",alignItems:"center",gap:8}}>
+            ℹ️ 등록된 업체는 CRM 외주관리 탭에 자동 추가됩니다. 서류를 업로드하면 AI가 자동 분석합니다.
+          </div>
+
+          {/* 프리랜서/업체 토글 */}
+          <div style={{display:"flex",gap:0,marginBottom:16,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",width:"fit-content"}}>
+            {[{id:"company",label:"🏢 업체/법인"},{id:"freelancer",label:"👤 프리랜서/개인"}].map(t=>(
+              <button key={t.id} onClick={()=>setVendorType(t.id)}
+                style={{padding:"8px 20px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",
+                  background:vendorType===t.id?C.blue:"transparent",color:vendorType===t.id?"#fff":C.sub}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:20}}>
+            {/* 좌측: 서류 업로드 */}
+            <div style={{width:240,flexShrink:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:10}}>📄 서류 업로드 (AI 자동분석)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <DocUpload label={vendorType==="company"?"사업자등록증":"사업자/위촉장"} docKey="bizReg" icon="🏢"/>
+                <DocUpload label="통장사본" docKey="bankCopy" icon="🏦"/>
+                {vendorType==="freelancer" && <DocUpload label="신분증" docKey="idCard" icon="🪪"/>}
+              </div>
             </div>
-          </>) : (<>
-            {/* 신규 업체 등록 폼 */}
-            <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.blue}}>
-              📋 신규 업체가 CRM 외주업체에 함께 등록됩니다.
-            </div>
-            <Field label="업체명 *"><input style={inp} value={newVendor.name} onChange={e=>setNewVendor(v=>({...v,name:e.target.value}))}/></Field>
-            <div style={{display:"flex",gap:12}}>
-              <Field label="사업자번호" style={{flex:1}}><input style={inp} value={newVendor.bizNo||""} onChange={e=>setNewVendor(v=>({...v,bizNo:e.target.value}))} placeholder="000-00-00000"/></Field>
-              <Field label="연락처" style={{flex:1}}><input style={inp} value={newVendor.phone||""} onChange={e=>setNewVendor(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
-            </div>
-            <div style={{display:"flex",gap:12}}>
-              <Field label="담당자명" style={{flex:1}}><input style={inp} value={newVendor.contactName||""} onChange={e=>setNewVendor(v=>({...v,contactName:e.target.value}))}/></Field>
-              <Field label="업종" style={{flex:1}}>
+            {/* 우측: 업체 정보 */}
+            <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
+              <Field label={vendorType==="company"?"상호명 *":"성명 *"}>
+                <input style={{...inp,background:docAnalyzing?C.blueLight:C.white}} value={newVendor.name} onChange={e=>setNewVendor(v=>({...v,name:e.target.value}))}/>
+              </Field>
+              <Field label="사업자번호 / 주민번호" half>
+                <input style={{...inp,background:docAnalyzing==="bizReg"?C.blueLight:C.white}} value={newVendor.bizNo||""} onChange={e=>setNewVendor(v=>({...v,bizNo:e.target.value}))} placeholder="000-00-00000"/>
+              </Field>
+              <Field label={vendorType==="company"?"대표자명":"담당자명"} half>
+                <input style={{...inp,background:docAnalyzing==="bizReg"?C.blueLight:C.white}} value={newVendor.contactName||""} onChange={e=>setNewVendor(v=>({...v,contactName:e.target.value}))}/>
+              </Field>
+              <Field label="연락처" half><input style={inp} value={newVendor.phone||""} onChange={e=>setNewVendor(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
+              <Field label="이메일" half><input style={inp} value={newVendor.email||""} onChange={e=>setNewVendor(v=>({...v,email:e.target.value}))} placeholder="email@example.com"/></Field>
+              <Field label="업종" half>
                 <select style={inp} value={newVendor.type||"기타"} onChange={e=>setNewVendor(v=>({...v,type:e.target.value}))}>
                   {OUTSOURCE_TYPES.map(t=><option key={t}>{t}</option>)}
                 </select>
               </Field>
+              <Field label="은행명" half>
+                <input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankName||""} onChange={e=>setNewVendor(v=>({...v,bankName:e.target.value}))} placeholder="국민은행"/>
+              </Field>
+              <Field label="계좌번호" half>
+                <input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankAccount||""} onChange={e=>setNewVendor(v=>({...v,bankAccount:e.target.value}))} placeholder="000-000-000-000"/>
+              </Field>
+              <Field label="예금주" half>
+                <input style={{...inp,background:docAnalyzing==="bankCopy"?C.blueLight:C.white}} value={newVendor.bankHolder||""} onChange={e=>setNewVendor(v=>({...v,bankHolder:e.target.value}))}/>
+              </Field>
+              <Field label="비고"><input style={inp} value={newVendor.note||""} onChange={e=>setNewVendor(v=>({...v,note:e.target.value}))} placeholder="참고사항"/></Field>
             </div>
-            <Field label="입금 계좌 (은행명 + 계좌번호)"><input style={inp} value={newVendor.bankInfo||""} onChange={e=>setNewVendor(v=>({...v,bankInfo:e.target.value}))} placeholder="국민은행 000-000-000-000"/></Field>
-            {/* 서류 업로드 */}
-            <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 14px",marginBottom:12,border:`1px solid ${C.border}`}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:8}}>📄 필수 서류</div>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                <div style={{flex:"1 1 140px"}}>
-                  <div style={{fontSize:11,color:C.sub,marginBottom:4}}>사업자등록증</div>
-                  {newVendor.bizRegFile ? (
-                    <div style={{fontSize:11,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}>
-                      📄 {newVendor.bizRegFile.name}
-                      <button onClick={()=>setNewVendor(v=>({...v,bizRegFile:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
-                    </div>
-                  ) : (
-                    <input type="file" accept="image/*,.pdf" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const toB64=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});const b64=await toB64(f);setNewVendor(v=>({...v,bizRegFile:{name:f.name,type:f.type,b64url:b64,size:f.size}}));}} style={{fontSize:11,width:"100%"}}/>
-                  )}
-                </div>
-                <div style={{flex:"1 1 140px"}}>
-                  <div style={{fontSize:11,color:C.sub,marginBottom:4}}>통장사본</div>
-                  {newVendor.bankCopyFile ? (
-                    <div style={{fontSize:11,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}>
-                      📄 {newVendor.bankCopyFile.name}
-                      <button onClick={()=>setNewVendor(v=>({...v,bankCopyFile:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
-                    </div>
-                  ) : (
-                    <input type="file" accept="image/*,.pdf" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const toB64=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});const b64=await toB64(f);setNewVendor(v=>({...v,bankCopyFile:{name:f.name,type:f.type,b64url:b64,size:f.size}}));}} style={{fontSize:11,width:"100%"}}/>
-                  )}
-                </div>
-              </div>
-              {/* 원천사업자 체크 */}
-              <div style={{marginTop:8}}>
-                <label style={{fontSize:11,color:C.sub,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                  <input type="checkbox" checked={!!newVendor.isWithholding} onChange={e=>setNewVendor(v=>({...v,isWithholding:e.target.checked}))}/>
-                  원천징수 대상 (개인사업자/프리랜서)
-                </label>
-                {newVendor.isWithholding && (
-                  <div style={{marginTop:6}}>
-                    <div style={{fontSize:11,color:C.sub,marginBottom:4}}>원천징수 관련 자료</div>
-                    {newVendor.withholdingFile ? (
-                      <div style={{fontSize:11,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",display:"inline-flex",alignItems:"center",gap:4}}>
-                        📄 {newVendor.withholdingFile.name}
-                        <button onClick={()=>setNewVendor(v=>({...v,withholdingFile:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
-                      </div>
-                    ) : (
-                      <input type="file" accept="image/*,.pdf" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const toB64=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});const b64=await toB64(f);setNewVendor(v=>({...v,withholdingFile:{name:f.name,type:f.type,b64url:b64,size:f.size}}));}} style={{fontSize:11}}/>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <Field label="비고"><input style={inp} value={newVendor.note||""} onChange={e=>setNewVendor(v=>({...v,note:e.target.value}))}/></Field>
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
-              <Btn onClick={()=>setNewVendorMode(false)}>← 돌아가기</Btn>
-              <Btn primary onClick={registerVendor}>업체 등록 후 선택</Btn>
-            </div>
-          </>)}
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"space-between",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+            <Btn onClick={()=>setNewVendorMode(false)}>← 증빙 입력으로 돌아가기</Btn>
+            <Btn primary onClick={registerVendor} disabled={!!docAnalyzing}>
+              {docAnalyzing ? "🤖 AI 분석 중..." : "업체 등록 후 증빙 입력으로"}
+            </Btn>
+          </div>
         </Modal>
       )}
     </div>
