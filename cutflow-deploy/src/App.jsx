@@ -3846,15 +3846,21 @@ function BudgetEditor({ project, onSave }) {
 
   // ── 실행예산 버전 관리 ──────────────────────────────────
   const budgetVersion  = project.budgetVersion || 1;
-  const budgetStatus   = project.budgetStatus || "작성중"; // "작성중" | "결재진행" | "결재완료"
+  const budgetStatus   = project.budgetStatus || "작성중"; // "작성중"|"경영지원실장결재"|"대표결재"|"결재완료"
   const budgetVersions = project.budgetVersions || [];
 
   const requestApproval = () => {
-    if(!confirm(`${budgetVersion}차 실행예산서를 결재 올리시겠습니까?\n결재 진행 중에는 편집이 불가합니다.`)) return;
-    onSave({...project, budgetStatus:"결재진행"});
+    if(!confirm(`${budgetVersion}차 실행예산서를 결재 올리시겠습니까?\n결재 진행 중에는 편집이 불가합니다.\n\n결재순서: 경영지원실장 → 대표`)) return;
+    onSave({...project, budgetStatus:"경영지원실장결재"});
+    alert(`📨 경영지원실장에게 ${budgetVersion}차 실행예산서 결재요청을 전송했습니다.`);
+  };
+  const approveByManager = () => {
+    if(!confirm(`경영지원실장 결재를 승인하시겠습니까?\n승인 후 대표 결재로 넘어갑니다.`)) return;
+    onSave({...project, budgetStatus:"대표결재"});
+    alert(`📨 대표에게 ${budgetVersion}차 실행예산서 결재요청을 전송했습니다.`);
   };
   const completeApproval = () => {
-    if(!confirm(`${budgetVersion}차 실행예산서 결재를 완료하시겠습니까?`)) return;
+    if(!confirm(`${budgetVersion}차 실행예산서 대표 결재를 완료하시겠습니까?`)) return;
     const snapshot = {
       version: budgetVersion,
       data: JSON.parse(JSON.stringify(bud)),
@@ -3877,8 +3883,19 @@ function BudgetEditor({ project, onSave }) {
     onSave({...project, settlementDate:todayStr(), settled:true});
   };
   const isEditable = budgetStatus === "작성중";
+  const isApproving = budgetStatus==="경영지원실장결재"||budgetStatus==="대표결재";
 
-  const getVendors = () => { try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; } };
+  // CRM 업체 목록 (Firestore 실시간 구독 + localStorage 폴백)
+  const [crmVendors, setCrmVendors] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; }
+  });
+  useEffect(()=>{
+    const unsub = subscribeVendors((list)=>{
+      if(list) { setCrmVendors(list); try{localStorage.setItem("crm_vendors",JSON.stringify(list));}catch{} }
+    });
+    return unsub;
+  },[]);
+  const getVendors = () => crmVendors;
   const saveToCRM = async (vendor) => {
     const entry = {...vendor, id: vendor.id || "v"+Date.now()};
     // 첨부파일 Firebase Storage 업로드
@@ -4053,25 +4070,34 @@ function BudgetEditor({ project, onSave }) {
   return (
     <div>
       {/* ── 실행예산 버전 상태바 ── */}
-      <div style={{background:budgetStatus==="결재완료"?"#f0fdf4":budgetStatus==="결재진행"?"#eff6ff":"#fff",border:`1px solid ${budgetStatus==="결재완료"?C.green+"40":budgetStatus==="결재진행"?C.blue+"40":C.border}`,borderRadius:12,padding:"12px 18px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+      <div style={{background:budgetStatus==="결재완료"?"#f0fdf4":isApproving?"#eff6ff":"#fff",border:`1px solid ${budgetStatus==="결재완료"?C.green+"40":isApproving?C.blue+"40":C.border}`,borderRadius:12,padding:"12px 18px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:20}}>{budgetStatus==="결재완료"?"✅":budgetStatus==="결재진행"?"📋":"✏️"}</span>
+          <span style={{fontSize:20}}>{budgetStatus==="결재완료"?"✅":isApproving?"📋":"✏️"}</span>
           <div>
             <div style={{fontWeight:700,fontSize:14,color:C.dark}}>{budgetVersion}차 실행예산서</div>
             <div style={{fontSize:12,color:C.sub}}>
               {budgetStatus==="작성중"&&"작성 중 — 편집 가능"}
-              {budgetStatus==="결재진행"&&"결재 진행 중 — 편집 불가"}
-              {budgetStatus==="결재완료"&&`${budgetVersion}차 결재 완료`}
+              {budgetStatus==="경영지원실장결재"&&"📋 경영지원실장 결재 대기 중"}
+              {budgetStatus==="대표결재"&&"📋 대표 결재 대기 중"}
+              {budgetStatus==="결재완료"&&`${budgetVersion}차 결재 완료 (경영지원실장 ✅ → 대표 ✅)`}
             </div>
           </div>
+          {/* 결재 단계 표시 */}
+          {isApproving&&(
+            <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:8,fontSize:11}}>
+              <span style={{padding:"3px 8px",borderRadius:99,fontWeight:700,background:budgetStatus==="대표결재"?"#dcfce7":"#dbeafe",color:budgetStatus==="대표결재"?C.green:C.blue}}>{budgetStatus==="대표결재"?"✅":"⏳"} 경영지원실장</span>
+              <span style={{color:C.faint}}>→</span>
+              <span style={{padding:"3px 8px",borderRadius:99,fontWeight:700,background:budgetStatus==="대표결재"?"#dbeafe":"#f1f5f9",color:budgetStatus==="대표결재"?C.blue:C.faint}}>⏳ 대표</span>
+            </div>
+          )}
           {/* 버전 진행 표시 */}
           <div style={{display:"flex",gap:4,marginLeft:8}}>
             {[...Array(Math.max(budgetVersion,1))].map((_,i)=>{
               const ver=i+1;const saved=budgetVersions.find(v=>v.version===ver);
               return <span key={ver} style={{width:24,height:24,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,
-                background:saved?"#dcfce7":ver===budgetVersion?(budgetStatus==="결재진행"?"#dbeafe":"#fef3c7"):"#f1f5f9",
-                color:saved?C.green:ver===budgetVersion?(budgetStatus==="결재진행"?C.blue:C.amber):C.faint,
-                border:ver===budgetVersion?`2px solid ${budgetStatus==="결재진행"?C.blue:budgetStatus==="결재완료"?C.green:C.amber}`:"1px solid #e2e8f0"
+                background:saved?"#dcfce7":ver===budgetVersion?(isApproving?"#dbeafe":"#fef3c7"):"#f1f5f9",
+                color:saved?C.green:ver===budgetVersion?(isApproving?C.blue:C.amber):C.faint,
+                border:ver===budgetVersion?`2px solid ${isApproving?C.blue:budgetStatus==="결재완료"?C.green:C.amber}`:"1px solid #e2e8f0"
               }}>{ver}</span>;
             })}
           </div>
@@ -4079,7 +4105,8 @@ function BudgetEditor({ project, onSave }) {
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {budgetVersions.length>0&&<button onClick={()=>setShowVersionHistory(true)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",color:C.sub,fontWeight:600}}>📂 버전 이력 ({budgetVersions.length})</button>}
           {budgetStatus==="작성중"&&<Btn primary onClick={requestApproval}>📤 결재 올리기</Btn>}
-          {budgetStatus==="결재진행"&&<Btn primary onClick={completeApproval} style={{background:C.green}}>✅ 결재 완료</Btn>}
+          {budgetStatus==="경영지원실장결재"&&<Btn primary onClick={approveByManager} style={{background:"#0ea5e9"}}>✅ 경영지원실장 승인</Btn>}
+          {budgetStatus==="대표결재"&&<Btn primary onClick={completeApproval} style={{background:C.green}}>✅ 대표 결재 완료</Btn>}
           {budgetStatus==="결재완료"&&!project.settlementDate&&<>
             <Btn onClick={startNewVersion}>📝 {budgetVersion+1}차 수정 시작</Btn>
             <Btn primary onClick={confirmSettlement} style={{background:"#7c3aed"}}>🏁 프로젝트 완료 · 결산 확정</Btn>
@@ -4182,6 +4209,8 @@ function BudgetEditor({ project, onSave }) {
           </div>
         </div>
       )}
+
+      </div>{/* ← isEditable 래퍼 닫기 */}
 
       {/* ═══ 증빙 추가/수정 모달 ═══ */}
       {voucherModal&&!newVendorMode&&(
@@ -4411,7 +4440,6 @@ function BudgetEditor({ project, onSave }) {
         </Modal>
       )}
     </div>
-    </div>
   );
 }
 
@@ -4575,7 +4603,7 @@ function SettlementView({ project, onConfirm, onSave }) {
           <div>
             <div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div>
             <div style={{fontSize:13,color:C.sub}}>
-              {project.budgetVersion||1}차 실행예산서 · {project.budgetStatus==="결재완료"?"결재완료 — 결산 확정 가능":project.budgetStatus==="결재진행"?"결재 진행 중":"작성 중 — 결재 완료 후 확정 가능"}
+              {project.budgetVersion||1}차 실행예산서 · {project.budgetStatus==="결재완료"?"결재완료 — 결산 확정 가능":project.budgetStatus==="경영지원실장결재"||project.budgetStatus==="대표결재"?"결재 진행 중":"작성 중 — 결재 완료 후 확정 가능"}
             </div>
           </div>
           {project.budgetStatus==="결재완료"
@@ -4849,27 +4877,29 @@ function SettlementView({ project, onConfirm, onSave }) {
       {preview&&(
         <Modal title={`첨부파일 — ${preview.name}`} onClose={()=>setPreview(null)} wide>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-            {(preview.files||[]).map((f,i)=>(
+            {(preview.files||[]).map((f,i)=>{const src=f.url||f.b64url; return (
               <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:f.type==="application/pdf"?"100%":320,width:f.type==="application/pdf"?"100%":"auto",position:"relative",background:C.slateLight}}>
-                {f.type.startsWith("image/")?(
+                {!src?(
+                  <div style={{padding:16,textAlign:"center",color:C.faint,fontSize:12}}>📄 {f.name}<br/><span style={{fontSize:10}}>미리보기 불가</span></div>
+                ):f.type?.startsWith("image/")?(
                   <>
-                    <img src={f.b64url} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg(f.b64url)}/>
-                    <button onClick={()=>setLightboxImg(f.b64url)} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
+                    <img src={src} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg(src)}/>
+                    <button onClick={()=>setLightboxImg(src)} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
                     <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white}}>{f.name}</div>
                   </>
                 ):f.type==="application/pdf"?(
                   <>
-                    <iframe src={f.b64url} title={f.name} style={{width:"100%",height:400,border:"none",display:"block"}}/>
+                    <iframe src={src} title={f.name} style={{width:"100%",height:400,border:"none",display:"block"}}/>
                     <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                       <span>📄 {f.name}</span>
-                      <a href={f.b64url} download={f.name} style={{fontSize:11,color:C.blue,textDecoration:"none",fontWeight:600}}>⬇ 다운로드</a>
+                      <a href={src} download={f.name} style={{fontSize:11,color:C.blue,textDecoration:"none",fontWeight:600}}>⬇ 다운로드</a>
                     </div>
                   </>
                 ):(
                   <div style={{padding:16,textAlign:"center",color:C.sub,fontSize:13}}>📄 {f.name}</div>
                 )}
               </div>
-            ))}
+            );})}
           </div>
         </Modal>
       )}
@@ -10112,7 +10142,7 @@ function FinanceDash({ projects }) {
                 const profit = sup - b2Purchase;
                 const margin = sup?Math.round(profit/sup*100):0;
                 const isSettled = !!p.settlementDate;
-                const statusMap = {"작성중":{bg:"#fef3c7",c:C.amber,icon:"✏️"},"결재진행":{bg:"#dbeafe",c:C.blue,icon:"📋"},"결재완료":{bg:"#dcfce7",c:C.green,icon:"✅"}};
+                const statusMap = {"작성중":{bg:"#fef3c7",c:C.amber,icon:"✏️"},"경영지원실장결재":{bg:"#dbeafe",c:C.blue,icon:"📋"},"대표결재":{bg:"#bfdbfe",c:"#1d4ed8",icon:"📋"},"결재완료":{bg:"#dcfce7",c:C.green,icon:"✅"}};
                 const st = statusMap[status]||statusMap["작성중"];
                 return (
                   <div key={p.id} style={{background:C.white,border:`1px solid ${isSettled?"#16a34a40":C.border}`,borderRadius:14,overflow:"hidden",borderLeft:isSettled?`4px solid ${C.green}`:"none"}}>
