@@ -4033,7 +4033,19 @@ function BudgetEditor({ project, onSave }) {
                   const priceKey=`${ci}-${gi}-${it.id}`, isEditing=editingPrice===priceKey, vCount=(it.vouchers||[]).length;
                   return(<div key={it.id}>
                     <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
-                      <div style={{padding:"8px 12px 8px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>{it.name}</div>
+                      <div style={{padding:"6px 12px 6px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:4,overflow:"hidden"}}>
+                        <span style={{whiteSpace:"nowrap",flexShrink:0}}>{it.name}</span>
+                        {vCount>0&&<div style={{display:"flex",gap:3,alignItems:"center",overflow:"auto",flexShrink:1,minWidth:0,scrollbarWidth:"none",msOverflowStyle:"none"}}>
+                          {(it.vouchers||[]).map(v=>(<span key={v.id} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:C.sub,background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap",flexShrink:0}}>
+                            <PayBadge status={v.paymentStatus}/>
+                            <span style={{fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:C.border}} onClick={()=>setVendorInfoPanel({ci,gi,itemId:it.id,voucher:v})}>{v.vendor}</span>
+                            <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
+                            {(v.files||[]).length>0&&<button onClick={()=>setPreviewVoucher(v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.blue,padding:0}}>📄</button>}
+                            <button onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.sub,padding:0}}>✏️</button>
+                            <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:10,lineHeight:1}}>×</button>
+                          </span>))}
+                        </div>}
+                      </div>
                       <div style={{padding:"8px 12px",borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
                         <span style={{fontSize:11,color:C.faint}}>{qIt?.qty||0}× {fmtN(qIt?.unitPrice||0)}</span>
                         <span style={{fontSize:13,fontWeight:600,color:C.blue,minWidth:70,textAlign:"right"}}>{fmtN(salesAmt)}</span>
@@ -4054,16 +4066,6 @@ function BudgetEditor({ project, onSave }) {
                         </button>
                       </div>
                     </div>
-                    {vCount>0&&(<div style={{background:"#fffbeb",borderBottom:`1px solid ${C.border}`,padding:"4px 12px 4px 32px",display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
-                      {(it.vouchers||[]).map(v=>(<div key={v.id} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,color:C.sub,background:C.white,border:`1px solid ${C.border}`,borderRadius:4,padding:"2px 6px"}}>
-                        <PayBadge status={v.paymentStatus}/>
-                        <span style={{fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:C.border}} onClick={()=>setVendorInfoPanel({ci,gi,itemId:it.id,voucher:v})} title="업체정보 / 입금현황">{v.vendor}</span>
-                        <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
-                        {(v.files||[]).length>0&&<button onClick={()=>setPreviewVoucher(v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.blue,padding:0}} title="미리보기">📄{v.files.length}</button>}
-                        <button onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.sub,padding:0}} title="수정">✏️</button>
-                        <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1}}>×</button>
-                      </div>))}
-                    </div>)}
                   </div>);
                 })}
               </div>))}
