@@ -10074,7 +10074,7 @@ function App() {
     const np = {
       id, ...pf,
       isBidding,
-      biddingStatus: isBidding ? "진행중" : undefined,  // 진행중/수주/불발
+      biddingStatus: isBidding ? "진행중" : null,  // 진행중/수주/불발
       stage: isBidding ? "BIDDING" : "PLANNING",
       createdAt: todayStr(),
       tasks: initTasks,
