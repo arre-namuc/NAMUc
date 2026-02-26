@@ -557,7 +557,8 @@ const makeTemplateB = () => QUOTE_TEMPLATE_B.map(cat=>({
 const sum     = (arr, fn) => (arr||[]).reduce((s,x)=>s+(fn(x)||0), 0);
 const itemAmt = it  => (it.qty||0)*(it.unitPrice||0);
 const grpAmt  = grp => sum(grp.items, itemAmt);
-const catAmt  = cat => sum(cat.groups, grpAmt);
+const catAmt  = cat => cat.disabled ? 0 : sum(cat.groups, grpAmt);
+const catAmtRaw = cat => sum(cat.groups, grpAmt); // disabled 무시 (표시용)
 const qSub    = q   => sum(q.items, catAmt);
 const qFee    = q   => Math.round(qSub(q) * (q.agencyFeeRate||0) / 100);
 const qSupply = q   => qSub(q) + qFee(q);
@@ -566,6 +567,7 @@ const qTotal  = q   => qSupply(q) + qVat(q);
 const vTotal  = b   => sum(b.vouchers||[], v=>v.amount||0);
 
 const fmt  = n => n==null?"":Math.round(n).toLocaleString("ko-KR")+"원";
+const fmtN = n => n==null?"":Math.round(n).toLocaleString("ko-KR"); // 원 없이 숫자만
 const fmtM = n => {
   if (!n) return "0원";
   const abs = Math.abs(n);
@@ -573,6 +575,22 @@ const fmtM = n => {
   if (abs >= 1e4) return (n<0?"-":"")+(abs/1e4).toFixed(0)+"만";
   return n.toLocaleString("ko-KR")+"원";
 };
+
+// 대분류 컬러 팔레트
+const CAT_COLORS = [
+  { bg:"#eff6ff", accent:"#2563eb", light:"#dbeafe", text:"#1e40af" }, // blue
+  { bg:"#f0fdf4", accent:"#16a34a", light:"#dcfce7", text:"#166534" }, // green
+  { bg:"#fef3c7", accent:"#d97706", light:"#fde68a", text:"#92400e" }, // amber
+  { bg:"#fce7f3", accent:"#db2777", light:"#fbcfe8", text:"#9d174d" }, // pink
+  { bg:"#ede9fe", accent:"#7c3aed", light:"#ddd6fe", text:"#5b21b6" }, // violet
+  { bg:"#ecfeff", accent:"#0891b2", light:"#cffafe", text:"#155e75" }, // cyan
+  { bg:"#fff7ed", accent:"#ea580c", light:"#fed7aa", text:"#9a3412" }, // orange
+  { bg:"#f0f9ff", accent:"#0284c7", light:"#bae6fd", text:"#075985" }, // sky
+  { bg:"#fdf4ff", accent:"#a855f7", light:"#e9d5ff", text:"#6b21a8" }, // purple
+  { bg:"#f7fee7", accent:"#65a30d", light:"#d9f99d", text:"#3f6212" }, // lime
+  { bg:"#fefce8", accent:"#ca8a04", light:"#fef08a", text:"#854d0e" }, // yellow
+  { bg:"#fff1f2", accent:"#e11d48", light:"#fecdd3", text:"#9f1239" }, // rose
+];
 
 // ═══════════════════════════════════════════════════════════
 // 시드 데이터
@@ -3247,7 +3265,6 @@ function parseFormatB(rows) {
     if (secMatch) {
       curCatName = secMatch[2].replace(/\s+/g, " ").trim();
       const secNum = parseInt(secMatch[1]);
-      if (secNum >= 15) { curCat = null; continue; }
       curCat = { category: curCatName, groups: [] };
       categories.push(curCat);
       curGrpName = "";
@@ -3409,7 +3426,15 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
   const renameCategory = (ci,v) => onChange({...q, items:q.items.map((cat,i)=>i===ci?{...cat,category:v}:cat)});
   const removeCategory = (ci) => onChange({...q, items:q.items.filter((_,i)=>i!==ci)});
 
+  /* 대분류 활성/비활성 토글 */
+  const toggleCategory = (ci) => onChange({...q, items:q.items.map((cat,i)=>i===ci?{...cat,disabled:!cat.disabled}:cat)});
+
   const sub=qSub(q), fee=qFee(q), supply=qSupply(q), vat=qVat(q), total=qTotal(q);
+
+  /* 만원 단위 입출력 헬퍼 */
+  const toMan  = v => { const n = Number(v)||0; return n === 0 ? "" : String(Math.round(n / 10000)); };
+  const fromMan = v => (Number(String(v).replace(/,/g,""))||0) * 10000;
+  const fmtComma = v => { const n = Number(v)||0; return n === 0 ? "" : n.toLocaleString("ko-KR"); };
 
   return (
     <div>
@@ -3446,26 +3471,35 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
         </div>
       </div>
 
+      <div style={{fontSize:11,color:C.faint,marginBottom:8,textAlign:"right"}}>💡 단가·수량은 <b>만원</b> 단위 입력</div>
+
       {/* 대분류 반복 */}
-      {q.items.map((cat,ci)=>(
-        <div key={ci} style={{marginBottom:20,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+      {q.items.map((cat,ci)=>{
+        const cc = CAT_COLORS[ci % CAT_COLORS.length];
+        const dis = !!cat.disabled;
+        return (
+        <div key={ci} style={{marginBottom:20,border:`1px solid ${dis?"#e5e5e5":cc.light}`,borderRadius:12,overflow:"hidden",opacity:dis?0.55:1,transition:"opacity .2s"}}>
           {/* 대분류 헤더 */}
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#f0f4ff",borderBottom:`1px solid ${C.border}`}}>
-            <span style={{fontSize:13,color:C.blue,fontWeight:700}}>■</span>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:dis?"#f5f5f5":cc.bg,borderBottom:`1px solid ${dis?"#e5e5e5":cc.light}`}}>
+            <button onClick={()=>toggleCategory(ci)} title={dis?"활성화":"비활성화"}
+              style={{border:"none",background:dis?"#d4d4d4":cc.accent,color:"#fff",borderRadius:6,width:24,height:24,cursor:"pointer",fontSize:14,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {dis?"○":"●"}
+            </button>
             <input value={cat.category} onChange={e=>renameCategory(ci,e.target.value)}
-              style={{...inp,fontWeight:800,fontSize:15,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:C.blue,width:"auto",minWidth:80}}/>
-            <span style={{fontSize:12,color:C.sub,marginLeft:4}}>합계: <b style={{color:C.blue}}>{fmt(catAmt(cat))}</b></span>
+              style={{...inp,fontWeight:800,fontSize:15,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:dis?C.faint:cc.text,width:"auto",minWidth:80,textDecoration:dis?"line-through":"none"}}/>
+            <span style={{fontSize:12,color:dis?C.faint:cc.accent,marginLeft:4}}>합계: <b>{fmt(catAmtRaw(cat))}</b>{dis?" (제외)":""}</span>
             <div style={{marginLeft:"auto",display:"flex",gap:6}}>
               <Btn sm ghost onClick={()=>{setAddGrpModal(ci);setNewGrp("");}}>+ 중분류</Btn>
               <button onClick={()=>removeCategory(ci)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,lineHeight:1,padding:"2px 4px"}}>×</button>
             </div>
           </div>
 
+          {!dis && <>
           {/* 중분류 반복 */}
           {cat.groups.map((grp,gi)=>(
             <div key={grp.gid||gi}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px 6px",background:"#fafbfc",borderBottom:`1px solid ${C.border}`}}>
-                <span style={{fontSize:12,color:C.slate,fontWeight:600}}>▸</span>
+                <span style={{fontSize:12,color:cc.accent,fontWeight:600}}>▸</span>
                 <input value={grp.group} onChange={e=>renameGroup(ci,gi,e.target.value)}
                   style={{...inp,fontWeight:700,fontSize:13,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:C.slate,width:"auto",minWidth:60}}/>
                 <span style={{fontSize:12,color:C.faint}}>소계: <b style={{color:C.text}}>{fmt(grpAmt(grp))}</b></span>
@@ -3477,7 +3511,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
               {/* 소분류 테이블 헤더 */}
               {gi===0&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",background:C.slateLight,padding:"6px 14px",fontSize:11,fontWeight:700,color:C.faint,gap:8}}>
-                  <span>소분류 항목</span><span>단위</span><span style={{textAlign:"right"}}>수량</span><span style={{textAlign:"right"}}>단가</span><span style={{textAlign:"right"}}>금액</span><span/>
+                  <span>소분류 항목</span><span>단위</span><span style={{textAlign:"right"}}>수량</span><span style={{textAlign:"right"}}>단가(만원)</span><span style={{textAlign:"right"}}>금액</span><span/>
                 </div>
               )}
               {/* 소분류 행 */}
@@ -3487,17 +3521,19 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
                   <div key={it.id} style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"6px 14px",borderTop:"1px solid #f0f0f0",gap:8,alignItems:"center",background:ii%2===0?C.white:"#fefefe"}}>
                     <input value={it.name} onChange={e=>patchItem(ci,gi,it.id,"name",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                      onFocus={e=>e.target.style.borderColor=cc.accent} onBlur={e=>e.target.style.borderColor="transparent"}/>
                     <input value={it.unit} onChange={e=>patchItem(ci,gi,it.id,"unit",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"center"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <input type="number" value={it.qty} onChange={e=>patchItem(ci,gi,it.id,"qty",e.target.value)}
+                      onFocus={e=>e.target.style.borderColor=cc.accent} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input value={it.qty} onChange={e=>patchItem(ci,gi,it.id,"qty",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <input type="number" value={it.unitPrice} onChange={e=>patchItem(ci,gi,it.id,"unitPrice",e.target.value)}
+                      onFocus={e=>{e.target.style.borderColor=cc.accent;e.target.select();}} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input value={toMan(it.unitPrice)}
+                      onChange={e=>patchItem(ci,gi,it.id,"unitPrice",fromMan(e.target.value))}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <span style={{textAlign:"right",fontSize:13,fontWeight:600}}>{fmt(itemAmt(it))}</span>
+                      onFocus={e=>{e.target.style.borderColor=cc.accent;e.target.select();}}
+                      onBlur={e=>{e.target.style.borderColor="transparent";}}/>
+                    <span style={{textAlign:"right",fontSize:13,fontWeight:600,color:cc.text}}>{fmt(itemAmt(it))}</span>
                     <button onClick={()=>removeItem(ci,gi,it.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
                   </div>
                 ))
@@ -3506,20 +3542,22 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
               <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"6px 14px",borderTop:`1px solid ${C.border}`,gap:8,background:"#f8f9fa"}}>
                 <span style={{fontSize:12,color:C.sub,fontStyle:"italic"}}>└ {grp.group} 소계</span>
                 <span/><span/><span/>
-                <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:C.slate}}>{fmt(grpAmt(grp))}</span>
+                <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:cc.accent}}>{fmt(grpAmt(grp))}</span>
                 <span/>
               </div>
             </div>
           ))}
+          </>}
+
           {/* 대분류 합계 */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"8px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:"#f0f4ff"}}>
-            <span style={{fontSize:13,fontWeight:800,color:C.blue}}>{cat.category} 합계</span>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"8px 14px",borderTop:`2px solid ${dis?"#e5e5e5":cc.light}`,gap:8,background:dis?"#f5f5f5":cc.bg}}>
+            <span style={{fontSize:13,fontWeight:800,color:dis?C.faint:cc.text}}>{cat.category} 합계{dis?" (제외)":""}</span>
             <span/><span/><span/>
-            <span style={{textAlign:"right",fontSize:13,fontWeight:800,color:C.blue}}>{fmt(catAmt(cat))}</span>
+            <span style={{textAlign:"right",fontSize:13,fontWeight:800,color:dis?C.faint:cc.text,textDecoration:dis?"line-through":"none"}}>{fmt(catAmtRaw(cat))}</span>
             <span/>
           </div>
         </div>
-      ))}
+      );})}
 
       <Btn ghost onClick={addCategory} style={{marginBottom:24}}>+ 대분류 추가</Btn>
 
@@ -3545,7 +3583,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
             <Field label="항목명 *"><input style={inp} value={newItem.name} autoFocus onChange={e=>setNewItem(v=>({...v,name:e.target.value}))} placeholder="ex. 촬영 1st"/></Field>
             <Field label="단위" half><input style={inp} value={newItem.unit} onChange={e=>setNewItem(v=>({...v,unit:e.target.value}))} placeholder="식/일/명"/></Field>
             <Field label="수량" half><input style={inp} type="number" value={newItem.qty} onChange={e=>setNewItem(v=>({...v,qty:e.target.value}))}/></Field>
-            <Field label="단가 (원)"><input style={inp} type="number" value={newItem.unitPrice} onChange={e=>setNewItem(v=>({...v,unitPrice:e.target.value}))} placeholder="0"/></Field>
+            <Field label="단가 (만원)"><input style={inp} type="number" value={toMan(newItem.unitPrice)} onChange={e=>setNewItem(v=>({...v,unitPrice:fromMan(e.target.value)}))} placeholder="0"/></Field>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
             <Btn onClick={()=>setAddModal(null)}>취소</Btn>
