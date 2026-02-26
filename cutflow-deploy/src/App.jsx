@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import {
   subscribeProjects, saveProject, deleteProject,
   uploadVoucherFile, uploadFeedbackImage, subscribeCompany, saveCompany,
+  signInWithGoogle, signOutUser, onAuthChange,
   subscribeMembers, saveMember, deleteMember,
   isConfigured,
+  subscribeOffice, saveOffice,
 } from "./firebase.js";
 
 // ═══════════════════════════════════════════════════════════
@@ -27,7 +29,7 @@ const C = {
 // ═══════════════════════════════════════════════════════════
 const DEFAULT_COMPANY = {
   name:"NAMUc", ceo:"", bizNo:"", address:"", phone:"", email:"",
-  logoUrl:"https://i.imgur.com/ONdvF5Q.jpeg",
+  logoUrl:"/logo-square.png",
   bankName:"", bankAccount:"", bankHolder:"",
   quoteNote:"· 본 견적은 협의된 내용을 기준으로 작성되었습니다.\n· 촬영 조건 및 범위 변경 시 금액이 조정될 수 있습니다.\n· 계약금 50% 선입금 후 제작 착수합니다.",
   validDays:30,
@@ -37,30 +39,205 @@ const DEFAULT_COMPANY = {
 // 계정 / 역할
 // ═══════════════════════════════════════════════════════════
 const SEED_ACCOUNTS = [
-  { id:"m0", name:"김대표",  role:"대표",    pw:"ceo1234",  canViewFinance:true,  canManageMembers:true,  order:0 },
-  { id:"m1", name:"박민서",  role:"PD",      pw:"pd1234",   canViewFinance:false, canManageMembers:false, order:1 },
-  { id:"m2", name:"이준혁",  role:"감독",    pw:"dir1234",  canViewFinance:false, canManageMembers:false, order:2 },
-  { id:"m3", name:"김소연",  role:"촬영감독",pw:"cam1234",  canViewFinance:false, canManageMembers:false, order:3 },
-  { id:"m4", name:"최다인",  role:"편집자",  pw:"edit1234", canViewFinance:false, canManageMembers:false, order:4 },
-  { id:"m5", name:"정우진",  role:"CG",      pw:"cg1234",   canViewFinance:false, canManageMembers:false, order:5 },
-  { id:"m6", name:"한지수",  role:"제작부",  pw:"prod1234", canViewFinance:false, canManageMembers:false, order:6 },
-  { id:"m7", name:"오세진",  role:"경영지원",pw:"biz1234",  canViewFinance:true,  canManageMembers:true,  order:7 },
+  { id:"m0", name:"최창일", role:"대표", pw:"namucreative02*100%", canViewFinance:true, canManageMembers:true, order:0 },
 ];
+
+// ═══════════════════════════════════════════════════════════
+// 프로젝트 워크플로우 템플릿
+// ═══════════════════════════════════════════════════════════
+
+// 역할 정의
+const ROLE_OWNER   = "owner";    // 주도자 (책임자)
+const ROLE_DRIVER  = "driver";   // 실행자
+const ROLE_SUPPORT = "support";  // 보조
+
+// 22단계 표준 워크플로우 템플릿
+// 단계별 추천 태스크 목록 (선택사항 - 담당자가 직접 고를 수 있음)
+const PHASE_SUGGESTIONS = {
+  "s01": ["스터디 및 관점 도출","R&R 설정","기획방향 정리 및 아이데이션","1차 내부 공유","문서화","외주 발주 (그래픽/콘티)","문서 취합","전달"],
+  "s02": ["스터디 및 관점 도출","R&R 설정","기획방향 정리 및 아이데이션","1차 내부 공유","수정 및 보완","2차 제안"],
+  "s03": ["R&R 설정","스터디 및 관점 도출","레퍼런스 서칭 및 콘티 구상","스토리보드 발주","문서 정리","제안"],
+  "s04": ["PPM 자료 준비","스태프 리스트 정리","로케이션 서칭","캐스팅 준비","PPM 문서 취합"],
+  "s05": ["견적 항목 구성","단가 산출","실행예산서 작성","내부 검토"],
+  "s06": ["PPM 미팅","견적 보고","클라이언트 피드백 수령","수정 반영"],
+  "s07": ["스태프 확정","장비 발주","로케이션 확정","캐스팅 확정","촬영 콘티 확정","촬영 콜시트 작성"],
+  "s08": ["확정 스태프 기준 예산 재산출","실행예산서 업데이트","내부 보고"],
+  "s09": ["촬영 현장 세팅","촬영 진행","소스 확인 및 백업","촬영 결과 보고"],
+  "s10": ["소스 정리 및 로깅","어셈블리 편집","파인 컷 편집","내부 검토"],
+  "s11": ["색보정 작업","내부 검토"],
+  "s12": ["시사 준비","클라이언트 시사","피드백 수령 및 정리","수정 방향 공유"],
+  "s13": ["집행 내역 취합","결산서 1차 작성","내부 검토"],
+  "s14": ["그래픽 소스 정리","그래픽 작업","내부 검토"],
+  "s15": ["시사 준비","클라이언트 시사","피드백 수령 및 정리","수정 방향 결정"],
+  "s16": ["피드백 반영 작업","내부 검토","수정 완료 보고"],
+  "s17": ["시사 준비","클라이언트 시사","피드백 수령 및 정리"],
+  "s18": ["2차 피드백 반영","내부 검토","수정 완료 보고"],
+  "s19": ["최종 시사 준비","클라이언트 최종 시사","최종 컨펌 수령"],
+  "s20": ["최종 집행 내역 취합","결산서 최종 작성","내부 결재"],
+  "s21": ["납품 파일 최종 확인","납품 패키징","납품 전달","클라이언트 수령 확인"],
+  "s22": ["투여 시간 집계","ROI 산출","결과 보고서 작성","사내 공유"],
+};
+
+const PROJECT_TEMPLATE = [
+  {
+    id:"s01", phase:"비딩", order:1,
+    owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
+    stage:"PLANNING", steps: []
+  },
+  {
+    id:"s02", phase:"기획", order:2,
+    owner:"기획실장", driver:["기획실장","감독"], support:["PD"],
+    stage:"PLANNING", steps: []
+  },
+  {
+    id:"s03", phase:"트리트먼트", order:3,
+    owner:"감독", driver:["감독"], support:["PD"],
+    stage:"PRE", steps: []
+  },
+  {
+    id:"s04", phase:"PPM 준비", order:4,
+    owner:"EPD", driver:["감독","조감독"], support:["PD"],
+    stage:"PRE", steps: []
+  },
+  {
+    id:"s05", phase:"견적서 및 실행예산서 1차", order:5,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    stage:"PRE", steps: []
+  },
+  {
+    id:"s06", phase:"PPM 및 견적 보고", order:6,
+    owner:"EPD", driver:["EPD","PD"], support:["감독"],
+    stage:"PRE", steps: []
+  },
+  {
+    id:"s07", phase:"촬영 준비", order:7,
+    owner:"PD", driver:["PD","조감독"], support:["감독"],
+    stage:"PRODUCTION", steps: []
+  },
+  {
+    id:"s08", phase:"실행예산서 2차 (내부)", order:8,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    stage:"PRODUCTION", steps: []
+  },
+  {
+    id:"s09", phase:"PRODUCTION", order:9,
+    owner:"감독", driver:["감독","조감독"], support:["PD"],
+    stage:"PRODUCTION", steps: []
+  },
+  {
+    id:"s10", phase:"편집", order:10,
+    owner:"감독", driver:["감독"], support:["PD"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s11", phase:"색보정", order:11,
+    owner:"감독", driver:["감독"], support:["PD"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s12", phase:"편집 시사", order:12,
+    owner:"감독", driver:["PD"], support:["감독"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s13", phase:"실행 결산서 1차", order:13,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s14", phase:"그래픽 작업 1차", order:14,
+    owner:"감독", driver:["AI작업자","감독"], support:["PD"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s15", phase:"1차 시사", order:15,
+    owner:"감독", driver:["PD"], support:["감독"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s16", phase:"그래픽 작업 2차", order:16,
+    owner:"PD", driver:["AI작업자","감독"], support:["PD"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s17", phase:"2차 시사", order:17,
+    owner:"PD", driver:["PD"], support:["감독"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s18", phase:"그래픽 작업 3차", order:18,
+    owner:"PD", driver:["AI작업자","감독"], support:["PD"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s19", phase:"최종 시사", order:19,
+    owner:"PD", driver:["PD"], support:["감독","EPD"],
+    stage:"POST", steps: []
+  },
+  {
+    id:"s20", phase:"결산서 2차", order:20,
+    owner:"PD", driver:["PD"], support:["경영지원"],
+    stage:"ONAIR", steps: []
+  },
+  {
+    id:"s21", phase:"납품", order:21,
+    owner:"PD", driver:["PD","AI작업자"], support:["감독"],
+    stage:"ONAIR", steps: []
+  },
+  {
+    id:"s22", phase:"프로젝트 최종 보고", order:22,
+    owner:"EPD", driver:["PD"], support:["경영지원"],
+    stage:"ONAIR", steps: []
+  },
+];
+
+// 템플릿에서 프로젝트 태스크 생성
+function generateTasksFromTemplate(projectId, projectMembers) {
+  const tasks = [];
+  PROJECT_TEMPLATE.forEach(phase => {
+    phase.steps.forEach(step => {
+      tasks.push({
+        id: "t" + Date.now() + Math.random().toString(36).slice(2,6),
+        phaseId: phase.id,
+        phase: phase.phase,
+        title: step.name,
+        role: "",
+        assignee: "",
+        assignees: [],
+        stage: phase.order <= 3 ? "PLANNING" : phase.order <= 6 ? "PRE" : phase.order <= 9 ? "PRODUCTION" : phase.order <= 21 ? "POST" : "ONAIR",
+        priority: "보통",
+        status: "대기",
+        due: "",
+        desc: "",
+        repeatCount: 0,
+        timeSpent: 0,
+      });
+    });
+  });
+  return tasks;
+}
+
+function findMemberByRole(members, role) {
+  if(!members) return "";
+  const m = members.find(m => m.role === role || m.role?.includes(role));
+  return m ? m.name : "";
+}
 
 // ═══════════════════════════════════════════════════════════
 // 프로덕션 상수
 // ═══════════════════════════════════════════════════════════
 const STAGES = {
-  "브리프":       { color:C.slate,  bg:C.slateLight, icon:"📋" },
-  "프리프로덕션": { color:C.purple, bg:C.purpleLight, icon:"🎨" },
-  "촬영":         { color:C.amber,  bg:C.amberLight,  icon:"🎬" },
-  "포스트":       { color:C.blue,   bg:C.blueLight,   icon:"✂️" },
-  "납품완료":     { color:C.green,  bg:C.greenLight,  icon:"✅" },
+  "PLANNING":   { color:C.slate,  bg:C.slateLight, icon:"📋", label:"PLANNING" },
+  "PRE":        { color:C.purple, bg:C.purpleLight, icon:"🎨", label:"PRE" },
+  "PRODUCTION": { color:C.amber,  bg:C.amberLight,  icon:"🎬", label:"PRODUCTION" },
+  "POST":       { color:C.blue,   bg:C.blueLight,   icon:"✂️", label:"POST" },
+  "ONAIR":      { color:C.green,  bg:C.greenLight,  icon:"✅", label:"ONAIR" },
 };
-const TASK_TYPES = ["스크립트","콘티","캐스팅","로케이션","촬영","편집","색보정","음악/사운드","자막/CG","클라이언트 검토","최종 납품","기타"];
+const TASK_TYPES = ["내부","고객사","협력사"];
 const FORMATS_DEFAULT = ["TVC","디지털 광고","유튜브 콘텐츠","숏폼","BTL","브랜드 필름"];
 const P_COLORS   = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2"];
 const VOUCHER_TYPES = ["세금계산서","영수증","외주견적서","카드영수증","기타"];
+const OUTSOURCE_TYPES = ["영상제작","촬영","편집","색보정","모션그래픽","번역/자막","성우","음악","작가","디자인","기타"];
 
 // ═══════════════════════════════════════════════════════════
 // 견적서 3단계 템플릿 (대분류 > 중분류 > 소분류)
@@ -78,13 +255,13 @@ const QUOTE_TEMPLATE = [
       { name:"P.P.M 경비",                   unit:"식", qty:1, unitPrice:0 },
     ]},
   ]},
-  { category:"프리프로덕션", groups:[
+  { category:"PRE", groups:[
     { group:"기획/연출", items:[
       { name:"기획 및 구성료 (구성안 작성)", unit:"건", qty:1, unitPrice:0 },
       { name:"프로듀싱, 프로덕션 매니징",    unit:"건", qty:1, unitPrice:0 },
       { name:"연출료, 조연출료, 콘티 visualizing (종합 연출료)", unit:"건", qty:1, unitPrice:0 },
       { name:"조감독 (1st)",                 unit:"일", qty:1, unitPrice:0 },
-      { name:"조감독 (2nd)",                 unit:"일", qty:0, unitPrice:0 },
+      { name:"조감독 (2nd)",                 unit:"일", qty:1, unitPrice:0 },
     ]},
     { group:"캐스팅/로케이션", items:[
       { name:"캐스팅비",       unit:"명", qty:1, unitPrice:0 },
@@ -92,7 +269,7 @@ const QUOTE_TEMPLATE = [
       { name:"장소 사용료",    unit:"일", qty:1, unitPrice:0 },
     ]},
   ]},
-  { category:"촬영", groups:[
+  { category:"PRODUCTION", groups:[
     { group:"촬영 인건비", items:[
       { name:"촬영팀 운용",    unit:"일", qty:1, unitPrice:0 },
       { name:"촬영감독료",     unit:"일", qty:1, unitPrice:0 },
@@ -149,11 +326,11 @@ const QUOTE_TEMPLATE = [
       { name:"CG 및 합성 연출료",   unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"사운드", items:[
-      { name:"녹음실 사용료",       unit:"시간", qty:0, unitPrice:0 },
+      { name:"녹음실 사용료",       unit:"시간", qty:1, unitPrice:0 },
       { name:"Sound Design / Mixing / Mastering", unit:"건", qty:1, unitPrice:0 },
       { name:"작곡 / Jingle",       unit:"건", qty:1, unitPrice:0 },
       { name:"녹음료",              unit:"건", qty:1, unitPrice:0 },
-      { name:"성우료",              unit:"명", qty:0, unitPrice:0 },
+      { name:"성우료",              unit:"명", qty:1, unitPrice:0 },
       { name:"음악 라이선스 (BGM)", unit:"건", qty:1, unitPrice:0 },
     ]},
   ]},
@@ -188,9 +365,9 @@ const QUOTE_TEMPLATE_B = [
   ]},
   { category:"콘티작화", groups:[
     { group:"콘티", items:[
-      { name:"흑백 콘티 (러프)",             unit:"CUT", qty:0, unitPrice:50000 },
-      { name:"정밀 컬러 콘티 (슈팅콘티)",   unit:"CUT", qty:0, unitPrice:0 },
-      { name:"대형 컬러 콘티 B5이상",       unit:"CUT", qty:0, unitPrice:0 },
+      { name:"흑백 콘티 (러프)",             unit:"CUT", qty:1, unitPrice:50000 },
+      { name:"정밀 컬러 콘티 (슈팅콘티)",   unit:"CUT", qty:1, unitPrice:0 },
+      { name:"대형 컬러 콘티 B5이상",       unit:"CUT", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"프로덕션비", groups:[
@@ -208,16 +385,16 @@ const QUOTE_TEMPLATE_B = [
     { group:"감독료", items:[
       { name:"Pre-prod 연출료",              unit:"건", qty:1, unitPrice:0 },
       { name:"연출료 (기본 1일 촬영)",       unit:"일", qty:1, unitPrice:0 },
-      { name:"추가 연출료",                  unit:"일", qty:0, unitPrice:0 },
+      { name:"추가 연출료",                  unit:"일", qty:1, unitPrice:0 },
       { name:"편집 연출료",                  unit:"건", qty:1, unitPrice:0 },
       { name:"CG 및 합성 연출료",           unit:"건", qty:1, unitPrice:0 },
-      { name:"출장 및 헌팅 연출료 (국내)",  unit:"건", qty:0, unitPrice:0 },
+      { name:"출장 및 헌팅 연출료 (국내)",  unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"조연출료", items:[
       { name:"조감독 1st - 연출료",          unit:"일", qty:1, unitPrice:0 },
-      { name:"조감독 1st - 추가 연출료",     unit:"일", qty:0, unitPrice:0 },
+      { name:"조감독 1st - 추가 연출료",     unit:"일", qty:1, unitPrice:0 },
       { name:"조감독 1st - 편집 연출료",     unit:"건", qty:1, unitPrice:0 },
-      { name:"조감독 1st - CG 연출료",       unit:"건", qty:0, unitPrice:0 },
+      { name:"조감독 1st - CG 연출료",       unit:"건", qty:1, unitPrice:0 },
       { name:"조감독 2nd - 연출료",          unit:"일", qty:1, unitPrice:0 },
       { name:"조연출 보조료",                unit:"일", qty:1, unitPrice:0 },
     ]},
@@ -225,17 +402,17 @@ const QUOTE_TEMPLATE_B = [
   { category:"기술 인건비", groups:[
     { group:"촬영 인건비", items:[
       { name:"촬영감독료",                   unit:"일", qty:1, unitPrice:0 },
-      { name:"Hunting 및 Travel Charge",     unit:"건", qty:0, unitPrice:0 },
-      { name:"Over Charge",                  unit:"시간", qty:0, unitPrice:0 },
+      { name:"Hunting 및 Travel Charge",     unit:"건", qty:1, unitPrice:0 },
+      { name:"Over Charge",                  unit:"시간", qty:1, unitPrice:0 },
       { name:"1st Assist",                   unit:"일", qty:1, unitPrice:0 },
       { name:"2nd Assist",                   unit:"일", qty:1, unitPrice:0 },
-      { name:"3rd Assist",                   unit:"일", qty:0, unitPrice:0 },
-      { name:"4th Assist",                   unit:"일", qty:0, unitPrice:0 },
-      { name:"DIT",                          unit:"일", qty:0, unitPrice:0 },
+      { name:"3rd Assist",                   unit:"일", qty:1, unitPrice:0 },
+      { name:"4th Assist",                   unit:"일", qty:1, unitPrice:0 },
+      { name:"DIT",                          unit:"일", qty:1, unitPrice:0 },
     ]},
     { group:"조명 인건비", items:[
       { name:"조명감독료",                   unit:"일", qty:1, unitPrice:0 },
-      { name:"Over Charge",                  unit:"시간", qty:0, unitPrice:0 },
+      { name:"Over Charge",                  unit:"시간", qty:1, unitPrice:0 },
       { name:"Grip 인건비",                  unit:"일", qty:1, unitPrice:0 },
       { name:"조명조수 인건비",              unit:"일", qty:1, unitPrice:0 },
     ]},
@@ -245,59 +422,59 @@ const QUOTE_TEMPLATE_B = [
       { name:"카메라 바디",                  unit:"대/일", qty:1, unitPrice:0 },
       { name:"렌즈 세트",                    unit:"set/일", qty:1, unitPrice:0 },
       { name:"모니터 (Small HD 24)",         unit:"대/일", qty:1, unitPrice:0 },
-      { name:"모니터 (Small HD 7)",          unit:"대/일", qty:0, unitPrice:0 },
+      { name:"모니터 (Small HD 7)",          unit:"대/일", qty:1, unitPrice:0 },
       { name:"보험료 (카메라 & 렌즈)",       unit:"식", qty:1, unitPrice:0 },
     ]},
     { group:"이동/특수 장비", items:[
-      { name:"Steadicam",                    unit:"일", qty:0, unitPrice:0 },
-      { name:"Jimmy Jib",                    unit:"일", qty:0, unitPrice:0 },
-      { name:"GF Jib",                       unit:"일", qty:0, unitPrice:0 },
-      { name:"프리모 달리 세트",             unit:"일", qty:0, unitPrice:0 },
-      { name:"헬리캠 (드론)",                unit:"일", qty:0, unitPrice:0 },
-      { name:"모션 컨트롤 (M.C.C)",          unit:"일", qty:0, unitPrice:0 },
-      { name:"Teradeck 4K",                  unit:"대/일", qty:0, unitPrice:0 },
+      { name:"Steadicam",                    unit:"일", qty:1, unitPrice:0 },
+      { name:"Jimmy Jib",                    unit:"일", qty:1, unitPrice:0 },
+      { name:"GF Jib",                       unit:"일", qty:1, unitPrice:0 },
+      { name:"프리모 달리 세트",             unit:"일", qty:1, unitPrice:0 },
+      { name:"헬리캠 (드론)",                unit:"일", qty:1, unitPrice:0 },
+      { name:"모션 컨트롤 (M.C.C)",          unit:"일", qty:1, unitPrice:0 },
+      { name:"Teradeck 4K",                  unit:"대/일", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"조명 기자재", groups:[
     { group:"조명 장비", items:[
-      { name:"9MP (노말)",                   unit:"대/일", qty:0, unitPrice:0 },
-      { name:"4KW",                          unit:"대/일", qty:0, unitPrice:0 },
-      { name:"1.8MP (노말)",                 unit:"대/일", qty:0, unitPrice:0 },
-      { name:"800MP (노말)",                 unit:"대/일", qty:0, unitPrice:0 },
-      { name:"조커 800",                     unit:"대/일", qty:0, unitPrice:0 },
-      { name:"어퓨쳐 600D",                  unit:"대/일", qty:0, unitPrice:0 },
-      { name:"Dedo 150W",                    unit:"대/일", qty:0, unitPrice:0 },
+      { name:"9MP (노말)",                   unit:"대/일", qty:1, unitPrice:0 },
+      { name:"4KW",                          unit:"대/일", qty:1, unitPrice:0 },
+      { name:"1.8MP (노말)",                 unit:"대/일", qty:1, unitPrice:0 },
+      { name:"800MP (노말)",                 unit:"대/일", qty:1, unitPrice:0 },
+      { name:"조커 800",                     unit:"대/일", qty:1, unitPrice:0 },
+      { name:"어퓨쳐 600D",                  unit:"대/일", qty:1, unitPrice:0 },
+      { name:"Dedo 150W",                    unit:"대/일", qty:1, unitPrice:0 },
     ]},
     { group:"발전/헤이저", items:[
-      { name:"발전차 (서울)",                unit:"일", qty:0, unitPrice:0 },
-      { name:"발전차 (지방)",                unit:"일", qty:0, unitPrice:0 },
-      { name:"헤이저 머신",                  unit:"일", qty:0, unitPrice:0 },
-      { name:"강풍기/스모그기",              unit:"대/일", qty:0, unitPrice:0 },
+      { name:"발전차 (서울)",                unit:"일", qty:1, unitPrice:0 },
+      { name:"발전차 (지방)",                unit:"일", qty:1, unitPrice:0 },
+      { name:"헤이저 머신",                  unit:"일", qty:1, unitPrice:0 },
+      { name:"강풍기/스모그기",              unit:"대/일", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"Studio / 장소", groups:[
     { group:"로케이션", items:[
       { name:"로케이션 매니저",              unit:"일", qty:1, unitPrice:0 },
       { name:"장소 사용료 (촬영 & 설치/철수)", unit:"건", qty:1, unitPrice:0 },
-      { name:"Location 경비/경계료",         unit:"식", qty:0, unitPrice:0 },
+      { name:"Location 경비/경계료",         unit:"식", qty:1, unitPrice:0 },
     ]},
     { group:"스튜디오", items:[
-      { name:"스튜디오 대관료",              unit:"일", qty:0, unitPrice:0 },
-      { name:"초과 사용료 (시간당 10%)",     unit:"시간", qty:0, unitPrice:0 },
-      { name:"LED Display System",           unit:"식", qty:0, unitPrice:0 },
+      { name:"스튜디오 대관료",              unit:"일", qty:1, unitPrice:0 },
+      { name:"초과 사용료 (시간당 10%)",     unit:"시간", qty:1, unitPrice:0 },
+      { name:"LED Display System",           unit:"식", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"미술비", groups:[
     { group:"미술/분장", items:[
-      { name:"세트 제작료",                  unit:"식", qty:0, unitPrice:0 },
-      { name:"도색료 (바닥 및 호리)",        unit:"식", qty:0, unitPrice:0 },
-      { name:"Set Design 및 감리비",         unit:"식", qty:0, unitPrice:0 },
-      { name:"촬영지 대도구",                unit:"식", qty:0, unitPrice:0 },
-      { name:"촬영지 소도구",                unit:"식", qty:0, unitPrice:0 },
+      { name:"세트 제작료",                  unit:"식", qty:1, unitPrice:0 },
+      { name:"도색료 (바닥 및 호리)",        unit:"식", qty:1, unitPrice:0 },
+      { name:"Set Design 및 감리비",         unit:"식", qty:1, unitPrice:0 },
+      { name:"촬영지 대도구",                unit:"식", qty:1, unitPrice:0 },
+      { name:"촬영지 소도구",                unit:"식", qty:1, unitPrice:0 },
       { name:"Make-Up / Hair",               unit:"일", qty:1, unitPrice:0 },
-      { name:"스타일리스트",                 unit:"일", qty:0, unitPrice:0 },
-      { name:"특수분장료",                   unit:"식", qty:0, unitPrice:0 },
-      { name:"Art팀 료",                     unit:"일", qty:0, unitPrice:0 },
+      { name:"스타일리스트",                 unit:"일", qty:1, unitPrice:0 },
+      { name:"특수분장료",                   unit:"식", qty:1, unitPrice:0 },
+      { name:"Art팀 료",                     unit:"일", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"촬영 경비", groups:[
@@ -310,8 +487,8 @@ const QUOTE_TEMPLATE_B = [
       { name:"인원수송 차량",                unit:"대/일", qty:1, unitPrice:0 },
       { name:"카메라 운반 차량",             unit:"대/일", qty:1, unitPrice:0 },
       { name:"조명장비 운반 차량",           unit:"대/일", qty:1, unitPrice:0 },
-      { name:"중형 용달 (대도구)",           unit:"대/일", qty:0, unitPrice:0 },
-      { name:"소형 용달 (소도구/소모품)",    unit:"대/일", qty:0, unitPrice:0 },
+      { name:"중형 용달 (대도구)",           unit:"대/일", qty:1, unitPrice:0 },
+      { name:"소형 용달 (소도구/소모품)",    unit:"대/일", qty:1, unitPrice:0 },
       { name:"고속도로비 / 유류대 / 주차료", unit:"식", qty:1, unitPrice:0 },
       { name:"진행비 (주차/퀵/통신)",        unit:"식", qty:1, unitPrice:0 },
       { name:"외장하드 (2T SSD)",            unit:"개", qty:2, unitPrice:0 },
@@ -323,44 +500,44 @@ const QUOTE_TEMPLATE_B = [
   { category:"출연료", groups:[
     { group:"출연", items:[
       { name:"모델료",                       unit:"명", qty:1, unitPrice:0 },
-      { name:"조연 모델료",                  unit:"명", qty:0, unitPrice:0 },
-      { name:"아역 모델",                    unit:"명", qty:0, unitPrice:0 },
-      { name:"대역 모델료",                  unit:"명", qty:0, unitPrice:0 },
+      { name:"조연 모델료",                  unit:"명", qty:1, unitPrice:0 },
+      { name:"아역 모델",                    unit:"명", qty:1, unitPrice:0 },
+      { name:"대역 모델료",                  unit:"명", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"저작권", groups:[
     { group:"저작권", items:[
-      { name:"음악 (B.G.M) 사용료 (국내 온라인)", unit:"건", qty:0, unitPrice:0 },
-      { name:"자료 화면 사용료",             unit:"건", qty:0, unitPrice:0 },
-      { name:"원작 저작권료",                unit:"건", qty:0, unitPrice:0 },
+      { name:"음악 (B.G.M) 사용료 (국내 온라인)", unit:"건", qty:1, unitPrice:0 },
+      { name:"자료 화면 사용료",             unit:"건", qty:1, unitPrice:0 },
+      { name:"원작 저작권료",                unit:"건", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"포스트프로덕션", groups:[
     { group:"편집", items:[
       { name:"편집료 (Editing)",             unit:"건", qty:1, unitPrice:0 },
       { name:"DI (색보정 및 파일컨버팅)",    unit:"건", qty:1, unitPrice:0 },
-      { name:"추가 작업비",                  unit:"건", qty:0, unitPrice:0 },
+      { name:"추가 작업비",                  unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"CG/VFX", items:[
       { name:"2D Artwork / Animation",       unit:"건", qty:1, unitPrice:0 },
-      { name:"3D Modeling / Texture / Animation / Lighting / Rigging", unit:"건", qty:0, unitPrice:0 },
-      { name:"FLAME Compositing / Clearing (컷다운 포함)", unit:"건", qty:0, unitPrice:0 },
-      { name:"Rendering",                    unit:"건", qty:0, unitPrice:0 },
+      { name:"3D Modeling / Texture / Animation / Lighting / Rigging", unit:"건", qty:1, unitPrice:0 },
+      { name:"FLAME Compositing / Clearing (컷다운 포함)", unit:"건", qty:1, unitPrice:0 },
+      { name:"Rendering",                    unit:"건", qty:1, unitPrice:0 },
     ]},
     { group:"사운드", items:[
-      { name:"녹음실 사용료",                unit:"시간", qty:0, unitPrice:0 },
+      { name:"녹음실 사용료",                unit:"시간", qty:1, unitPrice:0 },
       { name:"Sound Design / Mixing / Mastering", unit:"건", qty:1, unitPrice:0 },
-      { name:"작곡 / Jingle / Logo Song",    unit:"건", qty:0, unitPrice:0 },
-      { name:"성우료",                       unit:"명", qty:0, unitPrice:0 },
-      { name:"동시 녹음",                    unit:"건", qty:0, unitPrice:0 },
-      { name:"선곡료",                       unit:"건", qty:0, unitPrice:0 },
+      { name:"작곡 / Jingle / Logo Song",    unit:"건", qty:1, unitPrice:0 },
+      { name:"성우료",                       unit:"명", qty:1, unitPrice:0 },
+      { name:"동시 녹음",                    unit:"건", qty:1, unitPrice:0 },
+      { name:"선곡료",                       unit:"건", qty:1, unitPrice:0 },
     ]},
   ]},
   { category:"메이킹 촬영", groups:[
     { group:"메이킹", items:[
-      { name:"메이킹 촬영",                  unit:"건", qty:0, unitPrice:0 },
-      { name:"메이킹 편집 (1분)",            unit:"건", qty:0, unitPrice:0 },
-      { name:"2D",                           unit:"건", qty:0, unitPrice:0 },
+      { name:"메이킹 촬영",                  unit:"건", qty:1, unitPrice:0 },
+      { name:"메이킹 편집 (1분)",            unit:"건", qty:1, unitPrice:0 },
+      { name:"2D",                           unit:"건", qty:1, unitPrice:0 },
     ]},
   ]},
 ];
@@ -381,7 +558,8 @@ const makeTemplateB = () => QUOTE_TEMPLATE_B.map(cat=>({
 const sum     = (arr, fn) => (arr||[]).reduce((s,x)=>s+(fn(x)||0), 0);
 const itemAmt = it  => (it.qty||0)*(it.unitPrice||0);
 const grpAmt  = grp => sum(grp.items, itemAmt);
-const catAmt  = cat => sum(cat.groups, grpAmt);
+const catAmt  = cat => cat.disabled ? 0 : sum(cat.groups, grpAmt);
+const catAmtRaw = cat => sum(cat.groups, grpAmt); // disabled 무시 (표시용)
 const qSub    = q   => sum(q.items, catAmt);
 const qFee    = q   => Math.round(qSub(q) * (q.agencyFeeRate||0) / 100);
 const qSupply = q   => qSub(q) + qFee(q);
@@ -390,6 +568,7 @@ const qTotal  = q   => qSupply(q) + qVat(q);
 const vTotal  = b   => sum(b.vouchers||[], v=>v.amount||0);
 
 const fmt  = n => n==null?"":Math.round(n).toLocaleString("ko-KR")+"원";
+const fmtN = n => n==null?"":Math.round(n).toLocaleString("ko-KR"); // 원 없이 숫자만
 const fmtM = n => {
   if (!n) return "0원";
   const abs = Math.abs(n);
@@ -397,6 +576,25 @@ const fmtM = n => {
   if (abs >= 1e4) return (n<0?"-":"")+(abs/1e4).toFixed(0)+"만";
   return n.toLocaleString("ko-KR")+"원";
 };
+/* 만원 단위 입출력 헬퍼 (견적서·실행예산 공통) */
+const toMan  = v => { const n = Number(v)||0; return n === 0 ? "" : String(Math.round(n / 10000)); };
+const fromMan = v => (Number(String(v).replace(/,/g,""))||0) * 10000;
+
+// 대분류 컬러 팔레트
+const CAT_COLORS = [
+  { bg:"#eff6ff", accent:"#2563eb", light:"#dbeafe", text:"#1e40af" }, // blue
+  { bg:"#f0fdf4", accent:"#16a34a", light:"#dcfce7", text:"#166534" }, // green
+  { bg:"#fef3c7", accent:"#d97706", light:"#fde68a", text:"#92400e" }, // amber
+  { bg:"#fce7f3", accent:"#db2777", light:"#fbcfe8", text:"#9d174d" }, // pink
+  { bg:"#ede9fe", accent:"#7c3aed", light:"#ddd6fe", text:"#5b21b6" }, // violet
+  { bg:"#ecfeff", accent:"#0891b2", light:"#cffafe", text:"#155e75" }, // cyan
+  { bg:"#fff7ed", accent:"#ea580c", light:"#fed7aa", text:"#9a3412" }, // orange
+  { bg:"#f0f9ff", accent:"#0284c7", light:"#bae6fd", text:"#075985" }, // sky
+  { bg:"#fdf4ff", accent:"#a855f7", light:"#e9d5ff", text:"#6b21a8" }, // purple
+  { bg:"#f7fee7", accent:"#65a30d", light:"#d9f99d", text:"#3f6212" }, // lime
+  { bg:"#fefce8", accent:"#ca8a04", light:"#fef08a", text:"#854d0e" }, // yellow
+  { bg:"#fff1f2", accent:"#e11d48", light:"#fecdd3", text:"#9f1239" }, // rose
+];
 
 // ═══════════════════════════════════════════════════════════
 // 시드 데이터
@@ -405,13 +603,13 @@ const SEED_PROJECTS = [
   {
     id:"p1", name:"기아 EV9 런칭 캠페인", client:"기아자동차", color:"#2563eb",
     format:"60초", due:"2026-04-15", director:"이준혁", pd:"박민서",
-    stage:"촬영", createdAt:"2026-01-10",
+    stage:"PRODUCTION", createdAt:"2026-01-10",
     tasks:[
-      {id:"t1",title:"브랜드 방향성 확정",type:"스크립트",assignee:"박민서",stage:"납품완료",due:"2026-01-20",priority:"높음",desc:""},
-      {id:"t2",title:"콘티 1차 시안",type:"콘티",assignee:"이준혁",stage:"납품완료",due:"2026-02-05",priority:"높음",desc:""},
-      {id:"t3",title:"촬영지 헌팅",type:"로케이션",assignee:"한지수",stage:"납품완료",due:"2026-02-15",priority:"보통",desc:""},
-      {id:"t4",title:"D-day 촬영",type:"촬영",assignee:"김소연",stage:"촬영",due:"2026-03-10",priority:"긴급",desc:""},
-      {id:"t5",title:"1차 편집",type:"편집",assignee:"최다인",stage:"브리프",due:"2026-03-25",priority:"높음",desc:""},
+      {id:"t1",title:"브랜드 방향성 확정",type:"스크립트",assignee:"",stage:"ONAIR",due:"2026-01-20",priority:"높음",desc:""},
+      {id:"t2",title:"콘티 1차 시안",type:"콘티",assignee:"",stage:"ONAIR",due:"2026-02-05",priority:"높음",desc:""},
+      {id:"t3",title:"촬영지 헌팅",type:"로케이션",assignee:"",stage:"ONAIR",due:"2026-02-15",priority:"보통",desc:""},
+      {id:"t4",title:"D-day 촬영",type:"PRODUCTION",assignee:"",stage:"PRODUCTION",due:"2026-03-10",priority:"긴급",desc:""},
+      {id:"t5",title:"1차 편집",type:"편집",assignee:"",stage:"PLANNING",due:"2026-03-25",priority:"높음",desc:""},
     ],
     quote:{
       vat:true, agencyFeeRate:10,
@@ -429,8 +627,8 @@ const SEED_PROJECTS = [
     budget:{
       vouchers:[
         {id:"v1",name:"이준혁 감독료",vendor:"개인",type:"세금계산서",date:"2026-02-10",amount:3000000,category:"기획/제작관리",group:"제작관리",number:"",note:"",files:[]},
-        {id:"v2",name:"촬영 스튜디오",vendor:"(주)스튜디오101",type:"세금계산서",date:"2026-03-10",amount:2500000,category:"촬영",group:"촬영 장소",number:"",note:"",files:[]},
-        {id:"v3",name:"카메라 렌탈",vendor:"씨네렌탈",type:"영수증",date:"2026-03-10",amount:1800000,category:"촬영",group:"촬영 장비",number:"",note:"",files:[]},
+        {id:"v2",name:"촬영 스튜디오",vendor:"(주)스튜디오101",type:"세금계산서",date:"2026-03-10",amount:2500000,category:"PRODUCTION",group:"촬영 장소",number:"",note:"",files:[]},
+        {id:"v3",name:"카메라 렌탈",vendor:"씨네렌탈",type:"영수증",date:"2026-03-10",amount:1800000,category:"PRODUCTION",group:"촬영 장비",number:"",note:"",files:[]},
       ]
     },
     settlementDate:null, settled:false,
@@ -438,10 +636,10 @@ const SEED_PROJECTS = [
   {
     id:"p2", name:"현대 수소전기차 다큐", client:"현대자동차", color:"#7c3aed",
     format:"다큐멘터리형", due:"2026-05-30", director:"이준혁", pd:"박민서",
-    stage:"프리프로덕션", createdAt:"2026-02-01",
+    stage:"PRE", createdAt:"2026-02-01",
     tasks:[
-      {id:"t6",title:"다큐 기획안 작성",type:"스크립트",assignee:"박민서",stage:"납품완료",due:"2026-02-10",priority:"높음",desc:""},
-      {id:"t7",title:"인터뷰 대상 섭외",type:"캐스팅",assignee:"한지수",stage:"프리프로덕션",due:"2026-03-01",priority:"보통",desc:""},
+      {id:"t6",title:"다큐 기획안 작성",type:"스크립트",assignee:"",stage:"ONAIR",due:"2026-02-10",priority:"높음",desc:""},
+      {id:"t7",title:"인터뷰 대상 섭외",type:"캐스팅",assignee:"",stage:"PRE",due:"2026-03-01",priority:"보통",desc:""},
     ],
     quote:{
       vat:true, agencyFeeRate:10,
@@ -457,7 +655,21 @@ const SEED_PROJECTS = [
 // ═══════════════════════════════════════════════════════════
 function openQuotePDF(project, quote, company={}) {
   const fmtN = n => (n||0).toLocaleString("ko-KR");
-  const sub    = (quote.items||[]).reduce((s,cat)=>s+(cat.groups||[]).reduce((s2,grp)=>s2+(grp.items||[]).reduce((s3,it)=>s3+(it.qty||0)*(it.unitPrice||0),0),0),0);
+  const activeItems = [];
+  const catTotals = [];
+  for(const cat of (quote.items||[])){
+    if(cat.disabled) continue;
+    const catAmt=(cat.groups||[]).reduce((s,g)=>s+(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
+    if(!catAmt)continue;
+    catTotals.push({label:cat.category,total:catAmt});
+    for(const grp of (cat.groups||[])){
+      const gi=(grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
+      gi.forEach((it,idx)=>{
+        activeItems.push({cat:cat.category,grp:grp.group,grpFirst:idx===0,name:it.name,unit:it.unit,qty:it.qty,unitPrice:it.unitPrice,amt:(it.qty||0)*(it.unitPrice||0)});
+      });
+    }
+  }
+  const sub    = catTotals.reduce((s,c)=>s+c.total,0);
   const fee    = Math.round(sub*(quote.agencyFeeRate||0)/100);
   const supply = sub+fee;
   const vat    = quote.vat?Math.round(supply*0.1):0;
@@ -465,94 +677,48 @@ function openQuotePDF(project, quote, company={}) {
   const today  = new Date();
   const validEnd = new Date(today); validEnd.setDate(today.getDate()+(company.validDays||30));
   const dateStr = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
-  let itemRows="",rowNum=1;
-  for(const cat of (quote.items||[])){
-    const catTotal=(cat.groups||[]).reduce((s,g)=>s+(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
-    if(!catTotal)continue;
-    itemRows+=`<tr class="cat-row"><td colspan="7">■ ${cat.category}</td></tr>`;
-    for(const grp of (cat.groups||[])){
-      const gi=(grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
-      if(!gi.length)continue;
-      gi.forEach((it,idx)=>{
-        const amt=(it.qty||0)*(it.unitPrice||0);
-        itemRows+=`<tr><td class="num">${rowNum++}</td><td class="grp-cell">${idx===0?grp.group:""}</td><td>${it.name}</td><td class="center">${it.unit}</td><td class="right">${fmtN(it.qty)}</td><td class="right">${fmtN(it.unitPrice)}</td><td class="right amount">${fmtN(amt)}</td></tr>`;
-      });
-      const gt=gi.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
-      itemRows+=`<tr class="subtotal-row"><td colspan="6" class="right" style="font-style:italic;color:#64748b">└ ${grp.group} 소계</td><td class="right">${fmtN(gt)}</td></tr>`;
+
+  const multiPage = activeItems.length > 18;
+
+  // 대분류 요약 테이블 (표지용)
+  let summaryRows = "";
+  catTotals.forEach((c,i)=>{
+    summaryRows+=`<tr><td style="padding:10px 14px;font-size:13px;font-weight:600;">${String.fromCharCode(65+i)}. ${c.label}</td><td style="text-align:right;padding:10px 14px;font-size:13px;font-weight:700;color:#1e40af">${fmtN(c.total)}원</td></tr>`;
+  });
+
+  // 세부 항목 테이블
+  let itemRows="",rowNum=1,prevCat="";
+  for(const it of activeItems){
+    if(it.cat!==prevCat){
+      itemRows+=`<tr class="cat-row"><td colspan="7">■ ${it.cat}</td></tr>`;
+      prevCat=it.cat;
     }
-    itemRows+=`<tr class="cat-total-row"><td colspan="6" class="right">${cat.category} 합계</td><td class="right">${fmtN(catTotal)}</td></tr>`;
+    itemRows+=`<tr><td class="num">${rowNum++}</td><td class="grp-cell">${it.grpFirst?it.grp:""}</td><td>${it.name}</td><td class="center">${it.unit}</td><td class="right">${fmtN(it.qty)}</td><td class="right">${fmtN(it.unitPrice)}</td><td class="right amount">${fmtN(it.amt)}</td></tr>`;
   }
-  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
-<title>견적서 — ${project.name}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:13px}
-.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:14mm 14mm 16mm;position:relative}
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10mm;padding-bottom:6mm;border-bottom:3px solid #2563eb}
-.logo-box{width:140px;height:52px;border:2px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
-.doc-title{font-size:30px;font-weight:800;color:#2563eb;letter-spacing:-1px}
-.parties{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8mm}
-.party-box{border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;position:relative;overflow:hidden}
-.party-box::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px}
-.party-box.to::before{background:#2563eb}.party-box.from::before{background:#64748b}
-.party-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.party-name{font-size:16px;font-weight:800;color:#1e293b;margin-bottom:4px}
-.party-meta{font-size:11px;color:#94a3b8;margin-top:2px}
-.summary-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8mm}
-.sc{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px}
-.sc.total{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#2563eb}
-.sc .label{font-size:10px;font-weight:600;color:#3b82f6;margin-bottom:4px}
-.sc.total .label{color:#bfdbfe}
-.sc .value{font-size:17px;font-weight:800;color:#1e40af}
-.sc.total .value{color:#fff;font-size:19px}
-table{width:100%;border-collapse:collapse;margin-bottom:6mm}
-thead th{background:#1e40af;color:#fff;padding:8px 10px;font-size:11px;font-weight:600;text-align:left}
-thead th.right{text-align:right}thead th.center{text-align:center}
-tbody tr{border-bottom:1px solid #f1f5f9}
-td{padding:7px 10px;font-size:12px;vertical-align:middle}
-td.num{color:#94a3b8;font-size:11px;width:28px;text-align:center}
-td.grp-cell{color:#475569;font-size:11px;font-weight:600;width:90px}
-td.center{text-align:center}td.right{text-align:right}td.amount{font-weight:600}
-tr.cat-row td{background:#eff6ff;color:#1d4ed8;font-weight:700;font-size:12px;padding:7px 10px}
-tr.subtotal-row td{background:#f8fafc;font-size:11px;padding:5px 10px}
-tr.cat-total-row td{background:#dbeafe;color:#1e40af;font-weight:700;font-size:12px;padding:7px 10px;border-top:1px solid #bfdbfe}
-.total-section{display:flex;justify-content:flex-end;margin-bottom:8mm}
-.total-table{width:280px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
-.tr{display:flex;justify-content:space-between;padding:8px 14px;font-size:12px;border-bottom:1px solid #f1f5f9}
-.tr:last-child{border-bottom:none;background:#2563eb;color:#fff;font-size:14px;font-weight:800;padding:10px 14px}
-.tr .tl{color:#64748b}.tr:last-child .tl{color:#bfdbfe}.tr .tv{font-weight:600}
-.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8mm}
-.info-box{border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
-.info-title{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-.sign-section{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:4mm}
-.sign-box{border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center}
-.sign-label{font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;margin-bottom:12px}
-.sign-name{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:24px}
-.sign-line{border-bottom:1px solid #cbd5e1;margin:0 20px 6px}
-.sign-hint{font-size:10px;color:#94a3b8}
-.footer{position:absolute;bottom:8mm;left:14mm;right:14mm;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:6px}
-.no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
-@media print{body{background:#fff}.page{margin:0;padding:12mm}.no-print{display:none}}
-</style></head><body>
-<div class="no-print">
-  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 ${company.name||"견적서"} 미리보기</span>
-  <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
-</div>
-<div class="page">
-  <div class="header">
+
+  // 합계 블록
+  const totalBlock = `<div class="total-section"><div class="total-table">
+    <div class="tr"><span class="tl">소계</span><span class="tv">${fmtN(sub)}원</span></div>
+    ${(quote.agencyFeeRate||0)>0?`<div class="tr"><span class="tl">대행수수료 (${quote.agencyFeeRate}%)</span><span class="tv">${fmtN(fee)}원</span></div>`:""}
+    <div class="tr"><span class="tl">공급가액</span><span class="tv">${fmtN(supply)}원</span></div>
+    ${quote.vat?`<div class="tr"><span class="tl">부가세 (10%)</span><span class="tv">${fmtN(vat)}원</span></div>`:""}
+    <div class="tr"><span class="tl">최종 견적 금액</span><span class="tv">${fmtN(total)}원</span></div>
+  </div></div>`;
+
+  // 헤더 블록
+  const headerBlock = `<div class="header">
     <div>
-      ${company.logoUrl?`<img src="${company.logoUrl}" style="height:104px;max-width:320px;object-fit:contain;" onerror="this.style.display='none'"/>`:`<div class="logo-box">🎬 로고 미설정</div>`}
-      <div style="font-size:18px;font-weight:800;margin-top:6px">${company.name||"회사명"}</div>
+      ${company.logoUrl?`<img src="${company.logoUrl}" style="height:80px;max-width:280px;object-fit:contain;" onerror="this.style.display='none'"/>`:`<div class="logo-box">🎬 로고 미설정</div>`}
+      <div style="font-size:16px;font-weight:800;margin-top:4px">${company.name||"회사명"}</div>
     </div>
     <div style="text-align:right">
       <div class="doc-title">견 적 서</div>
       <div style="font-size:11px;color:#64748b;margin-top:4px">No. ${project.id.toUpperCase()}-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}</div>
       <div style="font-size:11px;color:#64748b;margin-top:2px">작성일: ${dateStr(today)}</div>
     </div>
-  </div>
-  <div class="parties">
+  </div>`;
+
+  const partiesBlock = `<div class="parties">
     <div class="party-box to">
       <div class="party-label">수 신</div>
       <div class="party-name">${project.client} 귀중</div>
@@ -565,47 +731,146 @@ tr.cat-total-row td{background:#dbeafe;color:#1e40af;font-weight:700;font-size:1
       <div style="font-size:12px;color:#475569">담당 PD: ${project.pd||"-"} · 감독: ${project.director||"-"}</div>
       ${company.phone?`<div class="party-meta">📞 ${company.phone}</div>`:""}
       ${company.email?`<div class="party-meta">✉️ ${company.email}</div>`:""}
-      ${company.address?`<div class="party-meta">📍 ${company.address}</div>`:""}
-      ${company.bizNo?`<div class="party-meta">사업자: ${company.bizNo}</div>`:""}
     </div>
-  </div>
-  <div class="summary-cards">
-    <div class="sc"><div class="label">공급가액 (VAT 제외)</div><div class="value">${fmtN(supply)}원</div></div>
-    <div class="sc"><div class="label">부가가치세 (10%)</div><div class="value">${quote.vat?fmtN(vat)+"원":"별도"}</div></div>
-    <div class="sc total"><div class="label">최종 견적 금액</div><div class="value">${fmtN(total)}원</div></div>
-  </div>
-  <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span style="width:3px;height:14px;background:#2563eb;border-radius:2px;display:inline-block"></span>견적 내역</div>
-  <table>
-    <thead><tr><th style="width:28px">No.</th><th style="width:90px">중분류</th><th>항목명</th><th class="center" style="width:45px">단위</th><th class="right" style="width:55px">수량</th><th class="right" style="width:90px">단가</th><th class="right" style="width:100px">금액</th></tr></thead>
-    <tbody>${itemRows}</tbody>
-  </table>
-  <div class="total-section">
-    <div class="total-table">
-      <div class="tr"><span class="tl">소계</span><span class="tv">${fmtN(sub)}원</span></div>
-      ${(quote.agencyFeeRate||0)>0?`<div class="tr"><span class="tl">대행수수료 (${quote.agencyFeeRate}%)</span><span class="tv">${fmtN(fee)}원</span></div>`:""}
-      <div class="tr"><span class="tl">공급가액</span><span class="tv">${fmtN(supply)}원</span></div>
-      ${quote.vat?`<div class="tr"><span class="tl">부가세 (10%)</span><span class="tv">${fmtN(vat)}원</span></div>`:""}
-      <div class="tr"><span class="tl">최종 견적 금액</span><span class="tv">${fmtN(total)}원</span></div>
-    </div>
-  </div>
-  <div class="bottom-grid">
+  </div>`;
+
+  const noteBlock = `<div class="bottom-grid">
     <div class="info-box">
       <div class="info-title">📅 견적 유효기간</div>
       <div style="font-size:13px;font-weight:700;color:#2563eb">${dateStr(today)} ~ ${dateStr(validEnd)}</div>
-      <div style="font-size:11px;color:#94a3b8;margin-top:6px">유효기간 이후 금액이 변동될 수 있습니다.</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">유효기간 이후 금액이 변동될 수 있습니다.</div>
     </div>
     <div class="info-box">
-      <div class="info-title">💬 특이사항 / 비고</div>
-      <div style="font-size:12px;color:#64748b;line-height:1.6">${(company.quoteNote||"").split("\n").join("<br/>")}</div>
+      <div class="info-title">💬 비고</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.6">${(company.quoteNote||"").split("\n").join("<br/>")}</div>
     </div>
   </div>
-  ${(company.bankName||company.bankAccount)?`<div class="info-box" style="margin-bottom:8mm"><div class="info-title">🏦 입금 계좌</div><div style="font-size:13px;font-weight:700">${company.bankName||""} ${company.bankAccount||""}</div><div style="font-size:12px;color:#475569;margin-top:2px">예금주: ${company.bankHolder||""}</div></div>`:""}
-  <div class="sign-section">
+  ${(company.bankName||company.bankAccount)?`<div class="info-box" style="margin-bottom:6mm"><div class="info-title">🏦 입금 계좌</div><div style="font-size:13px;font-weight:700">${company.bankName||""} ${company.bankAccount||""}</div><div style="font-size:12px;color:#475569;margin-top:2px">예금주: ${company.bankHolder||""}</div></div>`:""}`;
+
+  const signBlock = `<div class="sign-section">
     <div class="sign-box"><div class="sign-label">클라이언트 확인</div><div class="sign-name">${project.client}</div><div class="sign-line"></div><div class="sign-hint">(서명 또는 날인)</div></div>
-    <div class="sign-box"><div class="sign-label">담당자 확인</div><div class="sign-name">${company.name||"회사명"} · ${project.pd||"담당 PD"}</div><div class="sign-line"></div><div class="sign-hint">(서명 또는 날인)</div></div>
-  </div>
-  <div class="footer">${company.name||"회사명"} · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}</div>
-</div></body></html>`;
+    <div class="sign-box"><div class="sign-label">담당자 확인</div><div class="sign-name">${company.name||""} · ${project.pd||"담당 PD"}</div><div class="sign-line"></div><div class="sign-hint">(서명 또는 날인)</div></div>
+  </div>`;
+
+  const footerEl = `<div class="footer">${company.name||""} · CutFlow · ${dateStr(today)}</div>`;
+
+  let bodyContent;
+  if (!multiPage) {
+    // 단일 페이지
+    bodyContent = `<div class="page">
+      ${headerBlock}${partiesBlock}
+      <div class="summary-cards">
+        <div class="sc"><div class="label">공급가액</div><div class="value">${fmtN(supply)}원</div></div>
+        <div class="sc"><div class="label">부가세</div><div class="value">${quote.vat?fmtN(vat)+"원":"별도"}</div></div>
+        <div class="sc total"><div class="label">최종 견적 금액</div><div class="value">${fmtN(total)}원</div></div>
+      </div>
+      <table><thead><tr><th style="width:28px">No.</th><th style="width:85px">중분류</th><th>항목명</th><th class="center" style="width:42px">단위</th><th class="right" style="width:48px">수량</th><th class="right" style="width:85px">단가</th><th class="right" style="width:95px">금액</th></tr></thead>
+      <tbody>${itemRows}</tbody></table>
+      ${totalBlock}${noteBlock}${signBlock}${footerEl}
+    </div>`;
+  } else {
+    // 2페이지: 표지 + 세부내역
+    bodyContent = `
+    <!-- 표지 페이지 -->
+    <div class="page cover-page">
+      ${headerBlock}${partiesBlock}
+      <div class="summary-cards">
+        <div class="sc"><div class="label">공급가액</div><div class="value">${fmtN(supply)}원</div></div>
+        <div class="sc"><div class="label">부가세</div><div class="value">${quote.vat?fmtN(vat)+"원":"별도"}</div></div>
+        <div class="sc total"><div class="label">최종 견적 금액</div><div class="value">${fmtN(total)}원</div></div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span style="width:3px;height:14px;background:#2563eb;border-radius:2px;display:inline-block"></span>견적 총괄표</div>
+      <table class="summary-table">
+        <thead><tr><th style="text-align:left">구 분</th><th style="text-align:right;width:160px">금 액</th></tr></thead>
+        <tbody>
+          ${summaryRows}
+          <tr style="border-top:2px solid #2563eb"><td style="padding:10px 14px;font-size:13px;font-weight:800">제작비 소계</td><td style="text-align:right;padding:10px 14px;font-size:14px;font-weight:800;color:#1e40af">${fmtN(sub)}원</td></tr>
+        </tbody>
+      </table>
+      ${totalBlock}${noteBlock}${signBlock}${footerEl}
+    </div>
+    <!-- 세부내역 페이지 -->
+    <div class="page detail-page">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6mm;padding-bottom:4mm;border-bottom:2px solid #2563eb">
+        <div style="font-size:18px;font-weight:800;color:#1e293b">견적 세부내역</div>
+        <div style="font-size:11px;color:#94a3b8">${project.name} · ${dateStr(today)}</div>
+      </div>
+      <table><thead><tr><th style="width:28px">No.</th><th style="width:85px">중분류</th><th>항목명</th><th class="center" style="width:42px">단위</th><th class="right" style="width:48px">수량</th><th class="right" style="width:85px">단가</th><th class="right" style="width:95px">금액</th></tr></thead>
+      <tbody>${itemRows}</tbody></table>
+      ${totalBlock}
+      <div class="footer">${company.name||""} · CutFlow · ${dateStr(today)}</div>
+    </div>`;
+  }
+
+  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
+<title>견적서 — ${project.name}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:12px}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 12mm 14mm;position:relative}
+.detail-page{page-break-before:always}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8mm;padding-bottom:5mm;border-bottom:3px solid #2563eb}
+.logo-box{width:120px;height:44px;border:2px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
+.doc-title{font-size:28px;font-weight:800;color:#2563eb;letter-spacing:-1px}
+.parties{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6mm}
+.party-box{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;position:relative;overflow:hidden}
+.party-box::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px}
+.party-box.to::before{background:#2563eb}.party-box.from::before{background:#64748b}
+.party-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.party-name{font-size:14px;font-weight:800;color:#1e293b;margin-bottom:2px}
+.party-meta{font-size:10px;color:#94a3b8;margin-top:1px}
+.summary-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6mm}
+.sc{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px}
+.sc.total{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#2563eb}
+.sc .label{font-size:9px;font-weight:600;color:#3b82f6;margin-bottom:2px}
+.sc.total .label{color:#bfdbfe}
+.sc .value{font-size:15px;font-weight:800;color:#1e40af}
+.sc.total .value{color:#fff;font-size:16px}
+.summary-table{margin-bottom:6mm}
+.summary-table td{padding:10px 14px;border-bottom:1px solid #e2e8f0}
+table{width:100%;border-collapse:collapse;margin-bottom:4mm}
+thead th{background:#1e40af;color:#fff;padding:6px 8px;font-size:10px;font-weight:600;text-align:left}
+thead th.right{text-align:right}thead th.center{text-align:center}
+tbody tr{border-bottom:1px solid #f1f5f9}
+td{padding:5px 8px;font-size:11px;vertical-align:middle}
+td.num{color:#94a3b8;font-size:10px;width:28px;text-align:center}
+td.grp-cell{color:#475569;font-size:10px;font-weight:600;width:85px}
+td.center{text-align:center}td.right{text-align:right}td.amount{font-weight:600}
+tr.cat-row td{background:#eff6ff;color:#1d4ed8;font-weight:700;font-size:11px;padding:5px 8px}
+tr.subtotal-row td{background:#f8fafc;font-size:10px;padding:4px 8px}
+tr.cat-total-row td{background:#dbeafe;color:#1e40af;font-weight:700;font-size:11px;padding:5px 8px;border-top:1px solid #bfdbfe}
+.total-section{display:flex;justify-content:flex-end;margin-bottom:5mm}
+.total-table{width:260px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+.tr{display:flex;justify-content:space-between;padding:6px 12px;font-size:11px;border-bottom:1px solid #f1f5f9}
+.tr:last-child{border-bottom:none;background:#2563eb;color:#fff;font-size:13px;font-weight:800;padding:8px 12px}
+.tr .tl{color:#64748b}.tr:last-child .tl{color:#bfdbfe}.tr .tv{font-weight:600}
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:5mm}
+.info-box{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px}
+.info-title{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.sign-section{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:3mm}
+.sign-box{border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center}
+.sign-label{font-size:9px;font-weight:700;color:#64748b;letter-spacing:1px;margin-bottom:8px}
+.sign-name{font-size:12px;font-weight:600;color:#1e293b;margin-bottom:18px}
+.sign-line{border-bottom:1px solid #cbd5e1;margin:0 16px 4px}
+.sign-hint{font-size:9px;color:#94a3b8}
+.footer{position:absolute;bottom:6mm;left:12mm;right:12mm;text-align:center;font-size:9px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px}
+.no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+@media print{
+  body{background:#fff}
+  .page{margin:0;padding:10mm;min-height:auto}
+  .cover-page{page-break-after:always}
+  .detail-page{page-break-before:always}
+  .no-print{display:none}
+}
+</style></head><body>
+<div class="no-print">
+  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 ${company.name||"견적서"} 미리보기${multiPage?" (표지+세부내역)":""}</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
+</div>
+${bodyContent}
+</body></html>`;
   const blob=new Blob([html],{type:"text/html;charset=utf-8;"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
@@ -622,112 +887,174 @@ function openQuotePDFB(project, quote, company={}) {
   const validEnd = new Date(today); validEnd.setDate(today.getDate()+(company.validDays||30));
   const dateStr = d => `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
 
-  // 부문별 소계 계산
-  let sections = [];
-  let grandTotal = 0;
+  let sections = [], grandTotal = 0, totalActiveItems = 0;
   for (const cat of (quote.items||[])) {
+    if(cat.disabled) continue;
     const catTotal = (cat.groups||[]).reduce((s,g)=>s+(g.items||[]).reduce((s2,it)=>s2+(it.qty||0)*(it.unitPrice||0),0),0);
     if (!catTotal) continue;
-    let rows = "";
+    let rows = "", itemCount = 0;
     for (const grp of (cat.groups||[])) {
       const grpItems = (grp.items||[]).filter(it=>(it.qty||0)*(it.unitPrice||0)>0);
       if (!grpItems.length) continue;
-      rows += `<tr class="grp-header"><td colspan="5" style="padding:6px 10px;font-size:11px;font-weight:700;color:#475569;background:#f8fafc;">[ ${grp.group} ]</td></tr>`;
+      rows += `<tr class="grp-header"><td colspan="5" style="padding:5px 10px;font-size:10px;font-weight:700;color:#475569;background:#f8fafc;">[ ${grp.group} ]</td></tr>`;
       grpItems.forEach(it=>{
         const amt=(it.qty||0)*(it.unitPrice||0);
-        rows+=`<tr><td style="padding:6px 10px;font-size:12px;">${it.name}</td><td style="text-align:center;padding:6px 10px;font-size:12px;">${it.unit||""}</td><td style="text-align:center;padding:6px 10px;font-size:12px;">${fmtN(it.qty)}</td><td style="text-align:right;padding:6px 10px;font-size:12px;">${fmtN(it.unitPrice)}</td><td style="text-align:right;padding:6px 10px;font-size:12px;font-weight:600;">${fmtN(amt)}</td></tr>`;
+        rows+=`<tr><td style="padding:5px 10px;font-size:11px;">${it.name}</td><td style="text-align:center;padding:5px 10px;font-size:11px;">${it.unit||""}</td><td style="text-align:center;padding:5px 10px;font-size:11px;">${fmtN(it.qty)}</td><td style="text-align:right;padding:5px 10px;font-size:11px;">${fmtN(it.unitPrice)}</td><td style="text-align:right;padding:5px 10px;font-size:11px;font-weight:600;">${fmtN(amt)}</td></tr>`;
+        itemCount++;
       });
     }
-    sections.push({label:cat.category, total:catTotal, rows});
+    sections.push({label:cat.category, total:catTotal, rows, itemCount});
     grandTotal += catTotal;
+    totalActiveItems += itemCount;
   }
 
   const agencyFee = Math.round(grandTotal*(quote.agencyFeeRate||0)/100);
   const supply = grandTotal + agencyFee;
-  const mgmt = Math.round(supply*0.10);   // 일반관리비 10%
-  const profit = Math.round((supply+mgmt)*0.05); // 기업이윤 5%
+  const mgmt = Math.round(supply*0.10);
+  const profit = Math.round((supply+mgmt)*0.05);
   const finalSupply = supply + mgmt + profit;
   const vat = quote.vat ? Math.round(finalSupply*0.1) : 0;
   const total = finalSupply + vat;
 
+  const multiPage = totalActiveItems > 18;
+
+  // 대분류 요약 테이블
+  let summaryRows = "";
+  sections.forEach((sec,i)=>{
+    summaryRows+=`<tr><td style="padding:10px 14px;font-size:13px;font-weight:600;">${String.fromCharCode(65+i)}. ${sec.label}</td><td style="text-align:right;padding:10px 14px;font-size:13px;font-weight:700;color:#1e40af">${fmtN(sec.total)}원</td></tr>`;
+  });
+
+  // 세부 항목
   let sectionsHtml = "";
   sections.forEach((sec,i)=>{
     sectionsHtml += `
     <tr class="cat-header">
-      <td colspan="4" style="padding:8px 10px;font-weight:800;font-size:13px;background:#1e40af;color:#fff;">${String.fromCharCode(65+i)}. ${sec.label}</td>
-      <td style="text-align:right;padding:8px 10px;font-weight:800;font-size:13px;background:#1e40af;color:#fff;">${fmtN(sec.total)}</td>
+      <td colspan="4" style="padding:7px 10px;font-weight:800;font-size:12px;background:#1e40af;color:#fff;">${String.fromCharCode(65+i)}. ${sec.label}</td>
+      <td style="text-align:right;padding:7px 10px;font-weight:800;font-size:12px;background:#1e40af;color:#fff;">${fmtN(sec.total)}</td>
     </tr>
     ${sec.rows}
     <tr class="subtotal">
-      <td colspan="4" style="text-align:right;padding:7px 10px;font-size:12px;font-weight:700;color:#1e40af;background:#eff6ff;">소 계 (${String.fromCharCode(65+i)})</td>
-      <td style="text-align:right;padding:7px 10px;font-size:12px;font-weight:700;color:#1e40af;background:#eff6ff;">${fmtN(sec.total)}</td>
+      <td colspan="4" style="text-align:right;padding:6px 10px;font-size:11px;font-weight:700;color:#1e40af;background:#eff6ff;">소 계 (${String.fromCharCode(65+i)})</td>
+      <td style="text-align:right;padding:6px 10px;font-size:11px;font-weight:700;color:#1e40af;background:#eff6ff;">${fmtN(sec.total)}</td>
     </tr>`;
   });
+
+  // 합계 테이블
+  const totalTable = `<table style="margin-bottom:5mm;margin-left:auto;width:260px">
+    <tr><td style="padding:6px 12px;background:#f8fafc;font-size:11px">제작비 소계</td><td style="text-align:right;padding:6px 12px;font-size:11px;font-weight:600">${fmtN(grandTotal)}원</td></tr>
+    ${agencyFee>0?`<tr><td style="padding:6px 12px;background:#f8fafc;font-size:11px">대행수수료 (${quote.agencyFeeRate}%)</td><td style="text-align:right;padding:6px 12px;font-size:11px;font-weight:600">${fmtN(agencyFee)}원</td></tr>`:""}
+    <tr><td style="padding:6px 12px;background:#f8fafc;font-size:11px">일반관리비 (10%)</td><td style="text-align:right;padding:6px 12px;font-size:11px;font-weight:600">${fmtN(mgmt)}원</td></tr>
+    <tr><td style="padding:6px 12px;background:#f8fafc;font-size:11px">기업이윤 (5%)</td><td style="text-align:right;padding:6px 12px;font-size:11px;font-weight:600">${fmtN(profit)}원</td></tr>
+    ${quote.vat?`<tr><td style="padding:6px 12px;background:#f8fafc;font-size:11px">부가세 (10%)</td><td style="text-align:right;padding:6px 12px;font-size:11px;font-weight:600">${fmtN(vat)}원</td></tr>`:""}
+    <tr><td style="padding:8px 12px;background:#1e40af;color:#fff;font-size:12px;font-weight:800">최종 견적금액</td><td style="text-align:right;padding:8px 12px;background:#1e40af;color:#fff;font-size:13px;font-weight:800">${fmtN(total)}원</td></tr>
+  </table>`;
+
+  // 헤더 테이블
+  const headerTable = `<table style="margin-bottom:5mm;border:1px solid #e2e8f0">
+    <tr><td style="width:70px;padding:6px 10px;background:#f8fafc;font-weight:700;font-size:10px;">수 신</td><td style="padding:6px 10px;font-size:12px;font-weight:700">${project.client} 귀중</td><td style="width:70px;padding:6px 10px;background:#f8fafc;font-weight:700;font-size:10px;">발행일</td><td style="padding:6px 10px;font-size:11px;">${dateStr(today)}</td></tr>
+    <tr><td style="padding:6px 10px;background:#f8fafc;font-weight:700;font-size:10px;">제 목</td><td style="padding:6px 10px;font-size:12px;font-weight:700">${project.name}</td><td style="padding:6px 10px;background:#f8fafc;font-weight:700;font-size:10px;">유효기간</td><td style="padding:6px 10px;font-size:11px;">${dateStr(validEnd)}까지</td></tr>
+    <tr><td style="padding:6px 10px;background:#f8fafc;font-weight:700;font-size:10px;">견적가액</td><td colspan="3" style="padding:6px 10px;font-size:14px;font-weight:800;color:#1e40af;">총 ${fmtN(total)}원 ${quote.vat?"(VAT포함)":"(VAT별도)"}</td></tr>
+  </table>`;
+
+  let bodyContent;
+  if (!multiPage) {
+    // 단일 페이지
+    bodyContent = `<div class="page">
+      <div style="text-align:center;border-bottom:3px solid #1e40af;padding-bottom:6mm;margin-bottom:6mm;">
+        <div style="font-size:26px;font-weight:800;letter-spacing:8px;color:#1e293b;">견 적 서</div>
+      </div>
+      ${headerTable}
+      <table style="margin-bottom:3mm">
+        <thead><tr><th style="width:auto">품 명</th><th style="width:45px;text-align:center">단위</th><th style="width:45px;text-align:center">수량</th><th style="width:85px;text-align:right">단 가</th><th style="width:95px;text-align:right">견적금액</th></tr></thead>
+        <tbody>${sectionsHtml}</tbody>
+      </table>
+      ${totalTable}
+      ${(company.quoteNote||"")?`<div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:4mm;font-size:11px;color:#64748b;line-height:1.7">${(company.quoteNote||"").split("\n").join("<br/>")}</div>`:""}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${(company.bankName||company.bankAccount)?`<div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#64748b;margin-bottom:4px">🏦 입금 계좌</div><div style="font-size:12px;font-weight:700">${company.bankName} ${company.bankAccount}</div><div style="font-size:11px;color:#475569">예금주: ${company.bankHolder||""}</div></div>`:"<div></div>"}
+        <div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="font-size:9px;font-weight:700;color:#64748b;margin-bottom:8px">공급자</div>
+          <div style="font-size:12px;font-weight:700">${company.name||""}</div>
+          ${company.phone?`<div style="font-size:10px;color:#64748b;margin-top:2px">Tel: ${company.phone}</div>`:""}
+          <div style="border-bottom:1px solid #cbd5e1;margin:10px 16px 4px"></div>
+          <div style="font-size:9px;color:#94a3b8">(서명 또는 날인)</div>
+        </div>
+      </div>
+      <div style="position:absolute;bottom:6mm;left:12mm;right:12mm;text-align:center;font-size:9px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px">${company.name||""} · CutFlow · ${dateStr(today)}</div>
+    </div>`;
+  } else {
+    // 2페이지: 표지(총괄표) + 세부내역
+    bodyContent = `
+    <!-- 표지 페이지 -->
+    <div class="page cover-page">
+      <div style="text-align:center;border-bottom:3px solid #1e40af;padding-bottom:6mm;margin-bottom:6mm;">
+        <div style="font-size:26px;font-weight:800;letter-spacing:8px;color:#1e293b;">견 적 서</div>
+      </div>
+      ${headerTable}
+      <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:5px;display:flex;align-items:center;gap:6px"><span style="width:3px;height:14px;background:#1e40af;border-radius:2px;display:inline-block"></span>견적 총괄표</div>
+      <table style="margin-bottom:5mm">
+        <thead><tr><th style="text-align:left">구 분</th><th style="text-align:right;width:160px">금 액</th></tr></thead>
+        <tbody>
+          ${summaryRows}
+          <tr style="border-top:2px solid #1e40af"><td style="padding:10px 14px;font-size:13px;font-weight:800">제작비 소계</td><td style="text-align:right;padding:10px 14px;font-size:14px;font-weight:800;color:#1e40af">${fmtN(grandTotal)}원</td></tr>
+        </tbody>
+      </table>
+      ${totalTable}
+      ${(company.quoteNote||"")?`<div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:4mm;font-size:11px;color:#64748b;line-height:1.7">${(company.quoteNote||"").split("\n").join("<br/>")}</div>`:""}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${(company.bankName||company.bankAccount)?`<div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px"><div style="font-size:9px;font-weight:700;color:#64748b;margin-bottom:4px">🏦 입금 계좌</div><div style="font-size:12px;font-weight:700">${company.bankName} ${company.bankAccount}</div><div style="font-size:11px;color:#475569">예금주: ${company.bankHolder||""}</div></div>`:"<div></div>"}
+        <div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center">
+          <div style="font-size:9px;font-weight:700;color:#64748b;margin-bottom:8px">공급자</div>
+          <div style="font-size:12px;font-weight:700">${company.name||""}</div>
+          ${company.phone?`<div style="font-size:10px;color:#64748b;margin-top:2px">Tel: ${company.phone}</div>`:""}
+          <div style="border-bottom:1px solid #cbd5e1;margin:10px 16px 4px"></div>
+          <div style="font-size:9px;color:#94a3b8">(서명 또는 날인)</div>
+        </div>
+      </div>
+      <div style="position:absolute;bottom:6mm;left:12mm;right:12mm;text-align:center;font-size:9px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px">${company.name||""} · CutFlow · ${dateStr(today)}</div>
+    </div>
+    <!-- 세부내역 페이지 -->
+    <div class="page detail-page">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5mm;padding-bottom:3mm;border-bottom:2px solid #1e40af">
+        <div style="font-size:17px;font-weight:800;color:#1e293b">견적 세부내역</div>
+        <div style="font-size:10px;color:#94a3b8">${project.name} · ${dateStr(today)}</div>
+      </div>
+      <table style="margin-bottom:3mm">
+        <thead><tr><th style="width:auto">품 명</th><th style="width:45px;text-align:center">단위</th><th style="width:45px;text-align:center">수량</th><th style="width:85px;text-align:right">단 가</th><th style="width:95px;text-align:right">견적금액</th></tr></thead>
+        <tbody>${sectionsHtml}</tbody>
+      </table>
+      ${totalTable}
+      <div style="position:absolute;bottom:6mm;left:12mm;right:12mm;text-align:center;font-size:9px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px">${company.name||""} · CutFlow · ${dateStr(today)}</div>
+    </div>`;
+  }
 
   const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
 <title>견적서(상세) — ${project.name}</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:13px}
-.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 12mm 14mm}
+body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:12px}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 12mm 14mm;position:relative}
+.detail-page{page-break-before:always}
 .no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
 table{width:100%;border-collapse:collapse;}
-th{background:#1e40af;color:#fff;padding:8px 10px;font-size:11px;font-weight:700;text-align:left;border:1px solid #1e3a8a}
+th{background:#1e40af;color:#fff;padding:7px 10px;font-size:10px;font-weight:700;text-align:left;border:1px solid #1e3a8a}
 td{border:1px solid #e2e8f0;vertical-align:middle}
-tr:hover td{background:#f8fafc}
 .cat-header td{border-color:#1e3a8a}
-@media print{body{background:#fff}.page{margin:0;padding:10mm}.no-print{display:none}}
+@media print{
+  body{background:#fff}
+  .page{margin:0;padding:10mm;min-height:auto}
+  .cover-page{page-break-after:always}
+  .detail-page{page-break-before:always}
+  .no-print{display:none}
+}
 </style></head><body>
 <div class="no-print">
-  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 ${company.name||"견적서"} · 상세형</span>
+  <span style="color:#fff;font-weight:700;font-size:14px;">🎬 ${company.name||"견적서"} · 상세형${multiPage?" (표지+세부내역)":""}</span>
   <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
 </div>
-<div class="page">
-  <!-- 헤더 -->
-  <div style="text-align:center;border-bottom:3px solid #1e40af;padding-bottom:8mm;margin-bottom:8mm;">
-    <div style="font-size:28px;font-weight:800;letter-spacing:8px;color:#1e293b;">견 적 서</div>
-  </div>
-  <table style="margin-bottom:6mm;border:1px solid #e2e8f0">
-    <tr><td style="width:80px;padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">수 신</td><td style="padding:7px 10px;font-size:13px;font-weight:700">${project.client} 귀중</td><td style="width:80px;padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">발행일</td><td style="padding:7px 10px;font-size:12px;">${dateStr(today)}</td></tr>
-    <tr><td style="padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">제 목</td><td style="padding:7px 10px;font-size:13px;font-weight:700">${project.name}</td><td style="padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">유효기간</td><td style="padding:7px 10px;font-size:12px;">${dateStr(validEnd)}까지</td></tr>
-    <tr><td style="padding:7px 10px;background:#f8fafc;font-weight:700;font-size:11px;">견적가액</td><td colspan="3" style="padding:7px 10px;font-size:14px;font-weight:800;color:#1e40af;">총 ${fmtN(total)}원 ${quote.vat?"(VAT포함)":"(VAT별도)"}</td></tr>
-  </table>
-
-  <!-- 항목 테이블 -->
-  <table style="margin-bottom:4mm">
-    <thead><tr><th style="width:auto">품 명</th><th style="width:50px;text-align:center">단위</th><th style="width:50px;text-align:center">수량</th><th style="width:90px;text-align:right">단 가</th><th style="width:100px;text-align:right">견적금액</th></tr></thead>
-    <tbody>${sectionsHtml}</tbody>
-  </table>
-
-  <!-- 합계 -->
-  <table style="margin-bottom:6mm;margin-left:auto;width:280px">
-    <tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">제작비 소계</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(grandTotal)}원</td></tr>
-    ${agencyFee>0?`<tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">대행수수료 (${quote.agencyFeeRate}%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(agencyFee)}원</td></tr>`:""}
-    <tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">일반관리비 (10%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(mgmt)}원</td></tr>
-    <tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">기업이윤 (5%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(profit)}원</td></tr>
-    ${quote.vat?`<tr><td style="padding:7px 12px;background:#f8fafc;font-size:12px">부가세 (10%)</td><td style="text-align:right;padding:7px 12px;font-size:12px;font-weight:600">${fmtN(vat)}원</td></tr>`:""}
-    <tr><td style="padding:9px 12px;background:#1e40af;color:#fff;font-size:13px;font-weight:800">최종 견적금액</td><td style="text-align:right;padding:9px 12px;background:#1e40af;color:#fff;font-size:14px;font-weight:800">${fmtN(total)}원</td></tr>
-  </table>
-
-  <!-- 비고 -->
-  ${(company.quoteNote||"")?`<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6mm;font-size:12px;color:#64748b;line-height:1.8">${(company.quoteNote||"").split("\n").join("<br/>")}</div>`:""}
-
-  <!-- 계좌 + 서명 -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6mm">
-    ${(company.bankName||company.bankAccount)?`<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px"><div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:6px">🏦 입금 계좌</div><div style="font-size:13px;font-weight:700">${company.bankName} ${company.bankAccount}</div><div style="font-size:12px;color:#475569">예금주: ${company.bankHolder||""}</div></div>`:"<div></div>"}
-    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;text-align:center">
-      <div style="font-size:10px;font-weight:700;color:#64748b;margin-bottom:10px">공급자</div>
-      <div style="font-size:13px;font-weight:700">${company.name||""}</div>
-      ${company.phone?`<div style="font-size:11px;color:#64748b;margin-top:2px">Tel: ${company.phone}</div>`:""}
-      ${company.email?`<div style="font-size:11px;color:#64748b">Email: ${company.email}</div>`:""}
-      ${company.bizNo?`<div style="font-size:11px;color:#64748b">사업자: ${company.bizNo}</div>`:""}
-      <div style="border-bottom:1px solid #cbd5e1;margin:12px 20px 6px"></div>
-      <div style="font-size:10px;color:#94a3b8">(서명 또는 날인)</div>
-    </div>
-  </div>
-  <div style="text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:6px">${company.name||""} · 본 견적서는 CutFlow로 작성되었습니다 · ${dateStr(today)}</div>
-</div></body></html>`;
+${bodyContent}
+</body></html>`;
 
   const blob=new Blob([html],{type:"text/html;charset=utf-8;"});
   const url=URL.createObjectURL(blob);
@@ -750,9 +1077,9 @@ function Btn({ children, primary, danger, ghost, sm, onClick, style={}, disabled
   return <button style={{...base,...variant,opacity:disabled?.5:1}} onClick={disabled?undefined:onClick}>{children}</button>;
 }
 
-function Field({ label, children, half }) {
+function Field({ label, children, half, style }) {
   return (
-    <div style={{flex:half?"1 1 140px":"1 1 100%",marginBottom:12}}>
+    <div style={{flex:half?"1 1 140px":"1 1 100%",marginBottom:12,...(style||{})}}>
       <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:5}}>{label}</div>
       {children}
     </div>
@@ -779,11 +1106,11 @@ function Avatar({ name, size=28 }) {
 
 function TabBar({ tabs, active, onChange }) {
   return (
-    <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,marginBottom:24}}>
+    <div style={{display:"flex",borderBottom:`2px solid ${C.border}`,marginBottom:24,overflowX:"auto",overflowY:"hidden",scrollbarWidth:"none",msOverflowStyle:"none"}}>
       {tabs.map(t=>(
         <button key={t.id} onClick={()=>!t.locked&&onChange(t.id)}
           title={t.locked?"접근 권한이 없습니다":""}
-          style={{padding:"10px 20px",border:"none",background:"none",cursor:t.locked?"not-allowed":"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:t.locked?C.faint:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6,opacity:t.locked?0.5:1}}>
+          style={{padding:"10px 20px",border:"none",background:"none",cursor:t.locked?"not-allowed":"pointer",fontSize:14,fontWeight:active===t.id?700:500,color:t.locked?C.faint:active===t.id?C.blue:C.sub,borderBottom:active===t.id?`2px solid ${C.blue}`:"2px solid transparent",marginBottom:-2,display:"flex",alignItems:"center",gap:6,opacity:t.locked?0.5:1,whiteSpace:"nowrap",flexShrink:0}}>
           {t.icon} {t.label}{t.locked?" 🔒":""}
         </button>
       ))}
@@ -792,52 +1119,74 @@ function TabBar({ tabs, active, onChange }) {
 }
 
 const todayStr = () => new Date().toISOString().slice(0,10);
-const isOverdue = t => t.stage!=="납품완료" && t.due && t.due < todayStr();
+const isOverdue = t => t.stage!=="ONAIR" && t.due && t.due < todayStr();
 
 // ═══════════════════════════════════════════════════════════
-// 로그인 화면
+// 로그인 화면 — Google 로그인
 // ═══════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, accounts }) {
-  const [selId, setSelId] = useState(accounts[0]?.id ?? "");
-  const [pw, setPw]       = useState("");
-  const [err, setErr]     = useState("");
-  const [show, setShow]   = useState(false);
+  const [err,      setErr]      = useState("");
+  const [loading,  setLoading]  = useState(false);
 
-  const login = () => {
-    const acc = accounts.find(a=>String(a.id)===String(selId) && a.pw===pw);
-    if (acc) onLogin(acc);
-    else setErr("비밀번호가 올바르지 않습니다.");
+  const handleGoogle = async () => {
+    setErr(""); setLoading(true);
+    try {
+      const gUser = await signInWithGoogle();
+      // 이메일로 accounts에서 매칭
+      const acc = accounts.find(a =>
+        a.email && a.email.toLowerCase() === gUser.email.toLowerCase()
+      );
+      if (acc) {
+        onLogin({...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
+      } else {
+        await signOutUser();
+        setErr("등록되지 않은 계정입니다. 관리자에게 문의하세요.\n(" + gUser.email + ")");
+      }
+    } catch(e) {
+      if (e.code !== "auth/popup-closed-by-user") setErr("로그인 중 오류가 발생했습니다.");
+    }
+    setLoading(false);
   };
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
       <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:20,padding:"40px 36px",width:"100%",maxWidth:380,boxShadow:"0 8px 40px rgba(0,0,0,.08)"}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
           <div style={{fontSize:36,marginBottom:8}}>🎬</div>
           <div style={{fontWeight:800,fontSize:22,letterSpacing:-0.5}}>CutFlow</div>
           <div style={{fontSize:13,color:C.faint,marginTop:4}}>광고 영상 프로덕션 관리</div>
         </div>
-        <Field label="이름">
-          <select style={inp} value={selId} onChange={e=>{setSelId(e.target.value);setErr("");setPw("");}}>
-            {accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
-          </select>
-        </Field>
-        <Field label="비밀번호">
-          <div style={{position:"relative"}}>
-            <input style={{...inp,paddingRight:40}} type={show?"text":"password"} value={pw}
-              placeholder="비밀번호 입력"
-              onChange={e=>{setPw(e.target.value);setErr("");}}
-              onKeyDown={e=>e.key==="Enter"&&login()}/>
-            <button onClick={()=>setShow(v=>!v)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:15,padding:0}}>
-              {show?"🙈":"👁"}
-            </button>
+        {err && (
+          <div style={{fontSize:12,color:C.red,marginBottom:16,padding:"10px 14px",background:C.redLight,borderRadius:8,whiteSpace:"pre-line",lineHeight:1.6}}>
+            ⚠️ {err}
           </div>
-        </Field>
-        {err && <div style={{fontSize:13,color:C.red,marginBottom:12,padding:"8px 12px",background:C.redLight,borderRadius:8}}>{err}</div>}
-        <button onClick={login} style={{width:"100%",padding:12,borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>
-          로그인
+        )}
+        <button
+          onClick={handleGoogle}
+          disabled={loading}
+          style={{width:"100%",padding:"13px 16px",borderRadius:10,border:`1.5px solid ${C.border}`,
+            background:loading?"#f8fafc":C.white,color:C.dark,fontSize:15,fontWeight:600,
+            cursor:loading?"not-allowed":"pointer",display:"flex",alignItems:"center",
+            justifyContent:"center",gap:10,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+          {loading ? (
+            <span style={{color:C.faint}}>로그인 중...</span>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              Google 계정으로 로그인
+            </>
+          )}
         </button>
+        <div style={{marginTop:20,fontSize:11,color:C.faint,textAlign:"center",lineHeight:1.6}}>
+          등록된 팀원 계정으로만 접속 가능합니다<br/>
+          계정 등록은 관리자에게 문의하세요
         </div>
+      </div>
     </div>
   );
 }
@@ -845,6 +1194,2047 @@ function LoginScreen({ onLogin, accounts }) {
 // ═══════════════════════════════════════════════════════════
 // 칸반 컬럼
 // ═══════════════════════════════════════════════════════════
+// 단계(페이즈)별 뷰 - 22단계 워크플로우
+function PhaseFeedbackBadge({ feedbacks, phaseId }) {
+  const phaseFbs = (feedbacks||[]).filter(fb=>fb.phaseId===phaseId);
+  const openFbs  = phaseFbs.filter(fb=>fb.taskStatus!=="done");
+  if(phaseFbs.length===0) return null;
+  if(openFbs.length>0) return (
+    <span style={{fontSize:9,padding:"2px 7px",borderRadius:99,
+      background:"#fef3c7",color:"#d97706",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+      📨 태스크 요청 {openFbs.length}
+    </span>
+  );
+  return (
+    <span style={{fontSize:9,padding:"2px 7px",borderRadius:99,
+      background:"#f0fdf4",color:"#16a34a",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+      완료
+    </span>
+  );
+}
+
+function PhaseFeedbacks({ feedbacks, phaseId }) {
+  const phaseFbs = (feedbacks||[]).filter(fb=>fb.phaseId===phaseId);
+  if(phaseFbs.length===0) return null;
+  return (
+    <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:6,paddingLeft:4}}>
+        📨 연결된 요청 ({phaseFbs.length})
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {phaseFbs.map(fb=>{
+          const isDone = fb.taskStatus==="done";
+          return (
+            <div key={fb.id} style={{display:"flex",alignItems:"flex-start",gap:8,
+              padding:"7px 10px",borderRadius:8,
+              background:isDone?"#f0fdf4":"#fffbeb",
+              border:"1px solid " + (isDone?"#86efac":"#fcd34d")}}>
+              <span style={{fontSize:11,flexShrink:0,marginTop:1}}>{isDone?"✅":"💬"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600,color:"#1e293b",
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {fb.title}
+                </div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>
+                  {fb.receivedDate}
+                  {(fb.assignees||[]).length>0 ? " · " + fb.assignees.join(", ") : ""}
+                </div>
+              </div>
+              <span style={{fontSize:9,padding:"2px 6px",borderRadius:99,flexShrink:0,
+                background:isDone?"#dcfce7":"#fef9c3",
+                color:isDone?"#16a34a":"#ca8a04",fontWeight:700}}>
+                {isDone?"완료":"처리중"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PhaseRoleDisplay({ projectRoles, phase }) {
+  const pr = (projectRoles||{})[phase.id] || {};
+  const owner  = pr.owner || "";
+  // driver: 배열 또는 구버전 string 모두 호환
+  const driverArr = Array.isArray(pr.driver)
+    ? pr.driver
+    : (pr.driver ? pr.driver.split(",").map(s=>s.trim()).filter(Boolean) : []);
+  const driverStr = driverArr.join(", ");
+  if(!owner && !driverStr) return null;
+  return (
+    <>
+      {owner && <span style={{fontSize:10,color:"#94a3b8"}}>주도: <strong style={{color:"#d97706"}}>{owner}</strong></span>}
+      {owner && driverStr && <span style={{fontSize:10,color:"#94a3b8",margin:"0 4px"}}>|</span>}
+      {driverStr && <span style={{fontSize:10,color:"#94a3b8"}}>실행: <strong style={{color:"#2563eb"}}>{driverStr}</strong></span>}
+    </>
+  );
+}
+
+
+function PhaseView({ tasks, feedbacks, template, user, accounts, onEdit, onUpdateTask, onAddTask, onAddSubTask, onDeleteTask, onUpdatePhaseRole, projectRoles }) {
+  const [expandedPhase, setExpandedPhase] = useState(null);
+  const [roleModal, setRoleModal] = useState(null);
+  const [roleForm, setRoleForm] = useState({owner:"", driver:[]});
+  const today = todayStr();
+  const openRoleEdit = (e, phase) => {
+    e.stopPropagation();
+    const saved = (projectRoles||{})[phase.id] || {};
+    // driver: 기존 string → 배열 호환
+    const driverArr = Array.isArray(saved.driver)
+      ? saved.driver
+      : (saved.driver ? saved.driver.split(",").map(s=>s.trim()).filter(Boolean) : []);
+    setRoleForm({ owner: saved.owner||"", driver: driverArr });
+    setRoleModal(phase);
+  };
+  const saveRole = () => { if(onUpdatePhaseRole) onUpdatePhaseRole(roleModal.id, { ...roleForm, driver: roleForm.driver }); setRoleModal(null); };
+  const memberNames = (accounts||[]).map(a=>a.name);
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+  const statusColor = s => STATUS_COLOR[s] || "#94a3b8";
+  const statusBg    = s => STATUS_BG[s]    || "#f8fafc";
+  const STATUS_OPTIONS = ["대기","진행중","완료","보류"];
+
+  const phaseProgress = (phaseId) => {
+    const pt = tasks.filter(t=>t.phaseId===phaseId);
+    if(pt.length===0) return {total:0, done:0, pct:0};
+    const done = pt.filter(t=>t.status==="완료").length;
+    return {total:pt.length, done, pct:Math.round(done/pt.length*100)};
+  };
+  const totalProgress = (() => {
+    const all = tasks.length;
+    if(!all) return 0;
+    return Math.round(tasks.filter(t=>t.status==="완료").length / all * 100);
+  })();
+  const activePhase = (() => {
+    for(const phase of template) {
+      const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
+      const allDone = phaseTasks.length>0 && phaseTasks.every(t=>t.status==="완료");
+      if(phaseTasks.length>0 && !allDone) return phase.id;
+    }
+    return template[0]?.id;
+  })();
+
+  return (
+    <>
+    <div style={{display:"flex",flexDirection:"column",gap:0}}>
+      <div style={{background:"#f8fafc",borderRadius:12,padding:"14px 18px",marginBottom:16,border:"1px solid #e2e8f0"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>프로젝트 전체 진행률</span>
+          <span style={{fontSize:13,fontWeight:800,color:"#2563eb"}}>{totalProgress}%</span>
+        </div>
+        <div style={{height:8,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+          <div style={{height:"100%",width:totalProgress+"%",background:"#2563eb",borderRadius:99}}/>
+        </div>
+      </div>
+
+      {(() => {
+        const STAGE_GROUPS = [
+          { key:"PLANNING",  label:"PLANNING",  color:"#7c3aed", bg:"#f5f3ff", border:"#ddd6fe", phases:["s01","s02"] },
+          { key:"PRE",       label:"PRE",        color:"#0891b2", bg:"#ecfeff", border:"#a5f3fc", phases:["s03","s04","s05","s06"] },
+          { key:"PRODUCTION",label:"PRODUCTION", color:"#d97706", bg:"#fffbeb", border:"#fde68a", phases:["s07","s08","s09"] },
+          { key:"POST",      label:"POST",       color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", phases:["s10","s11","s12","s13","s14","s15","s16","s17","s18","s19"] },
+          { key:"ONAIR",     label:"ON AIR",     color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", phases:["s20","s21","s22"] },
+        ];
+        return STAGE_GROUPS.map(group => {
+          const groupPhases = template.filter(p=>group.phases.includes(p.id));
+          const groupTasks = tasks.filter(t=>groupPhases.some(p=>p.id===t.phaseId));
+          const groupDone = groupTasks.filter(t=>t.status==="완료").length;
+          const groupPct = groupTasks.length>0 ? Math.round(groupDone/groupTasks.length*100) : 0;
+          return (
+            <div key={group.key} style={{marginBottom:16}}>
+              {/* 스테이지 헤더 */}
+              <div style={{display:"flex",alignItems:"center",gap:10,
+                padding:"8px 14px",borderRadius:"8px 8px 0 0",
+                background:group.bg,border:`1px solid ${group.border}`,borderBottom:"none"}}>
+                <span style={{fontSize:11,fontWeight:800,color:group.color,
+                  letterSpacing:1.5,textTransform:"uppercase"}}>{group.label}</span>
+                <div style={{flex:1,height:4,background:group.border,borderRadius:99,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:groupPct+"%",background:group.color,borderRadius:99,transition:"width .3s"}}/>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,color:group.color}}>
+                  {groupDone}/{groupTasks.length}
+                </span>
+              </div>
+              {/* 해당 스테이지 단계들 */}
+              <div style={{border:`1px solid ${group.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                {groupPhases.map((phase) => {
+        const prog = phaseProgress(phase.id);
+        const isActive = phase.id === activePhase;
+        const isOpen = expandedPhase === phase.id || (isActive && expandedPhase === null);
+        const phaseTasks = tasks.filter(t=>t.phaseId===phase.id);
+        const isDone = prog.total>0 && prog.pct===100;
+        const hasAny = prog.total>0;
+        return (
+          <div key={phase.id} style={{borderLeft:"3px solid " + (isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0"),marginBottom:2,background:"#fff",borderRadius:"0 8px 8px 0"}}>
+            <div onClick={()=>setExpandedPhase(isOpen?-1:phase.id)}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",userSelect:"none",
+                background:isActive?"#eff6ff":isDone?"#f0fdf4":"transparent",borderRadius:"0 8px 8px 0"}}>
+              <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,
+                background:isDone?"#16a34a":isActive?"#2563eb":"#e2e8f0",
+                color:(isDone||isActive)?"#fff":"#94a3b8",
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>
+                {isDone?"✓":phase.order}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13,fontWeight:700,color:isDone?"#16a34a":isActive?"#2563eb":"#334155"}}>
+                    {phase.phase}
+                  </span>
+                  {isActive&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,background:"#2563eb",color:"#fff",fontWeight:700}}>진행중</span>}
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center",flexWrap:"wrap"}}>
+                  <PhaseRoleDisplay projectRoles={projectRoles} phase={phase}/>
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                {hasAny ? (
+                  <div style={{fontSize:11,fontWeight:700,color:isDone?"#16a34a":isActive?"#2563eb":"#64748b"}}>
+                    {prog.done + "/" + prog.total}
+                  </div>
+                ) : (
+                  <span style={{fontSize:10,color:"#cbd5e1"}}>미시작</span>
+                )}
+              </div>
+              <PhaseFeedbackBadge feedbacks={feedbacks} phaseId={phase.id}/>
+              <button onClick={e=>openRoleEdit(e,phase)}
+                style={{border:"1px solid #e2e8f0",background:"#f8fafc",borderRadius:6,
+                  padding:"2px 8px",fontSize:10,color:"#64748b",cursor:"pointer",flexShrink:0}}>
+                역할편집
+              </button>
+              <span style={{color:"#cbd5e1",fontSize:12,flexShrink:0}}>{isOpen?"▲":"▼"}</span>
+            </div>
+
+            {isOpen && (
+              <div style={{padding:"0 14px 12px 14px"}}>
+                {phaseTasks.length===0 ? (
+                  <div style={{padding:"10px 0",borderTop:"1px solid #f1f5f9",textAlign:"center"}}>
+                    <button type="button" onClick={e=>{e.stopPropagation();onAddTask&&onAddTask(phase.id,phase.phase);}}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,
+                        padding:"7px 16px",borderRadius:8,border:"1.5px dashed #cbd5e1",
+                        background:"#f8fafc",color:"#94a3b8",fontSize:12,
+                        cursor:"pointer",fontWeight:600,transition:"all .15s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.color="#2563eb";e.currentTarget.style.background="#eff6ff";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#cbd5e1";e.currentTarget.style.color="#94a3b8";e.currentTarget.style.background="#f8fafc";}}>
+                      <span style={{fontSize:16,lineHeight:1}}>＋</span> 태스크 추가
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,display:"flex",flexDirection:"column",gap:4}}>
+                    {(()=>{
+                      const roots    = phaseTasks.filter(t=>!t.parentId);
+                      const getKids  = pid => phaseTasks.filter(t=>t.parentId===pid);
+                      const SCOL = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+                      const SBG  = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+
+                      // 하위 태스크 행 (실제 작업 단위)
+                      const SubRow = ({t}) => (
+                        <div style={{display:"grid",
+                          gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",
+                          padding:"6px 10px 6px 28px",gap:6,alignItems:"center",
+                          background:t.status==="완료"?"#f8fafc":"#fff",
+                          borderBottom:"1px solid #f8fafc",
+                          opacity:t.status==="완료"?.6:1}}>
+                          <input type="checkbox" checked={t.status==="완료"}
+                            onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
+                            style={{accentColor:"#16a34a",cursor:"pointer"}}/>
+                          <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:500,
+                              color:t.status==="완료"?"#94a3b8":"#334155",
+                              textDecoration:t.status==="완료"?"line-through":"none",
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {t.title}
+                            </div>
+                            <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>
+                              {(t.comments||[]).length>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>💬{t.comments.length}</span>}
+                              {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
+                                <a key={li} href={lk.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                  style={{fontSize:9,color:"#2563eb",background:"#eff6ff",padding:"1px 6px",borderRadius:99,textDecoration:"none",border:"1px solid #bfdbfe",fontWeight:600}}>
+                                  🔗{lk.label||"링크"}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                          {/* 담당자 */}
+                          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center"}}>
+                            {(t.assignees&&t.assignees.length>0)
+                              ? <>{t.assignees.slice(0,3).map(n=>(
+                                  <span key={n} style={{display:"flex",alignItems:"center",gap:1,fontSize:10,background:"#eff6ff",color:"#2563eb",padding:"1px 5px",borderRadius:99,fontWeight:600,whiteSpace:"nowrap"}}>
+                                    <Avatar name={n} size={12}/>{n}
+                                  </span>
+                                ))}
+                                {t.assignees.length>3&&<span style={{fontSize:10,color:"#64748b"}}>+{t.assignees.length-3}</span>}
+                              </>
+                              : <span style={{fontSize:10,color:"#94a3b8"}}>-</span>
+                            }
+                          </div>
+                          {/* 상태 */}
+                          <select value={t.status||"대기"} onChange={e=>onUpdateTask({...t,status:e.target.value})}
+                            onClick={e=>e.stopPropagation()}
+                            style={{fontSize:10,padding:"2px 4px",borderRadius:6,border:"1px solid "+( SCOL[t.status||"대기"])+"40",background:SBG[t.status||"대기"],color:SCOL[t.status||"대기"],fontWeight:600,cursor:"pointer",outline:"none"}}>
+                            {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                          </select>
+                          {/* 마감일 */}
+                          <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",lineHeight:1.3}}>
+                            {t.due?<>{t.due.slice(5,10).replace("-","/")} {t.due.length>10&&<span style={{fontSize:9,color:"#94a3b8"}}>{t.due.slice(11,16)}</span>}</>:<span style={{color:"#cbd5e1"}}>-</span>}
+                          </div>
+                          {/* 날짜 편집 */}
+                          <div style={{position:"relative",width:24,height:24}}>
+                            <span style={{fontSize:12,cursor:"pointer",userSelect:"none",lineHeight:"24px",display:"block",textAlign:"center"}}>📅</span>
+                            <input type="datetime-local" value={t.due||""} onChange={e=>onUpdateTask({...t,due:e.target.value})} onClick={e=>e.stopPropagation()} style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
+                          </div>
+                          {/* 삭제 */}
+                          <button type="button" onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
+                            style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",background:"#fff1f2",color:"#ef4444",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,flexShrink:0}}>−</button>
+                        </div>
+                      );
+
+                      return roots.map(t=>{
+                        const kids   = getKids(t.id);
+                        const hasKids = kids.length>0;
+                        const doneCnt = kids.filter(k=>k.status==="완료").length;
+                        const pct     = hasKids ? Math.round(doneCnt/kids.length*100) : (t.status==="완료"?100:0);
+                        const isDone  = hasKids ? pct===100 : t.status==="완료";
+
+                        return (
+                          <div key={t.id} style={{
+                            border:`1px solid ${isDone?"#dcfce7":"#e2e8f0"}`,
+                            borderRadius:10, overflow:"hidden", marginBottom:4,
+                            background:isDone?"#f0fdf4":"#fff"}}>
+
+                            {/* ── 상위 태스크 헤더 행 ── */}
+                            <div style={{display:"flex",alignItems:"center",gap:8,
+                              padding:"8px 10px",
+                              background:isDone?"#f0fdf4":hasKids?"#f8fafc":"#fff",
+                              borderBottom: hasKids&&!isDone?"1px solid #f1f5f9":"none"}}>
+
+                              {/* 체크 (하위 없을 때만 직접 체크) */}
+                              {!hasKids
+                                ? <input type="checkbox" checked={t.status==="완료"}
+                                    onChange={e=>onUpdateTask({...t,status:e.target.checked?"완료":"진행중"})}
+                                    style={{accentColor:"#16a34a",cursor:"pointer",flexShrink:0}}/>
+                                : <div style={{width:16,height:16,borderRadius:4,flexShrink:0,
+                                    background:isDone?"#16a34a":pct>0?"#bfdbfe":"#e2e8f0",
+                                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    {isDone
+                                      ? <span style={{fontSize:9,color:"#fff",fontWeight:700}}>✓</span>
+                                      : pct>0
+                                        ? <span style={{fontSize:8,color:"#2563eb",fontWeight:700}}>{pct}%</span>
+                                        : null}
+                                  </div>
+                              }
+
+                              {/* 태스크명 */}
+                              <div onClick={()=>onEdit(t)} style={{flex:1,cursor:"pointer",minWidth:0}}>
+                                <div style={{fontSize:12,fontWeight:700,
+                                  color:isDone?"#94a3b8":"#1e293b",
+                                  textDecoration:isDone?"line-through":"none",
+                                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                  {t.title}
+                                </div>
+                                {hasKids&&(
+                                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                                    {/* 미니 진행바 */}
+                                    <div style={{width:80,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                                      <div style={{height:"100%",width:pct+"%",background:isDone?"#16a34a":"#2563eb",borderRadius:99}}/>
+                                    </div>
+                                    <span style={{fontSize:9,color:"#64748b"}}>{doneCnt}/{kids.length}</span>
+                                    {/* 상태 분포 */}
+                                    {["진행중","컨펌요청"].map(s=>{
+                                      const cnt=kids.filter(k=>k.status===s).length;
+                                      return cnt>0?<span key={s} style={{fontSize:9,padding:"0px 5px",borderRadius:99,background:SBG[s],color:SCOL[s],fontWeight:700}}>{s} {cnt}</span>:null;
+                                    })}
+                                  </div>
+                                )}
+                                {!hasKids&&(
+                                  <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>
+                                    {(t.comments||[]).length>0&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:99,background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>💬{t.comments.length}</span>}
+                                    {(t.links||[]).filter(l=>l.url).map((lk,li)=>(
+                                      <a key={li} href={lk.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                        style={{fontSize:9,color:"#2563eb",background:"#eff6ff",padding:"1px 6px",borderRadius:99,textDecoration:"none",border:"1px solid #bfdbfe",fontWeight:600}}>
+                                        🔗{lk.label||"링크"}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 담당자 (하위 없을 때만) */}
+                              {!hasKids&&(
+                                <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
+                                  {(t.assignees&&t.assignees.length>0)
+                                    ? <>{t.assignees.slice(0,3).map(n=>(
+                                        <span key={n} style={{display:"flex",alignItems:"center",gap:1,fontSize:10,background:"#eff6ff",color:"#2563eb",padding:"1px 5px",borderRadius:99,fontWeight:600,whiteSpace:"nowrap"}}>
+                                          <Avatar name={n} size={12}/>{n}
+                                        </span>
+                                      ))}
+                                      {t.assignees.length>3&&<span style={{fontSize:10,color:"#64748b"}}>+{t.assignees.length-3}</span>}
+                                    </>
+                                    : <span style={{fontSize:10,color:"#94a3b8"}}>-</span>
+                                  }
+                                </div>
+                              )}
+
+                              {/* 상태 (하위 없을 때만) */}
+                              {!hasKids&&(
+                                <select value={t.status||"대기"} onChange={e=>onUpdateTask({...t,status:e.target.value})} onClick={e=>e.stopPropagation()}
+                                  style={{fontSize:10,padding:"2px 4px",borderRadius:6,border:"1px solid "+(SCOL[t.status||"대기"])+"40",background:SBG[t.status||"대기"],color:SCOL[t.status||"대기"],fontWeight:600,cursor:"pointer",outline:"none",flexShrink:0}}>
+                                  {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                                </select>
+                              )}
+
+                              {/* 마감일 (하위 없을 때만) */}
+                              {!hasKids&&(
+                                <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap",flexShrink:0}}>
+                                  {t.due?t.due.slice(5,10).replace("-","/"):<span style={{color:"#cbd5e1"}}>-</span>}
+                                </div>
+                              )}
+
+                              {/* 하위 추가 버튼 */}
+                              <button type="button" title="하위 태스크 추가"
+                                onClick={e=>{e.stopPropagation();onAddSubTask&&onAddSubTask(t);}}
+                                style={{width:22,height:22,borderRadius:5,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+                                onMouseEnter={e=>e.currentTarget.style.background="#dbeafe"}
+                                onMouseLeave={e=>e.currentTarget.style.background="#eff6ff"}>＋</button>
+
+                              {/* 삭제 */}
+                              <button type="button" onClick={e=>{e.stopPropagation();onDeleteTask&&onDeleteTask(t.id);}}
+                                style={{width:22,height:22,borderRadius:5,border:"1px solid #fca5a5",background:"#fff1f2",color:"#ef4444",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
+                            </div>
+
+                            {/* ── 하위 태스크 목록 ── */}
+                            {hasKids&&(
+                              <div>
+                                {/* 하위 컬럼 헤더 */}
+                                <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 100px 90px 28px 28px",
+                                  padding:"3px 10px 3px 28px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6,
+                                  background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                                  <span/><span>세부 태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span/><span/>
+                                </div>
+                                {kids.map(kid=><SubRow key={kid.id} t={kid}/>)}
+                                {/* 하위 추가 */}
+                                <div style={{padding:"5px 10px 5px 28px",borderTop:"1px solid #f8fafc"}}>
+                                  <button type="button"
+                                    onClick={e=>{e.stopPropagation();onAddSubTask&&onAddSubTask(t);}}
+                                    style={{fontSize:11,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",fontWeight:600,padding:"2px 4px"}}
+                                    onMouseEnter={e=>e.currentTarget.style.color="#2563eb"}
+                                    onMouseLeave={e=>e.currentTarget.style.color="#94a3b8"}>
+                                    ＋ 세부 태스크 추가
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+
+                    {/* ＋ 태스크 추가 버튼 */}
+                    <button type="button"
+                      onClick={e=>{e.stopPropagation();onAddTask&&onAddTask(phase.id,phase.phase);}}
+                      style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",
+                        borderRadius:8,border:"1.5px dashed #cbd5e1",background:"#f8fafc",
+                        color:"#94a3b8",fontSize:11,cursor:"pointer",fontWeight:600,
+                        marginTop:4,transition:"all .15s",alignSelf:"flex-start"}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.color="#2563eb";e.currentTarget.style.background="#eff6ff";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="#cbd5e1";e.currentTarget.style.color="#94a3b8";e.currentTarget.style.background="#f8fafc";}}>
+                      <span style={{fontSize:14,lineHeight:1}}>＋</span> 태스크 추가
+                    </button>
+                  </div>
+                )}
+                <PhaseFeedbacks feedbacks={feedbacks} phaseId={phase.id}/>
+              </div>
+            )}
+          </div>
+        );
+        })}
+              </div>
+            </div>
+          );
+        });
+      })()} 
+    </div>
+
+    {roleModal && (
+      <Modal title={"역할 편집 - " + (roleModal.phase||"")} onClose={()=>setRoleModal(null)}>
+        <Field label="주도자 (Owner)">
+          <select style={inp} value={roleForm.owner} onChange={e=>setRoleForm(v=>({...v,owner:e.target.value}))}>
+            <option value="">- 선택 -</option>
+            {["EPD","기획실장","PD","감독","조감독","AE","AI작업자","경영지원","대표"].map(r=>(
+              <option key={r} value={r}>{r}</option>
+            ))}
+            {memberNames.map(n=>(
+              <option key={"m_"+n} value={n}>{n}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="실행자 (Driver)">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {[...["EPD","기획실장","PD","감독","조감독","AE","AI작업자","경영지원","대표"],
+               ...memberNames].filter((v,i,a)=>a.indexOf(v)===i).map(name => {
+              const sel = (roleForm.driver||[]).includes(name);
+              return (
+                <button key={name} type="button"
+                  onClick={()=>setRoleForm(v=>({
+                    ...v,
+                    driver: sel
+                      ? v.driver.filter(d=>d!==name)
+                      : [...(v.driver||[]), name]
+                  }))}
+                  style={{display:"flex",alignItems:"center",gap:4,
+                    padding:"5px 11px",borderRadius:99,border:"none",cursor:"pointer",
+                    fontSize:11,fontWeight:sel?700:400,
+                    background:sel?"#2563eb":"#f1f5f9",
+                    color:sel?"#fff":"#475569",
+                    outline:sel?"2px solid #2563eb":"none",
+                    transition:"all .12s"}}>
+                  {sel && <span style={{fontSize:9}}>✓</span>}
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+          {(roleForm.driver||[]).length>0&&(
+            <div style={{fontSize:11,color:"#64748b",marginTop:6}}>
+              선택됨: {roleForm.driver.join(", ")}
+            </div>
+          )}
+        </Field>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+          <Btn onClick={()=>setRoleModal(null)}>취소</Btn>
+          <Btn primary onClick={saveRole}>저장</Btn>
+        </div>
+      </Modal>
+    )}
+    </>
+  );
+}
+
+
+function TaskDetailPanel({ task, accounts, user, onClose, onUpdate, onDelete, onNotify, projName, projTasks, officeData, onBookRoom }) {
+  if (!task) return null;
+
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+  const STATUS_BG    = {"대기":"#f1f5f9","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+  const PRIO_COLOR   = {"긴급":"#ef4444","높음":"#f59e0b","보통":"#64748b","낮음":"#94a3b8"};
+
+  const set = (patch) => onUpdate({...task, ...patch});
+
+  // 담당자 전달 알림
+  const notifyAssign = (names) => {
+    if (!onNotify) return;
+    names.forEach(name => {
+      if (name === user.name) return;
+      onNotify({
+        id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+        type: "assign",
+        label: "태스크 전달",
+        to: name,
+        from: user.name,
+        taskId: task.id,
+        fbTitle: task.title,
+        projName: projName||"",
+        createdAt: new Date().toISOString(),
+        urgent: false,
+      });
+    });
+  };
+
+  // 컨펌 요청 — confirmTo 우선, 없으면 assignedBy/createdBy
+  const notifyConfirmRequest = () => {
+    if (!onNotify) return;
+    const to = task.confirmTo || task.assignedBy || task.createdBy;
+    if (!to || to === user.name) return;
+    onNotify({
+      id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+      type: "confirm_req",
+      label: "컨펌 요청",
+      to,
+      from: user.name,
+      taskId: task.id,
+      fbTitle: task.title,
+      projName: projName||"",
+      createdAt: new Date().toISOString(),
+      urgent: true,
+    });
+    // 댓글에 자동 기록
+    const c = {
+      id:"c"+Date.now(), author:user.name,
+      text:`📋 ${to}에게 컨펌을 요청했습니다.`,
+      createdAt:new Date().toISOString()
+    };
+    set({comments:[...(task.comments||[]), c]});
+  };
+
+  // 완료 시 생성자에게 알림
+  const notifyComplete = () => {
+    if (!onNotify || !task.createdBy || task.createdBy === user.name) return;
+    onNotify({
+      id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+      type: "done",
+      label: "태스크 완료",
+      to: task.createdBy,
+      from: user.name,
+      taskId: task.id,
+      fbTitle: task.title,
+      projName: projName||"",
+      createdAt: new Date().toISOString(),
+      urgent: false,
+    });
+  };
+
+  const addMeeting = () => {
+    const m = {
+      id:"m"+Date.now(), title:"", date:"",
+      attendees:[],        // 배열로 변경 (멤버 이름 배열)
+      meetingType:"내부",  // "내부" | "고객사"
+      location:"",         // 장소
+      videoUrl:"",         // 화상회의 URL
+      link:"",             // 회의록
+      memo:"",
+    };
+    set({meetings:[...(task.meetings||[]), m]});
+  };
+  const updateMeeting = (id, patch) => {
+    set({meetings:(task.meetings||[]).map(m=>m.id===id?{...m,...patch}:m)});
+  };
+  const deleteMeeting = (id) => {
+    set({meetings:(task.meetings||[]).filter(m=>m.id!==id)});
+  };
+
+  const addComment = (text) => {
+    const c = {id:"c"+Date.now(), author:user.name, text, createdAt:new Date().toISOString()};
+    set({comments:[...(task.comments||[]), c]});
+  };
+  const delComment = (cid) => set({comments:(task.comments||[]).filter(c=>c.id!==cid)});
+
+  const toggleAssignee = (name) => {
+    const cur = task.assignees||[];
+    set({assignees: cur.includes(name) ? cur.filter(n=>n!==name) : [...cur, name]});
+  };
+
+  const phaseLabel = PROJECT_TEMPLATE.find(p=>p.id===task.phaseId)?.phase;
+
+  return (
+    <>
+      <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.2)",zIndex:200}}/>
+      <div style={{position:"fixed",top:0,right:0,bottom:0,width:460,background:"#fff",
+        boxShadow:"-6px 0 32px rgba(0,0,0,.13)",zIndex:201,
+        display:"flex",flexDirection:"column",overflowY:"auto"}}>
+
+        {/* ── 헤더: 태스크명 편집 ── */}
+        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid #f1f5f9",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            {/* 완료 체크 */}
+            <input type="checkbox" checked={task.status==="완료"}
+              onChange={e=>set({status:e.target.checked?"완료":"진행중"})}
+              style={{width:18,height:18,accentColor:"#16a34a",cursor:"pointer",flexShrink:0}}/>
+            {/* 태스크명 인라인 편집 */}
+            <input value={task.title||""} onChange={e=>set({title:e.target.value})}
+              style={{flex:1,fontSize:16,fontWeight:700,border:"none",
+                outline:"none",background:"transparent",fontFamily:"inherit",
+                textDecoration:task.status==="완료"?"line-through":"none",
+                color:task.status==="완료"?"#94a3b8":"#1e293b"}}/>
+            <button onClick={onClose}
+              style={{width:28,height:28,borderRadius:7,border:"1px solid #e2e8f0",
+                background:"#f8fafc",color:"#94a3b8",fontSize:16,cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+          </div>
+          {/* 메타 정보 */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            {phaseLabel&&(
+              <span style={{fontSize:11,color:"#7c3aed",background:"#f5f3ff",
+                padding:"2px 8px",borderRadius:99,fontWeight:600}}>📌 {phaseLabel}</span>
+            )}
+            <span style={{fontSize:11,color:STAGES[task.stage]?.color||"#64748b",
+              background:STAGES[task.stage]?.bg||"#f1f5f9",
+              padding:"2px 8px",borderRadius:99,fontWeight:600}}>{task.stage||"PLANNING"}</span>
+            <select value={task.type||"내부"} onChange={e=>set({type:e.target.value})}
+              style={{fontSize:11,border:"1px solid #e2e8f0",borderRadius:99,padding:"2px 8px",
+                color:"#64748b",background:"#f8fafc",cursor:"pointer",outline:"none"}}>
+              {["내부","고객사","협력사"].map(t=><option key={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{flex:1,padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:0}}>
+
+          {/* ── 담당자 + 전달 ── */}
+          <Section label="담당자">
+            {/* 담당자 선택 */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+              {accounts.map(a=>{
+                const sel=(task.assignees||[]).includes(a.name);
+                return (
+                  <button key={a.id} type="button" onClick={()=>toggleAssignee(a.name)}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",
+                      borderRadius:99,cursor:"pointer",fontSize:12,border:"none",
+                      background:sel?"#eff6ff":"#f1f5f9",
+                      color:sel?"#2563eb":"#475569",fontWeight:sel?700:400,
+                      outline:sel?"2px solid #2563eb":"none",transition:"all .12s"}}>
+                    <Avatar name={a.name} size={17}/>
+                    {a.name}{sel&&<span style={{fontSize:10,marginLeft:1}}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 전달 영역 - 항상 표시 */}
+            <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px",
+              border:"1px solid #e2e8f0"}}>
+              <div style={{fontSize:11,color:"#64748b",marginBottom:8,fontWeight:600}}>
+                📨 담당자에게 태스크 전달
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                {/* 수신자 표시 */}
+                <div style={{flex:1,display:"flex",gap:4,flexWrap:"wrap",minWidth:0}}>
+                  {(task.assignees||[]).filter(n=>n!==user.name).length > 0
+                    ? (task.assignees||[]).filter(n=>n!==user.name).map(n=>(
+                        <span key={n} style={{display:"flex",alignItems:"center",gap:3,
+                          fontSize:11,fontWeight:600,color:"#2563eb",
+                          background:"#eff6ff",padding:"3px 8px",borderRadius:99}}>
+                          <Avatar name={n} size={14}/>{n}
+                        </span>
+                      ))
+                    : <span style={{fontSize:11,color:"#94a3b8"}}>위에서 담당자를 선택하세요</span>
+                  }
+                </div>
+                {/* 전달 버튼 */}
+                <button type="button"
+                  disabled={(task.assignees||[]).filter(n=>n!==user.name).length===0}
+                  onClick={()=>{
+                    const others=(task.assignees||[]).filter(n=>n!==user.name);
+                    notifyAssign(others);
+                    const names=others.join(", ");
+                    const c={id:"c"+Date.now(),author:user.name,
+                      text:"📨 "+names+"에게 태스크를 전달했습니다.",
+                      createdAt:new Date().toISOString(),isSystem:true};
+                    set({assignedBy:user.name,assignedAt:new Date().toISOString(),
+                      comments:[...(task.comments||[]),c]});
+                  }}
+                  style={{flexShrink:0,padding:"8px 16px",borderRadius:8,border:"none",
+                    cursor:(task.assignees||[]).filter(n=>n!==user.name).length===0?"not-allowed":"pointer",
+                    fontSize:12,fontWeight:700,transition:"all .12s",
+                    background:(task.assignees||[]).filter(n=>n!==user.name).length===0?"#e2e8f0":"#2563eb",
+                    color:(task.assignees||[]).filter(n=>n!==user.name).length===0?"#94a3b8":"#fff"}}>
+                  📨 전달하기
+                </button>
+              </div>
+              {/* 마지막 전달 기록 */}
+              {task.assignedAt&&(
+                <div style={{marginTop:8,fontSize:11,color:"#94a3b8",
+                  borderTop:"1px solid #e2e8f0",paddingTop:6}}>
+                  마지막 전달: <strong>{task.assignedBy}</strong> · {new Date(task.assignedAt).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* ── 상태 ── */}
+          <Section label="상태">
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["대기","진행중","컨펌요청","완료","보류"].map(s=>{
+                const clr = STATUS_COLOR[s]||"#94a3b8";
+                const bg  = STATUS_BG[s]||"#f8fafc";
+                const isSel = task.status===s;
+                return (
+                  <button key={s} type="button"
+                    onClick={()=>{
+                      if(s==="컨펌요청"){
+                        // 컨펌 대상자 미지정이면 먼저 선택 유도
+                        if(!task.confirmTo){
+                          set({status:s, _showConfirmTarget:true});
+                        } else {
+                          set({status:s});
+                          notifyConfirmRequest();
+                        }
+                      } else if(s==="완료") {
+                        set({status:s});
+                        notifyComplete();
+                      } else {
+                        set({status:s});
+                      }
+                    }}
+                    style={{flex:1,minWidth:56,padding:"8px 4px",borderRadius:8,cursor:"pointer",
+                      fontSize:12,fontWeight:isSel?800:500,border:"none",
+                      background:isSel?bg:"#f8fafc",
+                      color:isSel?clr:"#94a3b8",
+                      outline:isSel?"2px solid "+clr:"1px solid #f1f5f9",
+                      transition:"all .12s"}}>
+                    {s==="컨펌요청"?"📋 컨펌요청":s}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 컨펌 대상자 선택 UI */}
+            {(task.status==="컨펌요청"||task._showConfirmTarget) && (
+              <div style={{marginTop:8,padding:"10px 12px",background:"#fffbeb",
+                border:"1px solid #fde68a",borderRadius:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>
+                  📋 컨펌 요청 대상자
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {/* 전달자 우선 */}
+                  {[...(task.assignedBy?[task.assignedBy]:[]),
+                    ...(task.createdBy&&task.createdBy!==task.assignedBy?[task.createdBy]:[]),
+                    ...(accounts||[]).filter(a=>
+                      a.name!==user.name &&
+                      a.name!==task.assignedBy &&
+                      a.name!==task.createdBy
+                    ).map(a=>a.name)
+                  ].filter(Boolean).map(name=>{
+                    const isSel2 = task.confirmTo===name;
+                    const isAuto = name===task.assignedBy||name===task.createdBy;
+                    return (
+                      <button key={name} type="button"
+                        onClick={()=>{
+                          set({confirmTo:name, _showConfirmTarget:false, status:"컨펌요청"});
+                          setTimeout(()=>notifyConfirmRequest(), 50);
+                        }}
+                        style={{display:"flex",alignItems:"center",gap:4,
+                          padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                          fontSize:11,fontWeight:isSel2?700:400,
+                          background:isSel2?"#fef3c7":isAuto?"#fef9c3":"#fff",
+                          color:isSel2?"#92400e":isAuto?"#b45309":"#475569",
+                          outline:isSel2?"2px solid #f59e0b":"1px solid #e2e8f0"}}>
+                          <Avatar name={name} size={14}/>
+                          {name}
+                          {isAuto&&!isSel2&&<span style={{fontSize:9,color:"#b45309"}}>(전달자)</span>}
+                          {isSel2&&<span style={{fontSize:10}}>✓</span>}
+                        </button>
+                    );
+                  })}
+                </div>
+                {task.confirmTo&&(
+                  <div style={{fontSize:11,color:"#d97706",fontWeight:600}}>
+                    → <strong>{task.confirmTo}</strong>에게 컨펌 요청이 전송됩니다
+                  </div>
+                )}
+              </div>
+            )}
+
+            {task.status==="완료"&&task.createdBy&&task.createdBy!==user.name&&(
+              <div style={{marginTop:6,fontSize:11,color:"#16a34a",fontWeight:600}}>
+                ✅ {task.createdBy}에게 완료 알림이 전송됩니다
+              </div>
+            )}
+          </Section>
+
+          {/* ── 마감일 ── */}
+          <Section label="마감일">
+            <input type="datetime-local" value={task.due||""}
+              onChange={e=>set({due:e.target.value})}
+              style={{width:"100%",padding:"9px 12px",borderRadius:8,
+                border:"1px solid #e2e8f0",fontSize:13,color:"#1e293b",
+                outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+            {task.due&&(
+              <button onClick={()=>set({due:""})}
+                style={{marginTop:4,fontSize:11,color:"#94a3b8",background:"none",
+                  border:"none",cursor:"pointer",textDecoration:"underline"}}>
+                마감일 제거
+              </button>
+            )}
+          </Section>
+
+          {/* ── 링크 ── */}
+          <Section label="링크 연결">
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {(task.links||[]).map((lk,li)=>(
+                <div key={li} style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input value={lk.label||""} placeholder="이름"
+                    onChange={e=>{
+                      const links=(task.links||[]).map((l,i)=>i===li?{...l,label:e.target.value}:l);
+                      set({links});
+                    }}
+                    style={{width:90,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+                      fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <input value={lk.url||""} placeholder="https://..."
+                    onChange={e=>{
+                      const links=(task.links||[]).map((l,i)=>i===li?{...l,url:e.target.value}:l);
+                      set({links});
+                    }}
+                    style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+                      fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  {lk.url
+                    ? <a href={lk.url} target="_blank" rel="noreferrer"
+                        style={{fontSize:18,textDecoration:"none",flexShrink:0}}>🔗</a>
+                    : <span style={{fontSize:18,opacity:.3,flexShrink:0}}>🔗</span>
+                  }
+                  <button type="button"
+                    onClick={()=>set({links:(task.links||[]).filter((_,i)=>i!==li)})}
+                    style={{border:"none",background:"none",cursor:"pointer",
+                      fontSize:15,color:"#94a3b8",padding:0,flexShrink:0}}>✕</button>
+                </div>
+              ))}
+              <button type="button"
+                onClick={()=>set({links:[...(task.links||[]),{url:"",label:""}]})}
+                style={{alignSelf:"flex-start",fontSize:12,color:"#2563eb",
+                  background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:7,
+                  padding:"5px 12px",cursor:"pointer",fontWeight:600}}>
+                + 링크 추가
+              </button>
+            </div>
+          </Section>
+
+          {/* ── 상위 태스크 연결 ── */}
+          <Section label="상위 태스크">
+            {(()=>{
+              const samePhase = (projTasks||[]).filter(t=>
+                t.phaseId===task.phaseId && t.id!==task.id && !t.parentId
+              );
+              return (
+                <div>
+                  <select
+                    value={task.parentId||""}
+                    onChange={e=>set({parentId:e.target.value||null})}
+                    style={{width:"100%",padding:"8px 12px",borderRadius:8,
+                      border:"1px solid #e2e8f0",fontSize:13,color:"#1e293b",
+                      outline:"none",boxSizing:"border-box",fontFamily:"inherit",
+                      background:"#fff",cursor:"pointer"}}>
+                    <option value="">— 상위 태스크 없음 (최상위)</option>
+                    {samePhase.map(t=>(
+                      <option key={t.id} value={t.id}>{t.title}</option>
+                    ))}
+                  </select>
+                  {task.parentId && (
+                    <div style={{marginTop:6,fontSize:11,color:"#2563eb",
+                      display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{color:"#cbd5e1"}}>└</span>
+                      {(projTasks||[]).find(t=>t.id===task.parentId)?.title||"(삭제된 태스크)"}
+                      <span style={{color:"#94a3b8"}}>의 하위 태스크</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </Section>
+
+          {/* ── 설명 ── */}
+          <Section label="설명">
+            <textarea value={task.desc||""} onChange={e=>set({desc:e.target.value})}
+              placeholder="내용을 입력하세요..."
+              style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                fontSize:13,color:"#1e293b",outline:"none",resize:"vertical",minHeight:72,
+                boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
+          </Section>
+
+          {/* ── 회의 일정 ── */}
+          <Section label={"회의 일정" + ((task.meetings||[]).length>0?" ("+task.meetings.length+")":"")}>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {(task.meetings||[]).length===0&&(
+                <div style={{fontSize:12,color:"#94a3b8",padding:"12px 0",textAlign:"center",
+                  border:"1px dashed #e2e8f0",borderRadius:10}}>
+                  회의 일정이 없습니다
+                </div>
+              )}
+              {(task.meetings||[]).map((m,mi)=>{
+                // 참석자 배열 정규화 (구버전 string 호환)
+                const attendeeArr = Array.isArray(m.attendees)
+                  ? m.attendees
+                  : (m.attendees ? m.attendees.split(",").map(s=>s.trim()).filter(Boolean) : []);
+                const memberNames = (accounts||[]).map(a=>a.name);
+                const toggleAttendee = (name) => {
+                  const next = attendeeArr.includes(name)
+                    ? attendeeArr.filter(n=>n!==name)
+                    : [...attendeeArr, name];
+                  updateMeeting(m.id, {attendees: next});
+                };
+                const typeColor = m.meetingType==="고객사" ? "#d97706" : "#7c3aed";
+                const typeBg    = m.meetingType==="고객사" ? "#fffbeb"  : "#f5f3ff";
+
+                return (
+                  <div key={m.id} style={{border:"1px solid #e2e8f0",borderRadius:10,
+                    overflow:"hidden",background:"#fafbfc"}}>
+
+                    {/* 헤더 */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,
+                      padding:"9px 12px",borderBottom:"1px solid #f1f5f9",
+                      background:typeBg}}>
+                      {/* 회의 유형 토글 */}
+                      {["내부","고객사"].map(t=>(
+                        <button key={t} type="button"
+                          onClick={()=>updateMeeting(m.id,{meetingType:t})}
+                          style={{padding:"3px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:700,
+                            background:m.meetingType===t?typeColor:"transparent",
+                            color:m.meetingType===t?"#fff":typeColor}}>
+                          {t==="내부"?"🏢 내부":"🤝 고객사"}
+                        </button>
+                      ))}
+                      <span style={{fontSize:11,fontWeight:700,color:typeColor,marginLeft:4}}>
+                        회의 {mi+1}
+                      </span>
+                      <button onClick={()=>deleteMeeting(m.id)}
+                        style={{border:"none",background:"none",cursor:"pointer",
+                          fontSize:13,color:"#94a3b8",padding:0,marginLeft:"auto"}}>✕</button>
+                    </div>
+
+                    <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                      {/* 회의명 + 일시 */}
+                      <div style={{display:"flex",gap:8}}>
+                        <input value={m.title||""} placeholder="회의 제목"
+                          onChange={e=>updateMeeting(m.id,{title:e.target.value})}
+                          style={{flex:1,padding:"7px 10px",borderRadius:7,
+                            border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                            fontFamily:"inherit",fontWeight:600}}/>
+                        <input type="datetime-local" value={m.date||""}
+                          onChange={e=>updateMeeting(m.id,{date:e.target.value})}
+                          style={{width:170,padding:"7px 10px",borderRadius:7,
+                            border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                            fontFamily:"inherit"}}/>
+                      </div>
+
+                      {/* 참석자 토글 */}
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:5}}>
+                          👤 참석자
+                        </div>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                          {memberNames.map(name=>{
+                            const sel = attendeeArr.includes(name);
+                            return (
+                              <button key={name} type="button"
+                                onClick={()=>toggleAttendee(name)}
+                                style={{display:"flex",alignItems:"center",gap:4,
+                                  padding:"4px 10px",borderRadius:99,border:"none",
+                                  cursor:"pointer",fontSize:11,fontWeight:sel?700:400,
+                                  background:sel?"#2563eb":"#f1f5f9",
+                                  color:sel?"#fff":"#475569",
+                                  transition:"all .12s"}}>
+                                <Avatar name={name} size={14}/>
+                                {name}
+                                {sel&&<span style={{fontSize:9,opacity:.8}}>✓</span>}
+                              </button>
+                            );
+                          })}
+                          {memberNames.length===0&&(
+                            <span style={{fontSize:11,color:"#94a3b8"}}>구성원을 먼저 추가해주세요</span>
+                          )}
+                        </div>
+                        {attendeeArr.length>0&&(
+                          <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>
+                            선택됨: {attendeeArr.join(", ")}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 장소 + 화상 URL */}
+                      <div style={{display:"flex",gap:8}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:4}}>📍 장소</div>
+                          <input value={m.location||""} placeholder="회의실, 주소 등"
+                            onChange={e=>updateMeeting(m.id,{location:e.target.value})}
+                            style={{width:"100%",padding:"7px 10px",borderRadius:7,
+                              border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                              fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:4}}>
+                            🎥 화상회의 URL
+                          </div>
+                          <div style={{display:"flex",gap:4}}>
+                            <input value={m.videoUrl||""} placeholder="Zoom, Meet 링크"
+                              onChange={e=>updateMeeting(m.id,{videoUrl:e.target.value})}
+                              style={{flex:1,padding:"7px 10px",borderRadius:7,
+                                border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                                fontFamily:"inherit",minWidth:0}}/>
+                            {m.videoUrl&&(
+                              <a href={m.videoUrl} target="_blank" rel="noreferrer"
+                                style={{padding:"7px 10px",borderRadius:7,
+                                  background:"#eff6ff",border:"1px solid #bfdbfe",
+                                  color:"#2563eb",fontSize:11,fontWeight:700,
+                                  textDecoration:"none",flexShrink:0,whiteSpace:"nowrap"}}>
+                                입장 →
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 회의록 링크 */}
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:4}}>📄 회의록</div>
+                        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                          <input value={m.link||""} placeholder="회의록 URL"
+                            onChange={e=>updateMeeting(m.id,{link:e.target.value})}
+                            style={{flex:1,padding:"7px 10px",borderRadius:7,
+                              border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                              fontFamily:"inherit"}}/>
+                          {m.link
+                            ? <a href={m.link} target="_blank" rel="noreferrer"
+                                style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
+                                  background:"#eff6ff",border:"1px solid #bfdbfe",
+                                  color:"#2563eb",fontSize:12,fontWeight:700,
+                                  textDecoration:"none",whiteSpace:"nowrap"}}>
+                                열기 🔗
+                              </a>
+                            : <span style={{flexShrink:0,padding:"6px 12px",borderRadius:7,
+                                background:"#f1f5f9",color:"#cbd5e1",fontSize:12,fontWeight:700}}>
+                                열기 🔗
+                              </span>
+                          }
+                        </div>
+                      </div>
+
+                      {/* 메모 */}
+                      <textarea value={m.memo||""} placeholder="회의 메모..."
+                        onChange={e=>updateMeeting(m.id,{memo:e.target.value})}
+                        rows={2}
+                        style={{width:"100%",padding:"7px 10px",borderRadius:7,
+                          border:"1px solid #e2e8f0",fontSize:12,outline:"none",
+                          fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",
+                          lineHeight:1.5}}/>
+
+                      {/* ── 회의실 예약 연동 ── */}
+                      {(()=>{
+                        const meetDate = m.date ? m.date.slice(0,10) : null;
+                        const rooms    = officeData?.rooms?.length>0
+                          ? officeData.rooms
+                          : [{id:"r1",name:"회의실 A"},{id:"r2",name:"회의실 B"}];
+                        const bookings = officeData?.bookings || [];
+                        const meetHour = m.date&&m.date.length>=13 ? Number(m.date.slice(11,13)) : null;
+                        const linkedBooking = bookings.find(b=>b.linkedMeetingId===m.id);
+                        const startH = meetHour??9;
+                        const endH   = startH+1;
+                        const isOccupied = (roomId,hour) =>
+                          bookings.some(b=>
+                            b.id!==linkedBooking?.id &&
+                            b.roomId===roomId && b.date===meetDate &&
+                            b.startHour<=hour && hour<b.endHour
+                          );
+
+                        if (!meetDate) return (
+                          <div style={{marginTop:8,padding:"7px 12px",borderRadius:8,
+                            background:"#f8fafc",border:"1px dashed #e2e8f0",
+                            fontSize:11,color:"#94a3b8",textAlign:"center"}}>
+                            🚪 날짜를 입력하면 회의실을 바로 예약할 수 있어요
+                          </div>
+                        );
+
+                        return (
+                          <div style={{marginTop:8,padding:"10px 12px",borderRadius:8,
+                            background:linkedBooking?"#f0fdf4":"#f8fafc",
+                            border:`1px solid ${linkedBooking?"#86efac":"#e2e8f0"}`}}>
+                            <div style={{fontSize:11,fontWeight:700,
+                              color:linkedBooking?"#16a34a":"#475569",
+                              marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
+                              🚪 회의실 예약
+                              {linkedBooking&&<span style={{fontSize:9,padding:"1px 6px",
+                                borderRadius:99,background:"#dcfce7",color:"#16a34a"}}>예약됨</span>}
+                            </div>
+
+                            {linkedBooking ? (
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>
+                                  {rooms.find(r=>r.id===linkedBooking.roomId)?.name||linkedBooking.roomId}
+                                </span>
+                                <span style={{fontSize:11,color:"#64748b"}}>
+                                  {linkedBooking.startHour}:00 ~ {linkedBooking.endHour}:00
+                                </span>
+                                <button type="button"
+                                  onClick={()=>{
+                                    onBookRoom&&onBookRoom("delete",linkedBooking.id);
+                                    updateMeeting(m.id,{roomBookingId:null,location:""});
+                                  }}
+                                  style={{marginLeft:"auto",fontSize:10,padding:"2px 8px",
+                                    borderRadius:6,border:"1px solid #fca5a5",
+                                    background:"#fff1f2",color:"#ef4444",
+                                    cursor:"pointer",fontWeight:600}}>
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:5}}>
+                                  {rooms.map(room=>{
+                                    const busy = isOccupied(room.id, startH);
+                                    return (
+                                      <button key={room.id} type="button"
+                                        disabled={busy}
+                                        onClick={()=>{
+                                          const bk = {
+                                            id:"bk"+Date.now(),
+                                            roomId:room.id, date:meetDate,
+                                            startHour:startH, endHour:endH,
+                                            title:m.title||task.title||"회의",
+                                            attendees:Array.isArray(m.attendees)?m.attendees:[],
+                                            bookedBy:user.name,
+                                            linkedMeetingId:m.id,
+                                            memo:m.memo||"",
+                                          };
+                                          onBookRoom&&onBookRoom("add",bk);
+                                          updateMeeting(m.id,{roomBookingId:bk.id,location:room.name});
+                                        }}
+                                        style={{padding:"5px 12px",borderRadius:8,border:"none",
+                                          fontSize:11,fontWeight:600,
+                                          cursor:busy?"not-allowed":"pointer",
+                                          background:busy?"#f1f5f9":"#eff6ff",
+                                          color:busy?"#cbd5e1":"#2563eb",opacity:busy?0.6:1}}>
+                                        {room.name}
+                                        <span style={{fontSize:9,marginLeft:3,
+                                          color:busy?"#94a3b8":"#93c5fd"}}>
+                                          {busy?"사용중":"예약 가능"}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div style={{fontSize:10,color:"#94a3b8"}}>
+                                  {meetDate} {startH}:00~{endH}:00 기준
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+                  </div>
+                );
+              })}
+              <button type="button" onClick={addMeeting}
+                style={{alignSelf:"flex-start",fontSize:12,color:"#7c3aed",
+                  background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:7,
+                  padding:"6px 14px",cursor:"pointer",fontWeight:600}}>
+                + 회의 추가
+              </button>
+            </div>
+          </Section>
+
+          {/* ── 댓글 ── */}
+          <Section label={"댓글" + ((task.comments||[]).length>0?" ("+task.comments.length+")":"")}>
+            {(task.comments||[]).length===0
+              ? <div style={{fontSize:12,color:"#94a3b8",padding:"14px 0",textAlign:"center",
+                  border:"1px dashed #e2e8f0",borderRadius:10,marginBottom:10}}>
+                  아직 댓글이 없습니다
+                </div>
+              : <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                  {(task.comments||[]).map(c=>(
+                    <div key={c.id} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                      <Avatar name={c.author} size={28}/>
+                      <div style={{flex:1,background:"#f8fafc",borderRadius:"0 10px 10px 10px",
+                        padding:"8px 12px",border:"1px solid #e2e8f0"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",
+                          alignItems:"center",marginBottom:4}}>
+                          <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{c.author}</span>
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <span style={{fontSize:10,color:"#94a3b8"}}>
+                              {new Date(c.createdAt).toLocaleDateString("ko-KR",
+                                {month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                            </span>
+                            {(c.author===user.name||user.role==="PD"||user.role==="대표")&&(
+                              <button onClick={()=>delComment(c.id)}
+                                style={{fontSize:10,color:"#94a3b8",background:"none",
+                                  border:"none",cursor:"pointer",padding:"0 2px"}}>✕</button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{fontSize:13,color:"#1e293b",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                          {c.text.split(/(@[^\s@]+)/g).map((part,i)=>
+                            part.startsWith("@")
+                              ? <span key={i} style={{color:"#2563eb",fontWeight:700,
+                                  background:"#eff6ff",borderRadius:4,padding:"0 3px"}}>{part}</span>
+                              : part
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+            <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+              <Avatar name={user.name} size={28} style={{marginTop:4}}/>
+              <div style={{flex:1}}>
+                <CommentInput accounts={accounts} user={user} onSubmit={addComment}/>
+              </div>
+            </div>
+          </Section>
+
+          {/* 삭제 */}
+          <div style={{marginTop:8,paddingTop:16,borderTop:"1px solid #f1f5f9"}}>
+            <button onClick={()=>{if(window.confirm("태스크를 삭제하시겠습니까?"))onDelete(task.id);}}
+              style={{fontSize:12,color:"#ef4444",background:"none",border:"1px solid #fca5a5",
+                borderRadius:7,padding:"5px 12px",cursor:"pointer",fontWeight:600}}>
+              🗑 태스크 삭제
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Section({label, children}) {
+  return (
+    <div style={{paddingTop:16,paddingBottom:16,borderBottom:"1px solid #f8fafc"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:8,
+        textTransform:"uppercase",letterSpacing:.8}}>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+
+// ── 요청 타입별 뷰 ──────────────────────────────────────────
+function TypeView({ tasks, onEdit, onDelete }) {
+  const TYPE_GROUPS = [
+    { key:"내부",   label:"내부",   color:"#2563eb", bg:"#eff6ff", border:"#bfdbfe", icon:"🏢" },
+    { key:"고객사", label:"고객사", color:"#d97706", bg:"#fffbeb", border:"#fde68a", icon:"🤝" },
+    { key:"협력사", label:"협력사", color:"#7c3aed", bg:"#f5f3ff", border:"#ddd6fe", icon:"🔗" },
+  ];
+  const today = todayStr();
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {TYPE_GROUPS.map(g=>{
+        const gtasks = tasks.filter(t=>(t.type||"내부")===g.key);
+        if(gtasks.length===0) return null;
+        const done = gtasks.filter(t=>t.status==="완료").length;
+        const pct = Math.round(done/gtasks.length*100);
+        return (
+          <div key={g.key} style={{border:`1px solid ${g.border}`,borderRadius:12,overflow:"hidden"}}>
+            {/* 그룹 헤더 */}
+            <div style={{padding:"10px 16px",background:g.bg,
+              display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>{g.icon}</span>
+              <span style={{fontSize:13,fontWeight:800,color:g.color,letterSpacing:.5}}>{g.label}</span>
+              <div style={{flex:1,height:5,background:"#fff",borderRadius:99,overflow:"hidden",margin:"0 8px"}}>
+                <div style={{height:"100%",width:pct+"%",background:g.color,borderRadius:99,transition:"width .3s"}}/>
+              </div>
+              <span style={{fontSize:12,fontWeight:700,color:g.color}}>{done}/{gtasks.length}</span>
+            </div>
+            {/* 태스크 목록 */}
+            <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:4}}>
+              <div style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 90px 90px 28px",
+                padding:"3px 6px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                <span/><span>태스크</span><span>단계</span><span>담당자</span><span>마감일</span><span/>
+              </div>
+              {gtasks.map(t=>(
+                <div key={t.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 110px 90px 90px 28px",
+                  padding:"7px 8px",borderRadius:8,gap:6,alignItems:"center",
+                  background:t.status==="완료"?"#f8fafc":"#fff",
+                  border:`1px solid ${t.status==="완료"?"#f1f5f9":g.border}`,
+                  borderLeft:`3px solid ${t.status==="완료"?"#e2e8f0":g.color}`,
+                  opacity:t.status==="완료"?.65:1}}>
+                  {/* 상태 체크 */}
+                  <div style={{width:14,height:14,borderRadius:"50%",flexShrink:0,
+                    background:STATUS_BG[t.status||"대기"],
+                    border:`2px solid ${STATUS_COLOR[t.status||"대기"]}`,
+                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {t.status==="완료"&&<span style={{fontSize:8,color:"#16a34a"}}>✓</span>}
+                  </div>
+                  {/* 태스크명 */}
+                  <div onClick={()=>onEdit(t)} style={{cursor:"pointer",minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:t.parentId?500:600,
+                      color:t.status==="완료"?"#94a3b8":"#1e293b",
+                      textDecoration:t.status==="완료"?"line-through":"none",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {t.parentId&&<span style={{fontSize:9,color:"#bfdbfe",marginRight:4}}>└</span>}
+                      {t.title}
+                    </div>
+                    {(t.comments||[]).length>0&&(
+                      <span style={{fontSize:9,padding:"1px 5px",borderRadius:99,
+                        background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                        💬{t.comments.length}
+                      </span>
+                    )}
+                  </div>
+                  {/* 단계 */}
+                  <span style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {t.phase||"-"}
+                  </span>
+                  {/* 담당자 */}
+                  <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+                    {(t.assignees||[]).slice(0,2).map(n=>(
+                      <span key={n} style={{fontSize:10,background:"#eff6ff",color:"#2563eb",
+                        padding:"1px 6px",borderRadius:99,fontWeight:600,
+                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:80}}>
+                        {n}
+                      </span>
+                    ))}
+                    {!(t.assignees||[]).length&&<span style={{fontSize:11,color:"#94a3b8"}}>-</span>}
+                  </div>
+                  {/* 마감일 */}
+                  <div style={{fontSize:10,color:t.due&&t.due<today?"#ef4444":"#64748b",
+                    fontWeight:t.due&&t.due<today?700:400,whiteSpace:"nowrap"}}>
+                    {t.due?t.due.slice(5,10).replace("-","/"):<span style={{color:"#cbd5e1"}}>-</span>}
+                  </div>
+                  {/* 삭제 */}
+                  <button type="button"
+                    onClick={()=>{if(window.confirm("삭제하시겠습니까?"))onDelete&&onDelete(t.id);}}
+                    style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
+                      background:"#fff1f2",color:"#ef4444",fontSize:14,fontWeight:700,
+                      cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    −
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FlowView({ tasks, accounts, user, onEdit, onAdd, onUpdateTask, onNotify }) {
+  const today = todayStr();
+
+  // 태스크를 4가지 버킷으로 분류
+  // 내 할 일: 내가 담당자이고 미완료 (컨펌요청 포함)
+  const myTasks = tasks.filter(t =>
+    (t.assignee === user.name || (t.assignees||[]).includes(user.name)) &&
+    t.status !== "완료"
+  );
+  // 컨펌 요청 받은 것: confirmTo가 나이거나 전달자/생성자인 경우
+  const confirmReqs = tasks.filter(t =>
+    t.status === "컨펌요청" &&
+    (t.confirmTo === user.name ||
+      (!t.confirmTo && (t.assignedBy === user.name || t.createdBy === user.name))) &&
+    !(t.assignees||[]).includes(user.name)
+  );
+  // 내가 전달한 것: 아직 진행 중
+  const waitingFor = tasks.filter(t =>
+    t.assignedBy === user.name &&
+    !(t.assignees||[]).includes(user.name) &&
+    t.status !== "완료" && t.status !== "컨펌요청"
+  );
+  // 기한 초과
+  const overdue = tasks.filter(t =>
+    t.due && t.due < today && t.status !== "완료" && t.status !== "컨펌요청"
+  );
+  // 최근 완료 (내가 관련된 것 — 담당자 또는 전달자)
+  const recentDone = tasks.filter(t =>
+    t.status === "완료" &&
+    (t.assignedBy === user.name || t.createdBy === user.name ||
+     (t.assignees||[]).includes(user.name) || t.assignee === user.name)
+  ).slice(-10).reverse();
+
+  // 컨펌 승인/반려 알림 함수
+  const onNotifyConfirmGlobal = (t, type) => {
+    const to = (t.assignees||[])[0] || t.assignee;
+    if (!to || !onNotify) return;
+    const isApproved = type === "approved";
+    onNotify({
+      id: "n" + Date.now() + Math.random().toString(36).slice(2,5),
+      type,
+      label: isApproved ? "컨펌 승인" : "컨펌 반려",
+      to,
+      from: user.name,
+      taskId: t.id,
+      fbTitle: t.title,
+      projName: "",
+      createdAt: new Date().toISOString(),
+      urgent: !isApproved,
+    });
+  };
+
+  // 전체 멤버별 태스크 현황
+  // assignees(복수) 기준 멤버별 태스크 집계
+  const memberMap = {};
+  tasks.forEach(t=>{
+    const names = (t.assignees&&t.assignees.length>0) ? t.assignees : (t.assignee?[t.assignee]:[]);
+    names.forEach(name=>{
+      if(!name) return;
+      if(!memberMap[name]) memberMap[name] = {name, tasks:[]};
+      memberMap[name].tasks.push(t);
+    });
+  });
+
+  // 스테이지 진행 흐름
+  const stageFlow = Object.keys(STAGES);
+  const stageCount = s => tasks.filter(t=>t.stage===s).length;
+  const currentStage = stageFlow.reduce((cur, s) => tasks.filter(t=>t.stage===s && t.stage!=="ONAIR").length > 0 ? s : cur, "PLANNING");
+
+  const PriorityDot = ({p}) => {
+    const colors = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
+    return <span style={{width:8,height:8,borderRadius:"50%",background:colors[p]||"#94a3b8",display:"inline-block",flexShrink:0}}/>;
+  };
+
+  // 전달받은 뒤 아직 "대기" 상태인 태스크 = 미확인
+  const isNew = (t) => t.assignedBy && t.status === "대기" &&
+    (t.assignees||[]).includes(user.name);
+
+  const TaskCard = ({t, showAssignee=false, showActions=false, showConfirmActions=false, onNotifyConfirm}) => {
+    const isOver = t.due && t.due < today;
+    const stage  = STAGES[t.stage] || {};
+    const _new   = isNew(t);
+    const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+    const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+    return (
+      <div style={{background:"#fff",borderRadius:10,
+          border:`1px solid ${_new?"#fbbf24":t.blocked?"#fca5a5":isOver?"#fcd34d":"#e2e8f0"}`,
+          transition:"all .15s",boxShadow:_new?"0 0 0 2px #fde68a":"0 1px 4px rgba(0,0,0,.05)",
+          overflow:"hidden"}}>
+        {/* 미확인 뱃지 */}
+        {_new && (
+          <div style={{background:"#fef3c7",padding:"3px 12px",fontSize:10,fontWeight:700,
+            color:"#b45309",display:"flex",alignItems:"center",gap:6,borderBottom:"1px solid #fde68a"}}>
+            <span>📨</span>
+            <span>{t.assignedBy}님이 전달한 태스크 · 확인 필요</span>
+          </div>
+        )}
+        <div onClick={()=>onEdit(t)} style={{padding:"10px 12px",cursor:"pointer"}}
+          onMouseEnter={e=>e.currentTarget.style.background="#fafbfc"}
+          onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:4}}>
+            <PriorityDot p={t.priority}/>
+            <div style={{flex:1,fontSize:13,fontWeight:600,color:"#1e293b",lineHeight:1.3}}>{t.title}</div>
+            {/* 상태 뱃지 */}
+            <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,flexShrink:0,
+              background:STATUS_BG[t.status||"대기"],color:STATUS_COLOR[t.status||"대기"],fontWeight:700}}>
+              {t.status||"대기"}
+            </span>
+          </div>
+          {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
+            <div style={{display:"flex",gap:4,marginBottom:5}}>
+              {(t.comments||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                  💬 {t.comments.length}
+                </span>
+              )}
+              {(t.meetings||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                  📅 {t.meetings.length}
+                </span>
+              )}
+            </div>
+          )}
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+              background:stage.bg||"#f1f5f9",color:stage.color||"#64748b",fontWeight:600}}>
+              {t.stage}
+            </span>
+            {t.phase&&<span style={{fontSize:10,color:"#94a3b8"}}>· {t.phase}</span>}
+            {showAssignee && (t.assignees||[]).length>0 && (
+              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                {(t.assignees||[]).map(n=>(
+                  <span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:10,color:"#64748b"}}>
+                    <Avatar name={n} size={14}/>{n}
+                  </span>
+                ))}
+              </div>
+            )}
+            {t.due && (
+              <span style={{fontSize:10,color:isOver?"#ef4444":"#94a3b8",marginLeft:"auto"}}>
+                {isOver?"⚠ ":""}{t.due.slice(5,10)}
+              </span>
+            )}
+          </div>
+        </div>
+        {/* 빠른 액션 버튼 (내 할 일 섹션) */}
+        {showActions && (
+          <div style={{display:"flex",gap:0,borderTop:"1px solid #f1f5f9"}}>
+            {t.status==="대기" && (
+              <button type="button"
+                onClick={e=>{e.stopPropagation();onUpdateTask&&onUpdateTask({...t,status:"진행중"});}}
+                style={{flex:1,padding:"7px",border:"none",background:"#f8fafc",
+                  cursor:"pointer",fontSize:11,fontWeight:700,color:"#2563eb",
+                  borderRight:"1px solid #f1f5f9"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+                ▶ 진행 시작
+              </button>
+            )}
+            {t.status==="진행중" && (
+              <button type="button"
+                onClick={e=>{e.stopPropagation();onUpdateTask&&onUpdateTask({...t,status:"컨펌요청"});}}
+                style={{flex:1,padding:"7px",border:"none",background:"#fffbeb",
+                  cursor:"pointer",fontSize:11,fontWeight:700,color:"#d97706",
+                  borderRight:"1px solid #fde68a"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#fef3c7"}
+                onMouseLeave={e=>e.currentTarget.style.background="#fffbeb"}>
+                📋 컨펌 요청
+              </button>
+            )}
+            {t.status==="컨펌요청" && (
+              <div style={{flex:1,padding:"7px",textAlign:"center",
+                fontSize:11,fontWeight:700,color:"#d97706",background:"#fffbeb"}}>
+                📋 컨펌 요청 중
+              </div>
+            )}
+            {t.status==="완료" && (
+              <div style={{flex:1,padding:"7px",textAlign:"center",
+                fontSize:11,fontWeight:700,color:"#16a34a",background:"#f0fdf4"}}>
+                ✓ 완료됨
+              </div>
+            )}
+            <button type="button"
+              onClick={e=>{e.stopPropagation();onEdit(t);}}
+              style={{padding:"7px 14px",border:"none",background:"#f8fafc",
+                cursor:"pointer",fontSize:11,color:"#64748b"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+              onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+              상세 →
+            </button>
+          </div>
+        )}
+
+        {/* 컨펌 승인/반려 버튼 (컨펌요청 섹션) */}
+        {showConfirmActions && (
+          <div style={{display:"flex",gap:0,borderTop:"1px solid #fde68a"}}>
+            <button type="button"
+              onClick={e=>{
+                e.stopPropagation();
+                // 승인 → 완료 처리 + 알림
+                onUpdateTask&&onUpdateTask({...t,status:"완료",approvedBy:user.name,approvedAt:new Date().toISOString()});
+                onNotifyConfirm&&onNotifyConfirm(t,"approved");
+              }}
+              style={{flex:1,padding:"8px",border:"none",background:"#f0fdf4",
+                cursor:"pointer",fontSize:12,fontWeight:800,color:"#16a34a",
+                borderRight:"1px solid #dcfce7"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#dcfce7"}
+              onMouseLeave={e=>e.currentTarget.style.background="#f0fdf4"}>
+              ✅ 승인 완료
+            </button>
+            <button type="button"
+              onClick={e=>{
+                e.stopPropagation();
+                // 반려 → 진행중으로 돌리기 + 알림
+                onUpdateTask&&onUpdateTask({...t,status:"진행중",rejectedBy:user.name,rejectedAt:new Date().toISOString()});
+                onNotifyConfirm&&onNotifyConfirm(t,"rejected");
+              }}
+              style={{flex:1,padding:"8px",border:"none",background:"#fff1f2",
+                cursor:"pointer",fontSize:12,fontWeight:800,color:"#ef4444",
+                borderRight:"1px solid #fecaca"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#fecaca"}
+              onMouseLeave={e=>e.currentTarget.style.background="#fff1f2"}>
+              🔁 반려
+            </button>
+            <button type="button"
+              onClick={e=>{e.stopPropagation();onEdit(t);}}
+              style={{padding:"8px 14px",border:"none",background:"#f8fafc",
+                cursor:"pointer",fontSize:11,color:"#64748b"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+              onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
+              상세 →
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const Section = ({icon, title, color, bg, tasks, empty, showAssignee=false, showActions=false, showConfirmActions=false}) => {
+    const newCount = showActions ? tasks.filter(t=>isNew(t)).length : 0;
+    return (
+      <div style={{background:bg,borderRadius:14,padding:"16px",border:`1.5px solid ${color}20`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{fontSize:18}}>{icon}</span>
+          <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{title}</span>
+          {newCount>0 && (
+            <span style={{fontSize:10,fontWeight:800,color:"#b45309",
+              background:"#fef3c7",border:"1px solid #fde68a",
+              padding:"1px 8px",borderRadius:99}}>
+              📨 {newCount}개 미확인
+            </span>
+          )}
+          <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:color,
+            background:`${color}15`,padding:"2px 10px",borderRadius:99}}>
+            {tasks.length}건
+          </span>
+        </div>
+        {tasks.length===0
+          ? <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"16px 0"}}>{empty}</div>
+          : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {tasks.map(t=><TaskCard key={t.id} t={t} showAssignee={showAssignee} showActions={showActions} showConfirmActions={showConfirmActions} onNotifyConfirm={onNotifyConfirmGlobal}/>)}
+            </div>
+        }
+      </div>
+    );
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+
+      {/* 프로젝트 진행 흐름 바 */}
+      <div style={{background:"#f8fafc",borderRadius:14,padding:"16px 20px",border:"1px solid #e2e8f0"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:12}}>프로젝트 진행 흐름</div>
+        <div style={{display:"flex",alignItems:"center",gap:0}}>
+          {stageFlow.map((s,i)=>{
+            const cfg = STAGES[s];
+            const cnt = stageCount(s);
+            const isCur = s === currentStage && s !== "ONAIR";
+            const isDone = s === "ONAIR";
+            return (
+              <div key={s} style={{display:"flex",alignItems:"center",flex:1}}>
+                <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div style={{width:"100%",height:6,background:isCur?"#2563eb":isDone?"#16a34a":cnt>0?"#93c5fd":"#e2e8f0",borderRadius:99,transition:"all .3s",
+                    boxShadow:isCur?"0 0 8px #2563eb60":""}}/>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:11}}>{cfg.icon}</span>
+                    <span style={{fontSize:10,fontWeight:isCur?700:500,color:isCur?"#2563eb":cnt>0?"#475569":"#cbd5e1"}}>
+                      {s}
+                    </span>
+                    {cnt>0&&<span style={{fontSize:9,background:isCur?"#2563eb":cfg.bg,color:isCur?"#fff":cfg.color,padding:"1px 5px",borderRadius:99,fontWeight:700}}>{cnt}</span>}
+                  </div>
+                </div>
+                {i < stageFlow.length-1 && (
+                  <div style={{width:20,height:6,display:"flex",alignItems:"center",justifyContent:"center",color:"#cbd5e1",fontSize:10,flexShrink:0}}>›</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 섹션 그리드 */}
+
+      {/* 컨펌 요청 — 전체 너비 강조 */}
+      {confirmReqs.length>0 && (
+        <Section
+          icon="📋" title="컨펌 요청 받은 것"
+          color="#d97706" bg="#fffbeb"
+          tasks={confirmReqs}
+          showAssignee={true}
+          showConfirmActions={true}
+          empty=""
+        />
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <Section
+          icon="🙋" title={`내 할 일 (${user.name})`}
+          color="#2563eb" bg="#eff6ff"
+          tasks={myTasks}
+          showActions={true}
+          empty="지금 처리해야 할 태스크가 없어요"
+        />
+        <Section
+          icon="⏳" title="내가 전달한 것 · 처리 대기"
+          color="#7c3aed" bg="#f5f3ff"
+          tasks={waitingFor}
+          showAssignee={true}
+          empty="다른 팀원에게 넘긴 태스크가 없어요"
+        />
+        <Section
+          icon="🚨" title="기한 초과"
+          color="#ef4444" bg="#fff1f2"
+          tasks={overdue}
+          showAssignee={true}
+          empty="기한 초과 태스크 없음 👍"
+        />
+        <Section
+          icon="✅" title="최근 완료"
+          color="#16a34a" bg="#f0fdf4"
+          tasks={recentDone}
+          showAssignee={true}
+          empty="완료된 태스크가 없어요"
+        />
+      </div>
+
+      {/* ── 전체 흐름 ── */}
+      <div>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>🔄 전체 전달 흐름</div>
+        {(()=>{
+          // assignedBy 있는 태스크만 — 누군가에서 누군가에게 전달된 것
+          const transferred = tasks.filter(t=>t.assignedBy && (t.assignees||[]).length>0);
+          if(transferred.length===0) return (
+            <div style={{textAlign:"center",padding:"20px",color:"#94a3b8",fontSize:12,
+              background:"#f8fafc",borderRadius:12,border:"1px solid #e2e8f0"}}>
+              아직 전달된 태스크가 없어요
+            </div>
+          );
+
+          const STATUS_COLOR2 = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+          const STATUS_BG2    = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+
+          // 단계(phase)별로 묶기
+          const byPhase = {};
+          transferred.forEach(t=>{
+            const key = t.phase||"단계 미연결";
+            if(!byPhase[key]) byPhase[key]=[];
+            byPhase[key].push(t);
+          });
+
+          return Object.entries(byPhase).map(([phase, pts])=>(
+            <div key={phase} style={{marginBottom:12,background:"#fff",
+              border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+              {/* 단계 헤더 */}
+              <div style={{padding:"8px 14px",background:"#f8fafc",
+                borderBottom:"1px solid #e2e8f0",
+                display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"#475569"}}>{phase}</span>
+                <span style={{fontSize:10,color:"#94a3b8"}}>{pts.length}건</span>
+                <div style={{marginLeft:"auto",display:"flex",gap:4}}>
+                  {["진행중","컨펌요청","완료"].map(s=>{
+                    const cnt=pts.filter(t=>t.status===s).length;
+                    return cnt>0?(
+                      <span key={s} style={{fontSize:9,padding:"1px 6px",borderRadius:99,fontWeight:700,
+                        background:STATUS_BG2[s],color:STATUS_COLOR2[s]}}>
+                        {s} {cnt}
+                      </span>
+                    ):null;
+                  })}
+                </div>
+              </div>
+
+              {/* 태스크별 흐름 행 */}
+              <div style={{display:"flex",flexDirection:"column"}}>
+                {pts.map((t,i)=>{
+                  const isMine = (t.assignees||[]).includes(user.name)||t.assignee===user.name||t.assignedBy===user.name||t.createdBy===user.name;
+                  const sColor = STATUS_COLOR2[t.status||"대기"];
+                  const sBg    = STATUS_BG2[t.status||"대기"];
+                  return (
+                    <div key={t.id} onClick={()=>onEdit(t)}
+                      style={{display:"flex",alignItems:"center",gap:10,
+                        padding:"10px 14px",cursor:"pointer",
+                        borderBottom:i<pts.length-1?"1px solid #f1f5f9":"none",
+                        background:isMine?"#fafeff":"#fff",
+                        borderLeft:isMine?"3px solid #93c5fd":"3px solid transparent",
+                        transition:"background .1s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                      onMouseLeave={e=>e.currentTarget.style.background=isMine?"#fafeff":"#fff"}>
+
+                      {/* 태스크명 */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:isMine?700:500,color:"#1e293b",
+                          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {isMine&&<span style={{fontSize:9,color:"#2563eb",marginRight:4}}>●</span>}
+                          {t.title}
+                        </div>
+                        {t.parentId&&(
+                          <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>└ 하위 태스크</div>
+                        )}
+                      </div>
+
+                      {/* 전달 흐름 화살표: assignedBy → assignees */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                        {/* 전달자 */}
+                        <div style={{display:"flex",alignItems:"center",gap:3}}>
+                          <Avatar name={t.assignedBy} size={18}/>
+                          <span style={{fontSize:11,color:"#475569",fontWeight:t.assignedBy===user.name?700:400}}>
+                            {t.assignedBy}
+                          </span>
+                        </div>
+                        {/* 화살표 */}
+                        <span style={{fontSize:14,color:"#94a3b8"}}>→</span>
+                        {/* 담당자들 */}
+                        <div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                          {(t.assignees||[]).map(n=>(
+                            <div key={n} style={{display:"flex",alignItems:"center",gap:2}}>
+                              <Avatar name={n} size={18}/>
+                              <span style={{fontSize:11,color:"#475569",fontWeight:n===user.name?700:400}}>
+                                {n}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 상태 뱃지 */}
+                      <span style={{fontSize:10,padding:"2px 8px",borderRadius:99,
+                        fontWeight:700,flexShrink:0,
+                        background:sBg,color:sColor,
+                        outline:`1px solid ${sColor}30`}}>
+                        {t.status||"대기"}
+                      </span>
+
+                      {/* 마감일 */}
+                      {t.due&&(
+                        <span style={{fontSize:10,color:t.due<today?"#ef4444":"#94a3b8",
+                          fontWeight:t.due<today?700:400,flexShrink:0,whiteSpace:"nowrap"}}>
+                          {t.due<today?"⚠ ":""}{t.due.slice(5,10).replace("-","/")}
+                        </span>
+                      )}
+
+                      {/* 컨펌 대상 표시 */}
+                      {t.status==="컨펌요청"&&t.confirmTo&&(
+                        <span style={{fontSize:10,color:"#d97706",flexShrink:0,whiteSpace:"nowrap"}}>
+                          📋→{t.confirmTo}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+
+      {/* 팀원별 워크로드 현황 */}
+      <div>
+        <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10}}>👥 팀원별 워크로드</div>
+        {Object.keys(memberMap).length===0 ? (
+          <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12,
+            background:"#f8fafc",borderRadius:12,border:"1px solid #e2e8f0"}}>
+            담당자가 지정된 태스크가 없어요
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {Object.values(memberMap)
+              .sort((a,b)=>{
+                // 긴급+초과 많은 순 정렬
+                const scoreA = a.tasks.filter(t=>t.priority==="긴급").length*3 + a.tasks.filter(t=>t.due&&t.due<today&&t.status!=="완료").length*2;
+                const scoreB = b.tasks.filter(t=>t.priority==="긴급").length*3 + b.tasks.filter(t=>t.due&&t.due<today&&t.status!=="완료").length*2;
+                return scoreB - scoreA;
+              })
+              .map(m=>{
+                const all       = m.tasks.length;
+                const done      = m.tasks.filter(t=>t.status==="완료").length;
+                const inProg    = m.tasks.filter(t=>t.status==="진행중").length;
+                const confirm   = m.tasks.filter(t=>t.status==="컨펌요청").length;
+                const waiting   = m.tasks.filter(t=>t.status==="대기").length;
+                const urgent    = m.tasks.filter(t=>t.priority==="긴급"&&t.status!=="완료").length;
+                const over      = m.tasks.filter(t=>t.due&&t.due<today&&t.status!=="완료").length;
+                const pct       = all>0 ? Math.round(done/all*100) : 0;
+                const isMe      = m.name===user.name;
+
+                const STATUS_COLOR2  = {"대기":"#94a3b8","진행중":"#2563eb","컨펌요청":"#d97706","완료":"#16a34a","보류":"#ef4444"};
+                const STATUS_BG2     = {"대기":"#f8fafc","진행중":"#eff6ff","컨펌요청":"#fffbeb","완료":"#f0fdf4","보류":"#fff1f2"};
+                const PRIORITY_COLOR = {긴급:"#ef4444",높음:"#f59e0b",보통:"#94a3b8",낮음:"#cbd5e1"};
+
+                // 전체 태스크 id 세트
+                const allIds    = new Set(m.tasks.map(t=>t.id));
+                // 하위 태스크: parentId가 있고 그 부모도 이 멤버의 태스크 목록 안에 있는 것
+                const subTasks  = m.tasks.filter(t=>t.parentId && allIds.has(t.parentId));
+                // 단독 태스크: 하위 태스크가 없는 상위 (자식이 아예 없는 루트)
+                const hasChild  = new Set(m.tasks.filter(t=>t.parentId).map(t=>t.parentId));
+                const soloTasks = m.tasks.filter(t=>!t.parentId && !hasChild.has(t.id));
+                // 표시할 활성 태스크 = 하위 태스크 + 단독 태스크, 미완료, 우선순위 순
+                const activeTasks = [...subTasks, ...soloTasks]
+                  .filter(t=>t.status!=="완료")
+                  .sort((a,b)=>{
+                    const p = {긴급:0,높음:1,보통:2,낮음:3};
+                    return (p[a.priority]||2)-(p[b.priority]||2);
+                  });
+
+                return (
+                  <div key={m.name} style={{
+                    background:"#fff",
+                    border:`1px solid ${isMe?"#93c5fd":"#e2e8f0"}`,
+                    borderRadius:12,overflow:"hidden",
+                    boxShadow:isMe?"0 0 0 2px #dbeafe":urgent>0||over>0?"0 0 0 1px #fca5a530":"none"
+                  }}>
+                    {/* 카드 헤더 */}
+                    <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,
+                      background:isMe?"#f0f7ff":over>0?"#fffbeb":urgent>0?"#fff5f5":"#fafbfc",
+                      borderBottom:"1px solid #f1f5f9"}}>
+                      <Avatar name={m.name} size={32}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{m.name}</span>
+                          {isMe&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#dbeafe",color:"#2563eb",fontWeight:700}}>나</span>}
+                          {urgent>0&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#fee2e2",color:"#ef4444",fontWeight:700}}>🔴 긴급 {urgent}</span>}
+                          {over>0&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#fef3c7",color:"#b45309",fontWeight:700}}>⚠ 초과 {over}</span>}
+                          {confirm>0&&<span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                            background:"#fffbeb",color:"#d97706",fontWeight:700}}>📋 컨펌 {confirm}</span>}
+                        </div>
+                        {/* 진행률 바 */}
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}>
+                          <div style={{flex:1,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:pct+"%",
+                              background:pct===100?"#16a34a":isMe?"#2563eb":"#60a5fa",
+                              borderRadius:99,transition:"width .3s"}}/>
+                          </div>
+                          <span style={{fontSize:10,fontWeight:700,color:"#475569",whiteSpace:"nowrap"}}>
+                            {done}/{all} ({pct}%)
+                          </span>
+                        </div>
+                      </div>
+                      {/* 상태별 카운트 요약 */}
+                      <div style={{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                        {[["진행중",inProg,"#eff6ff","#2563eb"],
+                          ["대기",waiting,"#f8fafc","#94a3b8"],
+                          ["완료",done,"#f0fdf4","#16a34a"]
+                        ].map(([label,cnt,bg,color])=>cnt>0?(
+                          <div key={label} style={{textAlign:"center",padding:"3px 8px",
+                            borderRadius:7,background:bg,minWidth:36}}>
+                            <div style={{fontSize:14,fontWeight:800,color,lineHeight:1.1}}>{cnt}</div>
+                            <div style={{fontSize:9,color:"#94a3b8",marginTop:1}}>{label}</div>
+                          </div>
+                        ):null)}
+                      </div>
+                    </div>
+
+                    {/* 활성 태스크 목록 */}
+                    {activeTasks.length>0&&(
+                      <div style={{padding:"8px 12px",display:"flex",flexDirection:"column",gap:3}}>
+                        {activeTasks.slice(0,5).map(t=>{
+                          const parentTask = t.parentId ? m.tasks.find(p=>p.id===t.parentId) : null;
+                          return (
+                            <div key={t.id} onClick={()=>onEdit(t)}
+                              style={{display:"flex",alignItems:"center",gap:8,
+                                padding:"6px 8px",borderRadius:7,cursor:"pointer",
+                                background:"#fafbfc",
+                                borderLeft:`3px solid ${PRIORITY_COLOR[t.priority]||"#e2e8f0"}`}}
+                              onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                              onMouseLeave={e=>e.currentTarget.style.background="#fafbfc"}>
+                              {/* 태스크명 + 상위명 */}
+                              <div style={{flex:1,minWidth:0}}>
+                                {parentTask&&(
+                                  <div style={{fontSize:9,color:"#94a3b8",marginBottom:1,
+                                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    └ {parentTask.title}
+                                  </div>
+                                )}
+                                <div style={{fontSize:11,overflow:"hidden",
+                                  textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#1e293b",
+                                  fontWeight:t.priority==="긴급"?700:500}}>
+                                  {t.priority==="긴급"&&"🔴 "}{t.title}
+                                </div>
+                              </div>
+                              {/* 단계 */}
+                              {t.phase&&<span style={{fontSize:9,color:"#94a3b8",flexShrink:0,whiteSpace:"nowrap"}}>
+                                {t.phase}
+                              </span>}
+                              {/* 상태 */}
+                              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,flexShrink:0,
+                                background:STATUS_BG2[t.status||"대기"],
+                                color:STATUS_COLOR2[t.status||"대기"],fontWeight:700}}>
+                                {t.status||"대기"}
+                              </span>
+                              {/* 마감일 */}
+                              {t.due&&<span style={{fontSize:9,flexShrink:0,
+                                color:t.due<today?"#ef4444":"#94a3b8",
+                                fontWeight:t.due<today?700:400,whiteSpace:"nowrap"}}>
+                                {t.due<today?"⚠":"📅"}{t.due.slice(5,10).replace("-","/")}
+                              </span>}
+                            </div>
+                          );
+                        })}
+                        {activeTasks.length>5&&(
+                          <div style={{fontSize:10,color:"#94a3b8",textAlign:"center",
+                            padding:"4px 0",borderTop:"1px solid #f1f5f9",marginTop:2}}>
+                            + {activeTasks.length-5}개 더 진행 중
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {activeTasks.length===0&&(
+                      <div style={{padding:"10px 16px",fontSize:11,color:"#94a3b8",
+                        textAlign:"center"}}>
+                        ✅ 모든 태스크 완료
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+
+
+
+
 function KanbanCol({ stage, tasks, onEdit }) {
   const cfg = STAGES[stage];
   return (
@@ -857,6 +3247,22 @@ function KanbanCol({ stage, tasks, onEdit }) {
       {tasks.map(t=>(
         <div key={t.id} onClick={()=>onEdit(t)} style={{background:C.white,border:`1px solid ${isOverdue(t)?"#fca5a5":C.border}`,borderRadius:10,padding:"12px 13px",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:6}}>{t.title}</div>
+          {((t.comments||[]).length>0||(t.meetings||[]).length>0)&&(
+            <div style={{display:"flex",gap:4,marginBottom:6}}>
+              {(t.comments||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                  💬 {t.comments.length}
+                </span>
+              )}
+              {(t.meetings||[]).length>0&&(
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                  background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                  📅 {t.meetings.length}
+                </span>
+              )}
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:99}}>{t.type}</span>
             <Avatar name={t.assignee} size={22}/>
@@ -869,6 +3275,213 @@ function KanbanCol({ stage, tasks, onEdit }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 엑셀 업로드 → 견적 파싱 유틸
+// ═══════════════════════════════════════════════════════════
+let _xlsxLoaded = false;
+async function loadXLSX() {
+  if (_xlsxLoaded && window.XLSX) return window.XLSX;
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => { _xlsxLoaded = true; res(); };
+    s.onerror = () => rej(new Error("SheetJS 로드 실패"));
+    document.head.appendChild(s);
+  });
+  return window.XLSX;
+}
+
+function detectExcelFormat(rows, sheetName) {
+  // 포맷B 감지: "세항목" 시트 또는 "N. XXX 부문" 패턴 또는 "견적금액"+"합의금액" 헤더
+  if (sheetName === "세항목") return "B";
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const a = (rows[i]?.[0] || "").toString();
+    if (/^\d+\.\s*.+부문/.test(a)) return "B";
+  }
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("견적금액") && rowStr.includes("합의금액") && !rowStr.includes("매입")) return "B";
+  }
+  // 포맷A 감지: "협의 견적" 또는 "협의견적" 헤더
+  for (let i = 8; i < Math.min(15, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("협의")) return "A";
+  }
+  // 기본 헤더 찾기
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const rowStr = (rows[i] || []).join(" ");
+    if (rowStr.includes("품") && rowStr.includes("수량") && rowStr.includes("단위")) return "A";
+  }
+  return "A"; // fallback
+}
+
+function parseFormatA(rows) {
+  // 포맷1: 다건형 (Google 견적서 스타일)
+  // Col A(0): 콘텐츠명, Col B(1): 항목명, E(4): 수량, F(5): 단위, G(6): 단가, H(7): 견적, I(8): 협의견적
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const r = (rows[i] || []).join(" ");
+    if (r.includes("품") && r.includes("수량")) { headerRow = i; break; }
+  }
+  if (headerRow < 0) headerRow = 9; // default
+
+  const categories = [];
+  let curCat = null;
+
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const a = (r[0] || "").toString().replace(/\n/g, " ").trim();
+    const b = (r[1] || r[3] || "").toString().trim(); // 항목명 (B열 또는 D열)
+    const qty = Number(r[4]) || 0;
+    const unit = (r[5] || "").toString().trim();
+    const unitPrice = Number(r[6]) || 0;
+    const negotiated = Number(r[8]) || 0;
+    const remark = (r[9] || "").toString().trim();
+
+    // "총 계" 또는 "공 급 가" → 끝
+    if (a.replace(/\s/g, "").includes("총계") || a.replace(/\s/g, "").includes("공급가") || a.replace(/\s/g, "").includes("최종공급가")) break;
+
+    // "~계" 행 → 소계, 스킵
+    if (a.includes("계") && !b) continue;
+
+    // 새 콘텐츠(대분류) 시작
+    if (a && !a.includes("계")) {
+      curCat = { category: a.replace(/\s+/g, " "), groups: [{ gid: newId(), group: a.replace(/\s+/g, " "), items: [] }] };
+      categories.push(curCat);
+    }
+
+    // 항목 추가
+    if (b && curCat && qty > 0) {
+      const price = negotiated > 0 ? negotiated : unitPrice;
+      curCat.groups[0].items.push({
+        id: newId(), name: b, unit: unit || "건", qty,
+        unitPrice: qty > 0 ? Math.round(price / qty) : price,
+        ...(remark ? { remark } : {})
+      });
+    } else if (b && curCat && unitPrice > 0) {
+      curCat.groups[0].items.push({
+        id: newId(), name: b, unit: unit || "건", qty: 1,
+        unitPrice: negotiated > 0 ? negotiated : unitPrice,
+        ...(remark ? { remark } : {})
+      });
+    }
+  }
+  return categories.filter(c => c.groups[0].items.length > 0);
+}
+
+function parseFormatB(rows) {
+  // 포맷2: 복잡형 (NQ5 제작 견적서 세항목 스타일)
+  const sectionRe = /^(\d+)\.\s*(.+부문)/;
+
+  // ★ 사전 스캔: 합의금액 열에 값이 있는지 확인
+  let hasAnyAgreed = false;
+  for (let i = 0; i < rows.length; i++) {
+    const agrAmt = Number((rows[i] || [])[13]) || 0;
+    if (agrAmt > 0) { hasAnyAgreed = true; break; }
+  }
+
+  const categories = [];
+  let curCatName = "";
+  let curGrpName = "";
+  let curCat = null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const a = (r[0] || "").toString().trim();
+    const c = (r[2] || "").toString().trim();
+
+    const cClean = c.replace(/\s/g, "");
+    if (cClean.includes("소계")) continue;
+    if ((c.endsWith("계") || cClean.endsWith("계")) && !c.includes("세금계산")) continue;
+    if (c === "내 역" || c === "내역") continue;
+
+    const secMatch = a.match(sectionRe);
+    if (secMatch) {
+      curCatName = secMatch[2].replace(/\s+/g, " ").trim();
+      const secNum = parseInt(secMatch[1]);
+      curCat = { category: curCatName, groups: [] };
+      categories.push(curCat);
+      curGrpName = "";
+      continue;
+    }
+
+    if (!curCat) continue;
+
+    if (a && !sectionRe.test(a) && !a.includes("부문")) {
+      const aClean = a.replace(/\s+/g, " ");
+      if (aClean !== curGrpName) curGrpName = aClean;
+    }
+
+    if (!c) continue;
+
+    const unitPrice = Number(r[5]) || 0;
+    const qty1 = Number(r[8]) || 0;
+    const unit = (r[10] || r[9] || "").toString().trim();
+    const days = Number(r[10]) || 0;
+    const estAmt = Number(r[11]) || 0;
+    const agrAmt = Number(r[13]) || 0;
+
+    // 합의금액 열이 있는 시트: 합의금액 > 0인 항목만 사용
+    // 합의금액 열이 없는 시트: 견적금액 > 0인 항목 사용
+    if (hasAnyAgreed) {
+      if (agrAmt <= 0) continue;  // 합의 안 된 항목 스킵
+    } else {
+      if (estAmt === 0) continue;
+    }
+
+    const amount = hasAnyAgreed ? agrAmt : estAmt;
+
+    const grpName = curGrpName || curCatName;
+    let grp = curCat.groups.find(g => g.group === grpName);
+    if (!grp) {
+      grp = { gid: newId(), group: grpName, items: [] };
+      curCat.groups.push(grp);
+    }
+
+    let finalQty = 1, finalUnitPrice = amount;
+    if (unitPrice > 0 && qty1 > 0) {
+      const totalQty = days > 1 ? qty1 * days : qty1;
+      finalQty = totalQty;
+      finalUnitPrice = amount > 0 ? Math.round(amount / totalQty) : unitPrice;
+    } else if (unitPrice > 0) {
+      finalQty = 1;
+      finalUnitPrice = amount > 0 ? amount : unitPrice;
+    }
+
+    const cleanUnit = unit.replace(/[0-9.]/g, "").trim() || "건";
+
+    grp.items.push({
+      id: newId(), name: c, unit: cleanUnit,
+      qty: finalQty, unitPrice: finalUnitPrice,
+    });
+  }
+
+  return categories
+    .map(cat => ({ ...cat, groups: cat.groups.filter(g => g.items.length > 0) }))
+    .filter(cat => cat.groups.length > 0);
+}
+
+async function parseExcelToQuote(file) {
+  const XLSX = await loadXLSX();
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: "array" });
+
+  // 시트 선택: "세항목" > "견적" 포함 > 첫 번째 시트
+  let sheetName = wb.SheetNames[0];
+  for (const sn of wb.SheetNames) {
+    if (sn === "세항목") { sheetName = sn; break; }
+    if (sn.includes("견적") || sn.includes("예산") || sn.includes("실행")) { sheetName = sn; }
+  }
+
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+  const fmt = detectExcelFormat(rows, sheetName);
+  const items = fmt === "B" ? parseFormatB(rows) : parseFormatA(rows);
+
+  return { items, format: fmt, sheetName, sheetNames: wb.SheetNames };
+}
+
+// ═══════════════════════════════════════════════════════════
 // 견적서 에디터 (대분류 > 중분류 > 소분류 3단계)
 // ═══════════════════════════════════════════════════════════
 function QuoteEditor({ quote, onChange, exportProject, company }) {
@@ -877,6 +3490,35 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
   const [newItem,     setNewItem]     = useState({name:"",unit:"식",qty:1,unitPrice:0});
   const [addGrpModal, setAddGrpModal] = useState(null); // ci
   const [newGrp,      setNewGrp]      = useState("");
+  const [xlUploading, setXlUploading] = useState(false);
+  const [xlResult,    setXlResult]    = useState(null); // {items, format, sheetName, sheetNames}
+  const [editingPrice, setEditingPrice] = useState(null); // "ci-gi-id"
+  const xlRef = useRef(null);
+
+  const handleExcelFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setXlUploading(true);
+    try {
+      const result = await parseExcelToQuote(file);
+      if (result.items.length === 0) {
+        alert("파싱된 항목이 없습니다. 엑셀 양식을 확인해주세요.");
+        setXlUploading(false);
+        return;
+      }
+      setXlResult(result);
+    } catch (err) {
+      alert("엑셀 파일 읽기 실패: " + err.message);
+    }
+    setXlUploading(false);
+    if (xlRef.current) xlRef.current.value = "";
+  };
+
+  const applyExcelData = () => {
+    if (!xlResult) return;
+    onChange({ ...q, items: xlResult.items });
+    setXlResult(null);
+  };
 
   /* 소분류 CRUD */
   const patchItem = (ci,gi,id,k,v) => onChange({...q, items:q.items.map((cat,i)=> i!==ci?cat:{
@@ -918,7 +3560,13 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
   const renameCategory = (ci,v) => onChange({...q, items:q.items.map((cat,i)=>i===ci?{...cat,category:v}:cat)});
   const removeCategory = (ci) => onChange({...q, items:q.items.filter((_,i)=>i!==ci)});
 
+  /* 대분류 활성/비활성 토글 */
+  const toggleCategory = (ci) => onChange({...q, items:q.items.map((cat,i)=>i===ci?{...cat,disabled:!cat.disabled}:cat)});
+
   const sub=qSub(q), fee=qFee(q), supply=qSupply(q), vat=qVat(q), total=qTotal(q);
+
+  /* 만원 단위 — toMan, fromMan은 모듈 레벨에 정의 */
+  const fmtComma = v => { const n = Number(v)||0; return n === 0 ? "" : n.toLocaleString("ko-KR"); };
 
   return (
     <div>
@@ -936,6 +3584,12 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
           <span style={{fontSize:13,color:C.sub}}>%</span>
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <input ref={xlRef} type="file" accept=".xlsx,.xls" onChange={handleExcelFile} style={{display:"none"}}/>
+          <Btn sm onClick={()=>xlRef.current?.click()}
+            style={{background:"#16a34a18",color:"#16a34a",border:"1px solid #16a34a40"}}
+            disabled={xlUploading}>
+            {xlUploading ? "⏳ 파싱중..." : "📥 엑셀 불러오기"}
+          </Btn>
           {exportProject && (
             <Btn sm onClick={()=>(exportProject.quoteFmt||"A")==="B"?openQuotePDFB(exportProject,q,company):openQuotePDF(exportProject,q,company)}
               style={{background:"#2563eb10",color:C.blue,border:`1px solid #2563eb40`}}>
@@ -949,26 +3603,35 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
         </div>
       </div>
 
+      <div style={{fontSize:11,color:C.faint,marginBottom:8,textAlign:"right"}}>💡 단가 클릭 시 만원 단위로 편집, 엔터로 확정 (예: 500 입력 → 5,000,000 표시)</div>
+
       {/* 대분류 반복 */}
-      {q.items.map((cat,ci)=>(
-        <div key={ci} style={{marginBottom:20,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+      {q.items.map((cat,ci)=>{
+        const cc = CAT_COLORS[ci % CAT_COLORS.length];
+        const dis = !!cat.disabled;
+        return (
+        <div key={ci} style={{marginBottom:20,border:`1px solid ${dis?"#e5e5e5":cc.light}`,borderRadius:12,overflow:"hidden",opacity:dis?0.55:1,transition:"opacity .2s"}}>
           {/* 대분류 헤더 */}
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#f0f4ff",borderBottom:`1px solid ${C.border}`}}>
-            <span style={{fontSize:13,color:C.blue,fontWeight:700}}>■</span>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:dis?"#f5f5f5":cc.bg,borderBottom:`1px solid ${dis?"#e5e5e5":cc.light}`}}>
+            <button onClick={()=>toggleCategory(ci)} title={dis?"활성화":"비활성화"}
+              style={{border:"none",background:dis?"#d4d4d4":cc.accent,color:"#fff",borderRadius:6,width:24,height:24,cursor:"pointer",fontSize:14,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {dis?"○":"●"}
+            </button>
             <input value={cat.category} onChange={e=>renameCategory(ci,e.target.value)}
-              style={{...inp,fontWeight:800,fontSize:15,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:C.blue,width:"auto",minWidth:80}}/>
-            <span style={{fontSize:12,color:C.sub,marginLeft:4}}>합계: <b style={{color:C.blue}}>{fmt(catAmt(cat))}</b></span>
+              style={{...inp,fontWeight:800,fontSize:15,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:dis?C.faint:cc.text,width:"auto",minWidth:80,textDecoration:dis?"line-through":"none"}}/>
+            <span style={{fontSize:12,color:dis?C.faint:cc.accent,marginLeft:4}}>합계: <b>{fmt(catAmtRaw(cat))}</b>{dis?" (제외)":""}</span>
             <div style={{marginLeft:"auto",display:"flex",gap:6}}>
               <Btn sm ghost onClick={()=>{setAddGrpModal(ci);setNewGrp("");}}>+ 중분류</Btn>
               <button onClick={()=>removeCategory(ci)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,lineHeight:1,padding:"2px 4px"}}>×</button>
             </div>
           </div>
 
+          {!dis && <>
           {/* 중분류 반복 */}
           {cat.groups.map((grp,gi)=>(
             <div key={grp.gid||gi}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px 6px",background:"#fafbfc",borderBottom:`1px solid ${C.border}`}}>
-                <span style={{fontSize:12,color:C.slate,fontWeight:600}}>▸</span>
+                <span style={{fontSize:12,color:cc.accent,fontWeight:600}}>▸</span>
                 <input value={grp.group} onChange={e=>renameGroup(ci,gi,e.target.value)}
                   style={{...inp,fontWeight:700,fontSize:13,background:"transparent",border:"none",outline:"none",padding:"2px 4px",color:C.slate,width:"auto",minWidth:60}}/>
                 <span style={{fontSize:12,color:C.faint}}>소계: <b style={{color:C.text}}>{fmt(grpAmt(grp))}</b></span>
@@ -990,17 +3653,21 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
                   <div key={it.id} style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"6px 14px",borderTop:"1px solid #f0f0f0",gap:8,alignItems:"center",background:ii%2===0?C.white:"#fefefe"}}>
                     <input value={it.name} onChange={e=>patchItem(ci,gi,it.id,"name",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                      onFocus={e=>e.target.style.borderColor=cc.accent} onBlur={e=>e.target.style.borderColor="transparent"}/>
                     <input value={it.unit} onChange={e=>patchItem(ci,gi,it.id,"unit",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"center"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <input type="number" value={it.qty} onChange={e=>patchItem(ci,gi,it.id,"qty",e.target.value)}
+                      onFocus={e=>e.target.style.borderColor=cc.accent} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input value={it.qty} onChange={e=>patchItem(ci,gi,it.id,"qty",e.target.value)}
                       style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <input type="number" value={it.unitPrice} onChange={e=>patchItem(ci,gi,it.id,"unitPrice",e.target.value)}
-                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right"}}
-                      onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                    <span style={{textAlign:"right",fontSize:13,fontWeight:600}}>{fmt(itemAmt(it))}</span>
+                      onFocus={e=>{e.target.style.borderColor=cc.accent;e.target.select();}} onBlur={e=>e.target.style.borderColor="transparent"}/>
+                    <input
+                      value={editingPrice===`${ci}-${gi}-${it.id}` ? toMan(it.unitPrice) : fmtN(it.unitPrice)}
+                      onChange={e=>patchItem(ci,gi,it.id,"unitPrice",fromMan(e.target.value))}
+                      onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}}}
+                      style={{...inp,background:"transparent",border:"1px solid transparent",padding:"4px 6px",textAlign:"right",fontSize:editingPrice===`${ci}-${gi}-${it.id}`?13:12,color:editingPrice===`${ci}-${gi}-${it.id}`?C.text:C.sub}}
+                      onFocus={e=>{e.target.style.borderColor=cc.accent;setEditingPrice(`${ci}-${gi}-${it.id}`);setTimeout(()=>e.target.select(),0);}}
+                      onBlur={e=>{e.target.style.borderColor="transparent";setEditingPrice(null);}}/>
+                    <span style={{textAlign:"right",fontSize:13,fontWeight:600,color:cc.text}}>{fmt(itemAmt(it))}</span>
                     <button onClick={()=>removeItem(ci,gi,it.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
                   </div>
                 ))
@@ -1009,20 +3676,22 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
               <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"6px 14px",borderTop:`1px solid ${C.border}`,gap:8,background:"#f8f9fa"}}>
                 <span style={{fontSize:12,color:C.sub,fontStyle:"italic"}}>└ {grp.group} 소계</span>
                 <span/><span/><span/>
-                <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:C.slate}}>{fmt(grpAmt(grp))}</span>
+                <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:cc.accent}}>{fmt(grpAmt(grp))}</span>
                 <span/>
               </div>
             </div>
           ))}
+          </>}
+
           {/* 대분류 합계 */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"8px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:"#f0f4ff"}}>
-            <span style={{fontSize:13,fontWeight:800,color:C.blue}}>{cat.category} 합계</span>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 55px 90px 130px 130px 36px",padding:"8px 14px",borderTop:`2px solid ${dis?"#e5e5e5":cc.light}`,gap:8,background:dis?"#f5f5f5":cc.bg}}>
+            <span style={{fontSize:13,fontWeight:800,color:dis?C.faint:cc.text}}>{cat.category} 합계{dis?" (제외)":""}</span>
             <span/><span/><span/>
-            <span style={{textAlign:"right",fontSize:13,fontWeight:800,color:C.blue}}>{fmt(catAmt(cat))}</span>
+            <span style={{textAlign:"right",fontSize:13,fontWeight:800,color:dis?C.faint:cc.text,textDecoration:dis?"line-through":"none"}}>{fmt(catAmtRaw(cat))}</span>
             <span/>
           </div>
         </div>
-      ))}
+      );})}
 
       <Btn ghost onClick={addCategory} style={{marginBottom:24}}>+ 대분류 추가</Btn>
 
@@ -1048,7 +3717,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
             <Field label="항목명 *"><input style={inp} value={newItem.name} autoFocus onChange={e=>setNewItem(v=>({...v,name:e.target.value}))} placeholder="ex. 촬영 1st"/></Field>
             <Field label="단위" half><input style={inp} value={newItem.unit} onChange={e=>setNewItem(v=>({...v,unit:e.target.value}))} placeholder="식/일/명"/></Field>
             <Field label="수량" half><input style={inp} type="number" value={newItem.qty} onChange={e=>setNewItem(v=>({...v,qty:e.target.value}))}/></Field>
-            <Field label="단가 (원)"><input style={inp} type="number" value={newItem.unitPrice} onChange={e=>setNewItem(v=>({...v,unitPrice:e.target.value}))} placeholder="0"/></Field>
+            <Field label="단가 (만원)"><input style={inp} type="number" value={toMan(newItem.unitPrice)} onChange={e=>setNewItem(v=>({...v,unitPrice:fromMan(e.target.value)}))} placeholder="0"/></Field>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
             <Btn onClick={()=>setAddModal(null)}>취소</Btn>
@@ -1071,186 +3740,817 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
           </div>
         </Modal>
       )}
+
+      {/* 엑셀 업로드 미리보기 모달 */}
+      {xlResult && (
+        <Modal title="📥 엑셀 견적 불러오기" onClose={()=>setXlResult(null)} wide>
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
+              <span style={{fontSize:13,padding:"4px 10px",borderRadius:8,background:"#dbeafe",color:"#1d4ed8",fontWeight:700}}>
+                {xlResult.format==="A"?"다건형 (견적서)":"복잡형 (실행예산서)"}
+              </span>
+              <span style={{fontSize:13,padding:"4px 10px",borderRadius:8,background:"#f0fdf4",color:"#16a34a",fontWeight:700}}>
+                시트: {xlResult.sheetName}
+              </span>
+              <span style={{fontSize:13,color:C.sub}}>
+                대분류 {xlResult.items.length}개 · 총 {xlResult.items.reduce((s,c)=>s+c.groups.reduce((gs,g)=>gs+g.items.length,0),0)}항목
+              </span>
+            </div>
+            <div style={{fontSize:12,color:C.red,fontWeight:600,marginBottom:8}}>
+              ⚠ 적용 시 기존 견적서 데이터가 모두 교체됩니다.
+            </div>
+          </div>
+          <div style={{maxHeight:400,overflow:"auto",border:`1px solid ${C.border}`,borderRadius:10}}>
+            {xlResult.items.map((cat,ci)=>(
+              <div key={ci} style={{borderBottom:`1px solid ${C.border}`}}>
+                <div style={{padding:"8px 12px",background:"#f0f4ff",fontWeight:800,fontSize:14,color:C.blue,position:"sticky",top:0,zIndex:1}}>
+                  {cat.category}
+                  <span style={{fontWeight:400,fontSize:12,color:C.sub,marginLeft:8}}>
+                    ({cat.groups.reduce((s,g)=>s+g.items.length,0)}항목)
+                  </span>
+                </div>
+                {cat.groups.map((grp,gi)=>(
+                  <div key={gi}>
+                    {cat.groups.length > 1 && (
+                      <div style={{padding:"5px 12px 3px",background:"#fafbfc",fontSize:12,fontWeight:700,color:C.slate}}>
+                        ▸ {grp.group}
+                      </div>
+                    )}
+                    <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                      <thead>
+                        <tr style={{background:"#f8f9fa"}}>
+                          <th style={{textAlign:"left",padding:"4px 12px",color:C.sub,fontWeight:600}}>항목</th>
+                          <th style={{textAlign:"center",padding:"4px 8px",color:C.sub,fontWeight:600,width:50}}>수량</th>
+                          <th style={{textAlign:"center",padding:"4px 8px",color:C.sub,fontWeight:600,width:40}}>단위</th>
+                          <th style={{textAlign:"right",padding:"4px 12px",color:C.sub,fontWeight:600,width:100}}>단가</th>
+                          <th style={{textAlign:"right",padding:"4px 12px",color:C.sub,fontWeight:600,width:100}}>금액</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grp.items.map((it,idx)=>(
+                          <tr key={idx} style={{borderTop:`1px solid #f0f0f0`}}>
+                            <td style={{padding:"4px 12px"}}>{it.name}</td>
+                            <td style={{padding:"4px 8px",textAlign:"center"}}>{it.qty}</td>
+                            <td style={{padding:"4px 8px",textAlign:"center"}}>{it.unit}</td>
+                            <td style={{padding:"4px 12px",textAlign:"right"}}>{fmt(it.unitPrice)}</td>
+                            <td style={{padding:"4px 12px",textAlign:"right",fontWeight:600}}>{fmt(it.qty*it.unitPrice)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}}>
+            <span style={{fontSize:15,fontWeight:800,color:C.blue}}>
+              합계: {fmt(xlResult.items.reduce((s,c)=>s+c.groups.reduce((gs,g)=>gs+g.items.reduce((is,it)=>is+it.qty*it.unitPrice,0),0),0))}
+            </span>
+            <div style={{display:"flex",gap:8}}>
+              <Btn onClick={()=>setXlResult(null)}>취소</Btn>
+              <Btn primary onClick={applyExcelData}>견적서에 적용</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════
-// 실행예산서 에디터
+// 실행예산서 에디터 (견적서 스타일 수기입력)
 // ═══════════════════════════════════════════════════════════
 function BudgetEditor({ project, onSave }) {
-  const b = project.budget;
-  const q = project.quote;
+  const q   = project.quote;
+  const bud = project.budget2 || { items: [] };
+  const [editingPrice, setEditingPrice] = useState(null); // "ci-gi-id"
+  const [voucherModal, setVoucherModal] = useState(null); // {ci,gi,itemId}
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [showVendorDD, setShowVendorDD] = useState(false);
+  const [newVendorMode, setNewVendorMode] = useState(false);
+  const [newVendor, setNewVendor] = useState({name:"",bizNo:"",phone:"",contactName:"",type:"기타",status:"활성",bankInfo:"",note:"",isWithholding:false,bizRegFile:null,bankCopyFile:null,withholdingFile:null});
+  const [voucherForm, setVoucherForm] = useState({vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",note:"",files:[]});
+  const [undoStack, setUndoStack] = useState([]); // [{label, data}]
+  const [uploading, setUploading] = useState(false);
+  const vFileRef = useRef(null);
 
-  const [modal,   setModal]   = useState(false);
-  const [editV,   setEditV]   = useState(null);
-  const [vf,      setVf]      = useState({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:"",group:"",number:"",note:"",files:[]});
-  const [preview, setPreview] = useState(null);
-  const [analyzing,setAnalyzing]=useState(false);
-
-  // 견적서의 카테고리/그룹 목록
-  const catOptions = (q.items||[]).map(c=>c.category);
-  const groupOptions = (cat) => {
-    const c = (q.items||[]).find(c=>c.category===cat);
-    return c ? c.groups.map(g=>g.group) : [];
+  // CRM 외주업체 읽기
+  const getVendors = () => { try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; } };
+  const saveToCRM = (vendor) => {
+    const list = getVendors();
+    const entry = {...vendor, id: vendor.id || "v"+Date.now()};
+    const exists = list.find(v=>v.id===entry.id);
+    const next = exists ? list.map(v=>v.id===entry.id?entry:v) : [...list, entry];
+    try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
+    return entry;
   };
 
-  const openAdd = () => {
-    setEditV(null);
-    setVf({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:catOptions[0]||"",group:groupOptions(catOptions[0]||"")[0]||"",number:"",note:"",files:[]});
-    setModal(true);
-  };
-  const openEdit = (v) => {
-    setEditV(v);
-    setVf({...v});
-    setModal(true);
-  };
-
-  const save = () => {
-    if (!vf.name.trim()||!vf.amount) return;
-    const voucher = {...vf, id:editV?editV.id:newId(), amount:Number(vf.amount)||0};
-    const vouchers = editV
-      ? (b.vouchers||[]).map(v=>v.id===editV.id?voucher:v)
-      : [...(b.vouchers||[]), voucher];
-    onSave({...b, vouchers});
-    setModal(false);
-  };
-  const remove = (v) => {
-    onSave({...b, vouchers:(b.vouchers||[]).filter(x=>x.id!==v.id)});
-  };
-
-  // AI 분석 (Anthropic API)
-  const analyzeFile = async (file) => {
-    setAnalyzing(true);
-    try {
-      const toB64 = f => new Promise((res,rej)=>{
-        const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(f);
-      });
-      const b64 = await toB64(file);
-      const isImg = file.type.startsWith("image/");
-      const isPdf = file.type==="application/pdf";
-
-      const msgContent = isImg
-        ? [{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
-        : isPdf
-        ? [{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 파일에서 거래처명, 금액, 날짜, 항목명을 JSON으로 추출해줘. {name,vendor,amount,date} 형태."}]
-        : null;
-
-      if (!msgContent) { setAnalyzing(false); return; }
-
-      const res = await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:msgContent}]})
-      });
-      const data = await res.json();
-      const text = (data.content||[]).map(c=>c.text||"").join("");
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        try {
-          const parsed = JSON.parse(match[0]);
-          setVf(v=>({
-            ...v,
-            name:   parsed.name   || v.name,
-            vendor: parsed.vendor || v.vendor,
-            amount: parsed.amount ? String(parsed.amount).replace(/[^0-9]/g,"") : v.amount,
-            date:   parsed.date   || v.date,
-          }));
-        } catch(e) {}
-      }
-    } catch(e) { console.error(e); }
-    setAnalyzing(false);
-  };
-
-  const handleFile = async (file) => {
-    const toB64 = f => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
-    const b64url = await toB64(file);
-    setVf(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
-    analyzeFile(file);
-  };
-
-  const spent = vTotal(b);
-  const supply = qSupply(q);
-
-  // 예산 현황 by 대분류
-  const catSummary = (q.items||[]).map(cat=>{
-    const planned = catAmt(cat);
-    const actual  = (b.vouchers||[]).filter(v=>v.category===cat.category).reduce((s,v)=>s+(v.amount||0),0);
-    return {cat:cat.category, planned, actual, pct: planned?Math.round(actual/planned*100):0};
+  // 견적서 → 실행예산 동기화
+  const syncedItems = (q.items || []).map(cat => {
+    const existing = (bud.items || []).find(b => b.category === cat.category);
+    return {
+      category: cat.category, disabled: cat.disabled,
+      groups: (cat.groups || []).map(grp => {
+        const exGrp = existing ? (existing.groups || []).find(g => g.group === grp.group) : null;
+        return {
+          group: grp.group,
+          items: (grp.items || []).map(it => {
+            const exIt = exGrp ? (exGrp.items || []).find(i => i.id === it.id) : null;
+            return {
+              id: it.id, name: it.name || it.desc || '',
+              qty: it.qty || 0, unitPrice: it.unitPrice || 0,
+              purchasePrice: exIt ? (exIt.purchasePrice || 0) : 0,
+              purchaseNote: exIt ? (exIt.purchaseNote || '') : '',
+              vouchers: exIt ? (exIt.vouchers || []) : [],
+            };
+          }),
+        };
+      }),
+    };
   });
+
+  const patch = (ci, gi, id, val) => {
+    const updated = syncedItems.map((cat, i) => i !== ci ? cat : {
+      ...cat, groups: cat.groups.map((grp, j) => j !== gi ? grp : {
+        ...grp, items: grp.items.map(it => it.id !== id ? it : { ...it, ...val }),
+      }),
+    });
+    onSave({ ...project, budget2: { items: updated } });
+  };
+
+  // Undo: 삭제 전 스냅샷 저장
+  const pushUndo = (label) => {
+    setUndoStack(prev => [...prev.slice(-9), { label, data: JSON.parse(JSON.stringify(bud)) }]);
+  };
+  const doUndo = () => {
+    if (!undoStack.length) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    onSave({ ...project, budget2: last.data });
+  };
+
+  // 증빙 추가/삭제
+  const addVoucher = async () => {
+    if (!voucherForm.vendor) return alert("업체명을 입력해주세요.");
+    const { ci, gi, itemId } = voucherModal;
+    const it = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);
+    if (!it) return;
+
+    let files = voucherForm.files || [];
+    const needUpload = files.filter(f => f.b64url && !f.url);
+    if (needUpload.length > 0 && isConfigured) {
+      setUploading(true);
+      try {
+        const vid = "bv"+Date.now();
+        const uploaded = await Promise.all(needUpload.map(async (f) => {
+          const res = await fetch(f.b64url); const blob = await res.blob();
+          const file = new File([blob], f.name, { type: f.type });
+          return await uploadVoucherFile(project.id, vid, file);
+        }));
+        files = [...files.filter(f => f.url && !f.b64url), ...uploaded];
+      } catch(e) { alert("파일 업로드 실패"); setUploading(false); return; }
+      setUploading(false);
+    }
+
+    pushUndo("증빙 추가");
+    const entry = { id:"bv"+Date.now(), ...voucherForm, amount:Number(voucherForm.amount)||0, files };
+    const newVouchers = [...(it.vouchers||[]), entry];
+    const totalVoucherAmt = newVouchers.reduce((s,v)=>s+(v.amount||0),0);
+    patch(ci, gi, itemId, { vouchers: newVouchers, purchasePrice: totalVoucherAmt });
+    setVoucherModal(null);
+  };
+  const removeVoucher = (ci, gi, itemId, vid) => {
+    const it = syncedItems[ci]?.groups[gi]?.items.find(x=>x.id===itemId);
+    if (!it) return;
+    pushUndo("증빙 삭제");
+    const newVouchers = (it.vouchers||[]).filter(v=>v.id!==vid);
+    const totalVoucherAmt = newVouchers.reduce((s,v)=>s+(v.amount||0),0);
+    patch(ci, gi, itemId, { vouchers: newVouchers, purchasePrice: totalVoucherAmt });
+  };
+
+  // 파일 핸들러
+  const handleVFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const toB64 = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
+    const b64url = await toB64(file);
+    setVoucherForm(v=>({...v, files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
+    if(vFileRef.current) vFileRef.current.value="";
+  };
+
+  // 신규 업체 등록 → CRM
+  const registerVendor = () => {
+    if(!newVendor.name?.trim()) return alert("업체명을 입력해주세요.");
+    const saved = saveToCRM({
+      ...newVendor,
+      docs: {
+        bizReg: newVendor.bizRegFile || null,
+        bankCopy: newVendor.bankCopyFile || null,
+        withholding: newVendor.withholdingFile || null,
+      },
+    });
+    setVoucherForm(v=>({...v, vendor:saved.name, vendorId:saved.id}));
+    setNewVendorMode(false);
+    setNewVendor({name:"",bizNo:"",phone:"",contactName:"",type:"기타",status:"활성",bankInfo:"",note:"",isWithholding:false,bizRegFile:null,bankCopyFile:null,withholdingFile:null});
+  };
+
+  // 합계
+  const salesTotal = (q.items || []).reduce((s, cat) => s + (cat.disabled?0:catAmt(cat)), 0);
+  const purchaseTotal = syncedItems.reduce((s, cat) =>
+    cat.disabled ? s : s + (cat.groups || []).reduce((s2, grp) =>
+      s2 + (grp.items || []).reduce((s3, it) => s3 + (it.purchasePrice || 0), 0), 0), 0);
+  const profit = salesTotal - purchaseTotal;
+  const margin = salesTotal ? Math.round(profit / salesTotal * 100) : 0;
 
   return (
     <div>
       {/* 요약 카드 */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
         {[
-          {label:"견적 공급가액",val:supply,color:C.blue},
-          {label:"집행 합계",val:spent,color:C.amber},
-          {label:"잔여 예산",val:supply-spent,color:supply-spent>=0?C.green:C.red},
+          {label:"매출 (공급가액)", val:salesTotal, color:C.blue, sub:"견적서 기준"},
+          {label:"매입 (실행예산)", val:purchaseTotal, color:C.amber, sub:"증빙 기반 자동계산"},
+          {label:"예상 잔여", val:profit, color:profit>=0?C.green:C.red, sub:"매출 - 매입"},
+          {label:"예상 이익률", val:margin, color:margin>=0?C.green:C.red, sub:`순이익 ${fmtM(profit)}`, isPct:true},
+        ].map(s=>(
+          <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
+            <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
+            <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.isPct?margin+"%":fmtM(s.val)}</div>
+            <div style={{fontSize:11,color:C.faint,marginTop:3}}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Undo + 힌트 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{fontSize:11,color:C.faint}}>💡 매입 금액 클릭 시 만원 단위 편집 · 각 항목에 증빙 첨부 가능</div>
+        {undoStack.length>0 && (
+          <button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>
+            ↩️ 되돌리기 ({undoStack[undoStack.length-1].label})
+          </button>
+        )}
+      </div>
+
+      {/* 헤더 */}
+      <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",gap:0}}>
+        <div style={{padding:"8px 12px",background:C.slateLight,borderRadius:"8px 0 0 0",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.sub}}/>
+        <div style={{padding:"8px 12px",background:"#eff6ff",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.blue,textAlign:"center"}}>📈 매출 (견적 기준)</div>
+        <div style={{background:C.slateLight,border:`1px solid ${C.border}`,borderLeft:"none",borderRight:"none"}}/>
+        <div style={{padding:"8px 12px",background:"#fffbeb",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.amber,textAlign:"center"}}>📉 매입 (실행예산)</div>
+        <div style={{background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:"0 8px 0 0",fontSize:10,fontWeight:600,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>증빙</div>
+      </div>
+
+      {(q.items||[]).length===0 ? (
+        <div style={{textAlign:"center",padding:48,color:C.faint,border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px"}}>
+          <div style={{fontSize:32,marginBottom:8}}>📋</div>
+          <div style={{fontWeight:600,marginBottom:4}}>견적서 항목이 없습니다</div>
+          <div style={{fontSize:12}}>먼저 견적서 탭에서 항목을 추가하면 자동으로 연동됩니다</div>
+        </div>
+      ) : (
+        <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+          {syncedItems.map((cat, ci) => {
+            if(cat.disabled) return null;
+            const catSales = (q.items[ci] ? catAmt(q.items[ci]) : 0);
+            const catPurchase = (cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
+            return (
+              <div key={cat.category}>
+                <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,borderRight:`1px solid ${C.border}`}}>{cat.category}</div>
+                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catSales)}</div>
+                  <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+                  <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catPurchase)}</div>
+                  <div/>
+                </div>
+                {(cat.groups||[]).map((grp, gi) => (
+                  <div key={grp.group}>
+                    <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
+                      <div style={{padding:"7px 12px 7px 20px",fontWeight:600,fontSize:12,color:C.slate,borderRight:`1px solid ${C.border}`}}>{grp.group}</div>
+                      <div style={{padding:"7px 12px",fontSize:12,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>
+                        {fmtM((q.items[ci]?.groups[gi]?.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0))}
+                      </div>
+                      <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+                      <div style={{padding:"7px 12px",fontSize:12,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>
+                        {fmtM((grp.items||[]).reduce((s,it)=>s+(it.purchasePrice||0),0))}
+                      </div>
+                      <div/>
+                    </div>
+                    {(grp.items||[]).map((it, idx) => {
+                      const qIt = q.items[ci]?.groups[gi]?.items[idx];
+                      const salesAmt = qIt ? (qIt.qty||0)*(qIt.unitPrice||0) : 0;
+                      const priceKey = `${ci}-${gi}-${it.id}`;
+                      const isEditing = editingPrice === priceKey;
+                      const vCount = (it.vouchers||[]).length;
+                      return (
+                        <div key={it.id}>
+                          <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
+                            <div style={{padding:"8px 12px 8px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>{it.name}</div>
+                            <div style={{padding:"8px 12px",borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
+                              <span style={{fontSize:11,color:C.faint}}>{qIt?.qty||0}× {fmtN(qIt?.unitPrice||0)}</span>
+                              <span style={{fontSize:13,fontWeight:600,color:C.blue,minWidth:70,textAlign:"right"}}>{fmtN(salesAmt)}</span>
+                            </div>
+                            <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+                            <div style={{padding:"6px 8px",display:"flex",alignItems:"center",gap:6,borderRight:`1px solid ${C.border}`}}>
+                              <input
+                                value={isEditing ? toMan(it.purchasePrice) : fmtN(it.purchasePrice)}
+                                onChange={e=>{pushUndo("금액 변경");patch(ci,gi,it.id,{purchasePrice:fromMan(e.target.value)});}}
+                                onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
+                                onFocus={e=>{e.target.style.borderColor=C.amber;setEditingPrice(priceKey);setTimeout(()=>e.target.select(),0);}}
+                                onBlur={e=>{e.target.style.borderColor=C.border;setEditingPrice(null);}}
+                                placeholder="만원"
+                                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:isEditing?13:12,textAlign:"right",outline:"none",color:isEditing?C.text:C.sub,background:C.white,minWidth:0}}
+                              />
+                              <input value={it.purchaseNote||""} onChange={e=>{patch(ci,gi,it.id,{purchaseNote:e.target.value});}}
+                                placeholder="메모" style={{width:60,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 6px",fontSize:10,outline:"none",color:C.sub,minWidth:0}}/>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <button onClick={()=>{
+                                setVoucherModal({ci,gi,itemId:it.id});
+                                setVoucherForm({vendor:"",vendorId:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",note:"",files:[]});
+                                setVendorSearch("");setShowVendorDD(false);setNewVendorMode(false);
+                              }} title="증빙 추가"
+                                style={{background:"none",border:"none",cursor:"pointer",fontSize:14,position:"relative"}}>
+                                📎{vCount>0&&<span style={{position:"absolute",top:-4,right:-6,background:C.amber,color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,padding:"0 4px",lineHeight:"16px"}}>{vCount}</span>}
+                              </button>
+                            </div>
+                          </div>
+                          {/* 증빙 목록 인라인 */}
+                          {vCount>0 && (
+                            <div style={{background:"#fffbeb",borderBottom:`1px solid ${C.border}`,padding:"4px 12px 4px 32px"}}>
+                              {(it.vouchers||[]).map(v=>(
+                                <div key={v.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,color:C.sub,background:C.white,border:`1px solid ${C.border}`,borderRadius:4,padding:"2px 6px",marginRight:4,marginBottom:2}}>
+                                  <span>{v.vendor}</span>
+                                  <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount)}</span>
+                                  {(v.files||[]).length>0&&<span>📄{v.files.length}</span>}
+                                  <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12,lineHeight:1}}>×</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          {/* 합계 */}
+          <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderTop:`2px solid ${C.border}`,fontWeight:700}}>
+            <div style={{padding:"10px 12px",fontSize:13,borderRight:`1px solid ${C.border}`}}>합계</div>
+            <div style={{padding:"10px 12px",fontSize:14,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(salesTotal)}</div>
+            <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
+            <div style={{padding:"10px 12px",fontSize:14,color:C.amber,textAlign:"right",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:12,borderRight:`1px solid ${C.border}`}}>
+              <span>{fmtM(purchaseTotal)}</span>
+              <span style={{fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                background:profit>=0?"#dcfce7":"#fee2e2",color:profit>=0?C.green:C.red}}>
+                {profit>=0?"▲":"▼"} {margin}%
+              </span>
+            </div>
+            <div/>
+          </div>
+        </div>
+      )}
+
+      {/* 증빙 추가 모달 */}
+      {voucherModal && (
+        <Modal title={`📎 증빙 추가 — ${syncedItems[voucherModal.ci]?.groups[voucherModal.gi]?.items.find(x=>x.id===voucherModal.itemId)?.name||""}`}
+          onClose={()=>setVoucherModal(null)}>
+          {!newVendorMode ? (<>
+            {/* 업체 선택 */}
+            <Field label="업체명 *">
+              <div style={{position:"relative"}}>
+                <input style={inp} value={voucherForm.vendor}
+                  onChange={e=>{setVoucherForm(v=>({...v,vendor:e.target.value,vendorId:""}));setVendorSearch(e.target.value);setShowVendorDD(true);}}
+                  onFocus={()=>setShowVendorDD(true)}
+                  placeholder="업체명 입력 또는 검색"/>
+                {showVendorDD && vendorSearch && (()=>{
+                  const matches = getVendors().filter(v=>v.name.includes(vendorSearch));
+                  return matches.length>0 ? (
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:10,maxHeight:160,overflowY:"auto"}}>
+                      {matches.map(v=>(
+                        <div key={v.id} onClick={()=>{setVoucherForm(f=>({...f,vendor:v.name,vendorId:v.id}));setShowVendorDD(false);}}
+                          style={{padding:"8px 12px",cursor:"pointer",fontSize:12,borderBottom:`1px solid ${C.border}`}}>
+                          <span style={{fontWeight:600}}>{v.name}</span>
+                          <span style={{color:C.faint,marginLeft:8}}>{v.type||""} · {v.contactName||""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+              <button onClick={()=>{setNewVendorMode(true);setNewVendor(v=>({...v,name:voucherForm.vendor}));}}
+                style={{marginTop:4,background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.blue,textDecoration:"underline"}}>
+                + 신규 업체 등록 (CRM에 추가)
+              </button>
+            </Field>
+            <div style={{display:"flex",gap:12}}>
+              <Field label="증빙유형" style={{flex:1}}>
+                <select style={inp} value={voucherForm.type} onChange={e=>setVoucherForm(v=>({...v,type:e.target.value}))}>
+                  {VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}
+                </select>
+              </Field>
+              <Field label="금액 (만원)" style={{flex:1}}>
+                <input style={inp} type="number" value={voucherForm.amount?toMan(voucherForm.amount):""} onChange={e=>setVoucherForm(v=>({...v,amount:fromMan(e.target.value)}))} placeholder="만원 단위"/>
+              </Field>
+              <Field label="일자" style={{flex:1}}>
+                <input style={inp} type="date" value={voucherForm.date} onChange={e=>setVoucherForm(v=>({...v,date:e.target.value}))}/>
+              </Field>
+            </div>
+            <Field label="메모"><input style={inp} value={voucherForm.note} onChange={e=>setVoucherForm(v=>({...v,note:e.target.value}))} placeholder="선택사항"/></Field>
+            <Field label="첨부파일 (세금계산서, 영수증 등)">
+              <input ref={vFileRef} type="file" accept="image/*,.pdf" onChange={handleVFile} style={{fontSize:12}}/>
+              {(voucherForm.files||[]).length>0 && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:4}}>
+                  {voucherForm.files.map((f,i)=>(
+                    <span key={i} style={{fontSize:11,background:C.slateLight,padding:"2px 8px",borderRadius:4}}>
+                      📄 {f.name}
+                      <button onClick={()=>setVoucherForm(v=>({...v,files:v.files.filter((_,j)=>j!==i)}))}
+                        style={{background:"none",border:"none",cursor:"pointer",color:C.faint,marginLeft:4}}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Field>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <Btn onClick={()=>setVoucherModal(null)}>취소</Btn>
+              <Btn primary onClick={addVoucher} disabled={uploading}>{uploading?"업로드 중...":"증빙 추가"}</Btn>
+            </div>
+          </>) : (<>
+            {/* 신규 업체 등록 폼 */}
+            <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.blue}}>
+              📋 신규 업체가 CRM 외주업체에 함께 등록됩니다.
+            </div>
+            <Field label="업체명 *"><input style={inp} value={newVendor.name} onChange={e=>setNewVendor(v=>({...v,name:e.target.value}))}/></Field>
+            <div style={{display:"flex",gap:12}}>
+              <Field label="사업자번호" style={{flex:1}}><input style={inp} value={newVendor.bizNo||""} onChange={e=>setNewVendor(v=>({...v,bizNo:e.target.value}))} placeholder="000-00-00000"/></Field>
+              <Field label="연락처" style={{flex:1}}><input style={inp} value={newVendor.phone||""} onChange={e=>setNewVendor(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
+            </div>
+            <div style={{display:"flex",gap:12}}>
+              <Field label="담당자명" style={{flex:1}}><input style={inp} value={newVendor.contactName||""} onChange={e=>setNewVendor(v=>({...v,contactName:e.target.value}))}/></Field>
+              <Field label="업종" style={{flex:1}}>
+                <select style={inp} value={newVendor.type||"기타"} onChange={e=>setNewVendor(v=>({...v,type:e.target.value}))}>
+                  {OUTSOURCE_TYPES.map(t=><option key={t}>{t}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="입금 계좌 (은행명 + 계좌번호)"><input style={inp} value={newVendor.bankInfo||""} onChange={e=>setNewVendor(v=>({...v,bankInfo:e.target.value}))} placeholder="국민은행 000-000-000-000"/></Field>
+            {/* 서류 업로드 */}
+            <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 14px",marginBottom:12,border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:8}}>📄 필수 서류</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                <div style={{flex:"1 1 140px"}}>
+                  <div style={{fontSize:11,color:C.sub,marginBottom:4}}>사업자등록증</div>
+                  {newVendor.bizRegFile ? (
+                    <div style={{fontSize:11,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}>
+                      📄 {newVendor.bizRegFile.name}
+                      <button onClick={()=>setNewVendor(v=>({...v,bizRegFile:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
+                    </div>
+                  ) : (
+                    <input type="file" accept="image/*,.pdf" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const toB64=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});const b64=await toB64(f);setNewVendor(v=>({...v,bizRegFile:{name:f.name,type:f.type,b64url:b64,size:f.size}}));}} style={{fontSize:11,width:"100%"}}/>
+                  )}
+                </div>
+                <div style={{flex:"1 1 140px"}}>
+                  <div style={{fontSize:11,color:C.sub,marginBottom:4}}>통장사본</div>
+                  {newVendor.bankCopyFile ? (
+                    <div style={{fontSize:11,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}>
+                      📄 {newVendor.bankCopyFile.name}
+                      <button onClick={()=>setNewVendor(v=>({...v,bankCopyFile:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
+                    </div>
+                  ) : (
+                    <input type="file" accept="image/*,.pdf" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const toB64=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});const b64=await toB64(f);setNewVendor(v=>({...v,bankCopyFile:{name:f.name,type:f.type,b64url:b64,size:f.size}}));}} style={{fontSize:11,width:"100%"}}/>
+                  )}
+                </div>
+              </div>
+              {/* 원천사업자 체크 */}
+              <div style={{marginTop:8}}>
+                <label style={{fontSize:11,color:C.sub,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                  <input type="checkbox" checked={!!newVendor.isWithholding} onChange={e=>setNewVendor(v=>({...v,isWithholding:e.target.checked}))}/>
+                  원천징수 대상 (개인사업자/프리랜서)
+                </label>
+                {newVendor.isWithholding && (
+                  <div style={{marginTop:6}}>
+                    <div style={{fontSize:11,color:C.sub,marginBottom:4}}>원천징수 관련 자료</div>
+                    {newVendor.withholdingFile ? (
+                      <div style={{fontSize:11,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",display:"inline-flex",alignItems:"center",gap:4}}>
+                        📄 {newVendor.withholdingFile.name}
+                        <button onClick={()=>setNewVendor(v=>({...v,withholdingFile:null}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
+                      </div>
+                    ) : (
+                      <input type="file" accept="image/*,.pdf" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const toB64=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});const b64=await toB64(f);setNewVendor(v=>({...v,withholdingFile:{name:f.name,type:f.type,b64url:b64,size:f.size}}));}} style={{fontSize:11}}/>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <Field label="비고"><input style={inp} value={newVendor.note||""} onChange={e=>setNewVendor(v=>({...v,note:e.target.value}))}/></Field>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+              <Btn onClick={()=>setNewVendorMode(false)}>← 돌아가기</Btn>
+              <Btn primary onClick={registerVendor}>업체 등록 후 선택</Btn>
+            </div>
+          </>)}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 결산서 (증빙자료 + 예산 비교)
+// ═══════════════════════════════════════════════════════════
+function SettlementView({ project, onConfirm, onSave }) {
+  const q   = project.quote;
+  const b   = project.budget  || { vouchers: [] };
+  const b2  = project.budget2 || { items: [] };
+  const confirmed = !!project.settlementDate;
+
+  const supply   = qSupply(q);
+  const total    = qTotal(q);
+  const b2Spent  = (b2.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).reduce((s4,v)=>s4+(v.amount||0),0),s2),s),0);
+  const spent    = vTotal(b) + b2Spent;
+  const budgeted = (b2.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.purchasePrice||0),s2),s),0);
+  const profit   = supply - spent;
+  const margin   = supply ? Math.round(profit/supply*100) : 0;
+
+  const [modal,       setModal]      = useState(false);
+  const [editV,       setEditV]      = useState(null);
+  const [vf,          setVf]         = useState({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:"",group:"",number:"",note:"",files:[]});
+  const [preview,     setPreview]    = useState(null);
+  const [lightboxImg, setLightboxImg]= useState(null);
+  const [analyzing,   setAnalyzing]  = useState(false);
+  const [uploading,   setUploading]  = useState(false);  // Firebase Storage 업로드 중
+
+  const catOptions   = (q.items||[]).map(c=>c.category);
+  const groupOptions = cat => { const c=(q.items||[]).find(c=>c.category===cat); return c?c.groups.map(g=>g.group):[]; };
+
+  const patchB = fn => onSave({...project, budget: fn(b)});
+
+  const openAdd = () => {
+    setEditV(null);
+    const cat0=catOptions[0]||"", grp0=groupOptions(cat0)[0]||"";
+    setVf({name:"",vendor:"",type:VOUCHER_TYPES[0],date:todayStr(),amount:"",category:cat0,group:grp0,number:"",note:"",files:[]});
+    setModal(true);
+  };
+  const openEdit = v => { setEditV(v); setVf({...v}); setModal(true); };
+  const saveV = async () => {
+    if(!vf.name||!vf.vendor) return alert("항목명과 업체명을 입력해주세요.");
+    const id = editV ? editV.id : "v"+Date.now();
+    let files = vf.files || [];
+
+    // Firebase Storage 업로드 — b64url이 있는 파일만 업로드
+    const needUpload = files.filter(f => f.b64url && !f.url);
+    if (needUpload.length > 0 && isConfigured) {
+      setUploading(true);
+      try {
+        const uploaded = await Promise.all(
+          needUpload.map(async (f) => {
+            // b64url → File 객체로 변환
+            const res = await fetch(f.b64url);
+            const blob = await res.blob();
+            const file = new File([blob], f.name, { type: f.type });
+            const result = await uploadVoucherFile(project.id, id, file);
+            return result; // { name, url, type, size, path }
+          })
+        );
+        // b64url 없애고 url로 교체 (Firestore 문서 크기 절약)
+        files = [
+          ...files.filter(f => f.url && !f.b64url), // 이미 업로드된 파일
+          ...uploaded,
+        ];
+      } catch(e) {
+        console.error("업로드 실패:", e);
+        alert("파일 업로드에 실패했습니다. 다시 시도해주세요.");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    } else {
+      // Firebase 미연결 시 b64url 그대로 유지 (로컬 모드)
+    }
+
+    const entry = {...vf, id, amount:Number(vf.amount)||0, files};
+    patchB(b=>({...b,vouchers:editV?(b.vouchers||[]).map(v=>v.id===editV.id?entry:v):[...(b.vouchers||[]),entry]}));
+    setModal(false);
+  };
+  const removeV = v => patchB(b=>({...b,vouchers:(b.vouchers||[]).filter(x=>x.id!==v.id)}));
+
+  const analyzeFile = async file => {
+    setAnalyzing(true);
+    try {
+      const toB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(f);});
+      const b64=await toB64(file);
+      const isImg=file.type.startsWith("image/"),isPdf=file.type==="application/pdf";
+      const msgContent=isImg
+        ?[{type:"image",source:{type:"base64",media_type:file.type,data:b64}},{type:"text",text:"이 영수증/증빙 이미지에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}"}]
+        :isPdf?[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:"이 영수증/증빙 PDF에서 정보를 추출해서 반드시 아래 JSON 형식으로만 답해줘. 다른 말은 하지 마.\n{\"name\":\"항목명\",\"vendor\":\"거래처명\",\"amount\":숫자만,\"date\":\"YYYY-MM-DD\"}"}]
+        :null;
+      if(!msgContent){setAnalyzing(false);return;}
+      const res=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:msgContent}]})});
+      if(!res.ok){setAnalyzing(false);return;}
+      const data=await res.json();
+      const text=(data.content||[]).map(c=>c.text||"").join("").trim();
+      const cleaned=text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
+      const match=cleaned.match(/\{[\s\S]*\}/);
+      if(match){try{const p=JSON.parse(match[0]);setVf(v=>({...v,name:p.name||v.name,vendor:p.vendor||v.vendor,amount:p.amount?String(p.amount).replace(/[^0-9]/g,""):v.amount,date:p.date||v.date}));}catch(e){}}
+    }catch(e){console.error(e);}
+    setAnalyzing(false);
+  };
+  const handleFile = async file => {
+    const toB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
+    const b64url=await toB64(file);
+    setVf(v=>({...v,files:[...(v.files||[]),{name:file.name,type:file.type,b64url,size:file.size}]}));
+    analyzeFile(file);
+  };
+
+  // 결산서 비교: q.items 기준 대분류별 매출 vs 증빙 집행액
+  const voucherMap={};
+  // 1) 기존 결산서 증빙
+  (b.vouchers||[]).forEach(v=>{voucherMap[v.category]=(voucherMap[v.category]||0)+(v.amount||0);});
+  // 2) 실행예산 항목별 증빙도 합산
+  (b2.items||[]).forEach(cat=>{
+    (cat.groups||[]).forEach(grp=>{
+      (grp.items||[]).forEach(it=>{
+        (it.vouchers||[]).forEach(v=>{
+          voucherMap[cat.category]=(voucherMap[cat.category]||0)+(v.amount||0);
+        });
+      });
+    });
+  });
+
+  // 실행예산(budget2) 기준 대분류별 매입 합계
+  const budgetMap={};
+  (b2.items||[]).forEach(cat=>{
+    const amt=(cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
+    budgetMap[cat.category]=amt;
+  });
+
+  // 실행예산 항목별 증빙 총 건수
+  const b2VoucherCount = (b2.items||[]).reduce((s,cat)=>
+    s+(cat.groups||[]).reduce((s2,g)=>s2+(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,0),0),0);
+
+  // q.items 기준으로 행 생성 (매출 | 실행예산 매입 | 실제집행 증빙)
+  const compareRows=(q.items||[]).map(cat=>{
+    const salesAmt = catAmt(cat);
+    const budAmt   = budgetMap[cat.category]||0;
+    const actualAmt= voucherMap[cat.category]||0;
+    const diff     = budAmt - actualAmt;
+    const rate     = budAmt ? Math.round(actualAmt/budAmt*100) : 0;
+    return {cat:cat.category, sales:salesAmt, budget:budAmt, actual:actualAmt, diff, rate};
+  });
+
+  return (
+    <div>
+      {confirmed?(
+        <div style={{background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>✅</span>
+          <div><div style={{fontWeight:700,fontSize:14,color:C.green}}>결산 확정 완료</div><div style={{fontSize:13,color:C.sub}}>확정일: {project.settlementDate}</div></div>
+        </div>
+      ):(
+        <div style={{background:C.amberLight,border:`1px solid ${C.amber}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>⚠️</span>
+          <div><div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div><div style={{fontSize:13,color:C.sub}}>프로젝트 완료 후 확정하면 경영관리 대시보드에 반영됩니다.</div></div>
+          <Btn primary onClick={onConfirm} style={{marginLeft:"auto"}}>결산 확정하기</Btn>
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {label:"수주금액(VAT포함)", val:total,    color:C.blue,  sub:"클라이언트 청구액"},
+          {label:"실행예산",          val:budgeted, color:C.purple,sub:"집행 예정액"},
+          {label:"실제 집행(증빙)",   val:spent,    color:C.amber, sub:`${(b.vouchers||[]).length + (b2.items||[]).reduce((s,c)=>(c.groups||[]).reduce((s2,g)=>(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,s2),s),0)}건 증빙`},
+          {label:"최종 순이익",       val:profit,   color:profit>=0?C.green:C.red, sub:`이익률 ${margin}%`},
         ].map(s=>(
           <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
             <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
             <div style={{fontSize:18,fontWeight:800,color:s.color}}>{fmtM(s.val)}</div>
+            <div style={{fontSize:11,color:C.faint,marginTop:3}}>{s.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* 대분류별 현황 */}
-      <div style={{marginBottom:20,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{padding:"10px 14px",background:C.slateLight,fontSize:12,fontWeight:700,color:C.sub}}>대분류별 집행 현황</div>
-        {catSummary.map(s=>(
-          <div key={s.cat} style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:120,fontSize:13,fontWeight:600}}>{s.cat}</div>
-            <div style={{flex:1}}>
-              <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${Math.min(s.pct,100)}%`,background:s.pct>100?C.red:s.pct>80?C.amber:C.blue,borderRadius:99,transition:"width .3s"}}/>
+      <div>
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:13,color:C.sub}}>증빙자료 업로드 및 수기 입력 · AI 자동 분석 지원</div>
+            <Btn primary sm onClick={openAdd}>+ 증빙 추가</Btn>
+          </div>
+          {(b.vouchers||[]).length===0?(
+            <div style={{textAlign:"center",padding:40,color:C.faint,border:`2px dashed ${C.border}`,borderRadius:12}}>
+              <div style={{fontSize:32,marginBottom:8}}>📋</div>
+              <div style={{fontWeight:600,marginBottom:4}}>증빙을 추가하세요</div>
+              <div style={{fontSize:12}}>영수증·세금계산서 등 파일을 업로드하면 AI가 자동으로 항목을 추출합니다</div>
+            </div>
+          ):(
+            <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+                <span>항목명</span><span>구분</span><span>업체명</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span/>
+              </div>
+              {(b.vouchers||[]).map((v,i)=>(
+                <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
+                    <div style={{fontSize:11,color:C.faint}}>{v.category}{v.group?` › ${v.group}`:""}</div>
+                  </div>
+                  <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
+                  <span style={{fontSize:13,color:C.sub}}>{v.vendor}</span>
+                  <span style={{textAlign:"right",fontWeight:700,fontSize:13}}>{fmt(v.amount)}</span>
+                  <span style={{textAlign:"right",fontSize:12,color:C.faint}}>{v.date}</span>
+                  <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                    {(v.files||[]).length>0&&<button onClick={()=>setPreview(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.blue}}>📎</button>}
+                    <button onClick={()=>openEdit(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub}}>✏️</button>
+                  </div>
+                </div>
+              ))}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 120px 110px 60px",padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:C.slateLight,fontWeight:700,fontSize:13}}>
+                <span>합계</span><span/><span/><span style={{textAlign:"right",color:C.amber}}>{fmt(spent)}</span><span/><span/>
               </div>
             </div>
-            <div style={{width:80,textAlign:"right",fontSize:12,color:C.sub}}>{fmtM(s.actual)}</div>
-            <div style={{width:80,textAlign:"right",fontSize:12,color:C.faint}}>/ {fmtM(s.planned)}</div>
-            <div style={{width:48,textAlign:"right",fontSize:12,fontWeight:700,color:s.pct>100?C.red:C.slate}}>{s.pct}%</div>
+          )}
+        </div>
+      </div>
+
+      <div style={{marginTop:24}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.dark,marginBottom:12}}>📊 예산 vs 실행 비교</div>
+        <div>
+          {/* 대분류별 바 차트 */}
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+            {compareRows.length===0
+              ? <div style={{padding:32,textAlign:"center",color:C.faint,fontSize:13,border:`2px dashed ${C.border}`,borderRadius:10}}>
+                  견적서 항목을 먼저 추가해주세요
+                </div>
+              : compareRows.map(r=>{
+                  const maxVal=Math.max(r.sales,r.budget,r.actual,1);
+                  return (
+                    <div key={r.cat} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                        <div style={{fontWeight:700,fontSize:14,color:C.dark}}>{r.cat}</div>
+                        <div style={{display:"flex",gap:14,fontSize:12,alignItems:"center"}}>
+                          <span style={{color:C.blue}}>매출 <strong>{fmtM(r.sales)}</strong></span>
+                          <span style={{color:C.purple}}>실행예산 <strong>{fmtM(r.budget)}</strong></span>
+                          <span style={{color:C.amber}}>실제집행 <strong>{fmtM(r.actual)}</strong></span>
+                          <span style={{padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:11,
+                            background:r.rate>100?"#fee2e2":r.rate>80?"#fef3c7":"#dcfce7",
+                            color:r.rate>100?C.red:r.rate>80?C.amber:C.green}}>
+                            집행률 {r.rate}%
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {[
+                          {label:"매출",    val:r.sales,  color:C.blue},
+                          {label:"실행예산",val:r.budget, color:C.purple},
+                          {label:"실제집행",val:r.actual, color:r.actual>r.budget?C.red:C.amber},
+                        ].map(bar=>(
+                          <div key={bar.label} style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{width:52,fontSize:11,color:C.faint,textAlign:"right",flexShrink:0}}>{bar.label}</div>
+                            <div style={{flex:1,height:10,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${Math.round(bar.val/maxVal*100)}%`,background:bar.color,borderRadius:99,transition:"width .4s"}}/>
+                            </div>
+                            <div style={{width:72,fontSize:12,fontWeight:600,color:bar.color,textAlign:"right",flexShrink:0}}>{fmtM(bar.val)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+            }
           </div>
-        ))}
-      </div>
 
-      {/* 증빙 목록 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontWeight:700,fontSize:14}}>증빙 목록 ({(b.vouchers||[]).length}건)</div>
-        <Btn primary sm onClick={openAdd}>+ 증빙 추가</Btn>
-      </div>
-
-      {(b.vouchers||[]).length===0
-        ? <div style={{textAlign:"center",padding:40,color:C.faint,fontSize:14,border:`2px dashed ${C.border}`,borderRadius:12}}>증빙을 추가하세요</div>
-        : (
-          <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 110px 110px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-              <span>항목명</span><span>구분</span><span>업체명</span><span style={{textAlign:"right"}}>금액</span><span style={{textAlign:"right"}}>날짜</span><span/>
-            </div>
-            {(b.vouchers||[]).map((v,i)=>(
-              <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 110px 110px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:600}}>{v.name}</div>
-                  <div style={{fontSize:11,color:C.faint}}>{v.category} › {v.group}</div>
-                </div>
-                <span style={{fontSize:11,background:C.slateLight,color:C.slate,padding:"2px 6px",borderRadius:99,whiteSpace:"nowrap"}}>{v.type}</span>
-                <span style={{fontSize:13,color:C.sub}}>{v.vendor}</span>
-                <span style={{textAlign:"right",fontWeight:700,fontSize:13}}>{fmt(v.amount)}</span>
-                <span style={{textAlign:"right",fontSize:12,color:C.faint}}>{v.date}</span>
-                <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-                  {(v.files||[]).length>0&&<button onClick={()=>setPreview(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.blue}}>📎</button>}
-                  <button onClick={()=>openEdit(v)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14,color:C.sub}}>✏️</button>
-                </div>
+          {/* 합계 테이블 */}
+          {compareRows.length>0&&(
+            <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 110px 80px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
+                <span>대분류</span>
+                <span style={{textAlign:"right",color:C.blue}}>매출</span>
+                <span style={{textAlign:"right",color:C.purple}}>실행예산</span>
+                <span style={{textAlign:"right",color:C.amber}}>실제집행</span>
+                <span style={{textAlign:"right"}}>집행률</span>
               </div>
-            ))}
-          </div>
-        )
-      }
-
-      {/* 증빙 모달 */}
-      {modal && (
+              {compareRows.map((r,i)=>(
+                <div key={r.cat} style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 110px 80px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
+                  <span style={{fontWeight:600,fontSize:13}}>{r.cat}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.blue,fontWeight:600}}>{fmt(r.sales)}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:C.purple}}>{fmt(r.budget)}</span>
+                  <span style={{textAlign:"right",fontSize:13,color:r.actual>r.budget?C.red:C.amber,fontWeight:600}}>{fmt(r.actual)}</span>
+                  <span style={{textAlign:"right"}}>
+                    <span style={{fontSize:12,padding:"2px 6px",borderRadius:99,fontWeight:700,
+                      background:r.rate>100?C.redLight:r.rate>80?C.amberLight:C.greenLight,
+                      color:r.rate>100?C.red:r.rate>80?C.amber:C.green}}>{r.rate}%</span>
+                  </span>
+                </div>
+              ))}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 110px 80px",padding:"10px 14px",borderTop:`2px solid ${C.border}`,gap:8,background:C.slateLight,fontWeight:700,fontSize:13}}>
+                <span>합계</span>
+                <span style={{textAlign:"right",color:C.blue}}>{fmt(compareRows.reduce((s,r)=>s+r.sales,0))}</span>
+                <span style={{textAlign:"right",color:C.purple}}>{fmt(compareRows.reduce((s,r)=>s+r.budget,0))}</span>
+                <span style={{textAlign:"right",color:C.amber}}>{fmt(compareRows.reduce((s,r)=>s+r.actual,0))}</span>
+                <span/>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {modal&&(
         <Modal title={editV?"증빙 수정":"증빙 추가"} onClose={()=>setModal(false)} wide>
           <div style={{display:"flex",gap:20}}>
-            {/* 파일 업로드 패널 */}
             <div style={{width:220,flexShrink:0}}>
               <div style={{fontSize:12,fontWeight:600,color:C.sub,marginBottom:8}}>파일 첨부 (선택)</div>
               <label style={{display:"block",border:`2px dashed ${analyzing?C.blue:C.border}`,borderRadius:10,padding:"20px 12px",textAlign:"center",cursor:"pointer",background:analyzing?C.blueLight:C.bg,transition:"all .2s"}}>
@@ -1266,217 +4566,699 @@ function BudgetEditor({ project, onSave }) {
                 </div>
               ))}
             </div>
-            {/* 입력 패널 */}
             <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:12,alignContent:"flex-start"}}>
               <Field label="항목명 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.name} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="ex. 카메라 렌탈"/></Field>
               <Field label="업체명 / 공급처 *"><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.vendor} onChange={e=>setVf(v=>({...v,vendor:e.target.value}))} placeholder="ex. 씨네렌탈"/></Field>
-              <Field label="계산서번호" half><input style={{...inp,background:analyzing?C.blueLight:C.white}} value={vf.number} onChange={e=>setVf(v=>({...v,number:e.target.value}))} placeholder="2026-001"/></Field>
+              <Field label="계산서번호" half><input style={{...inp}} value={vf.number||""} onChange={e=>setVf(v=>({...v,number:e.target.value}))} placeholder="2026-001"/></Field>
               <Field label="날짜" half><input style={inp} type="date" value={vf.date} onChange={e=>setVf(v=>({...v,date:e.target.value}))}/></Field>
-              <Field label="금액 (원)"><input style={{...inp,background:analyzing?C.blueLight:C.white,fontWeight:700}} type="number" value={vf.amount} onChange={e=>setVf(v=>({...v,amount:e.target.value}))} placeholder="0"/></Field>
+              <Field label="금액 (원)"><input style={{...inp,fontWeight:700}} type="number" value={vf.amount} onChange={e=>setVf(v=>({...v,amount:e.target.value}))} placeholder="0"/></Field>
               <Field label="증빙 구분" half>
                 <select style={inp} value={vf.type} onChange={e=>setVf(v=>({...v,type:e.target.value}))}>
                   {VOUCHER_TYPES.map(t=><option key={t}>{t}</option>)}
                 </select>
               </Field>
               <Field label="대분류" half>
-                <select style={inp} value={vf.category} onChange={e=>setVf(v=>({...v,category:e.target.value,group:groupOptions(e.target.value)[0]||""}))}>
+                <select style={inp} value={vf.category} onChange={e=>{const cat=e.target.value,grp=groupOptions(cat)[0]||"";setVf(v=>({...v,category:cat,group:grp}));}}>
+                  <option value="">- 선택 -</option>
                   {catOptions.map(c=><option key={c}>{c}</option>)}
                 </select>
               </Field>
               <Field label="중분류" half>
                 <select style={inp} value={vf.group} onChange={e=>setVf(v=>({...v,group:e.target.value}))}>
+                  <option value="">- 선택 -</option>
                   {groupOptions(vf.category).map(g=><option key={g}>{g}</option>)}
                 </select>
               </Field>
-              <Field label="메모 / 비고"><input style={inp} value={vf.note} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
+              <Field label="메모 / 비고"><input style={inp} value={vf.note||""} onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 용도 등"/></Field>
             </div>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
-            {editV&&<Btn danger sm onClick={()=>{remove(editV);setModal(false);}}>삭제</Btn>}
+            {editV&&<Btn danger sm onClick={()=>{removeV(editV);setModal(false);}}>삭제</Btn>}
             <div style={{flex:1}}/>
-            <Btn onClick={()=>setModal(false)}>취소</Btn>
-            <Btn primary onClick={save} disabled={analyzing}>저장</Btn>
+            <Btn onClick={()=>setModal(false)} disabled={uploading}>취소</Btn>
+            <Btn primary onClick={saveV} disabled={analyzing||uploading}>
+              {uploading ? "📤 업로드 중..." : analyzing ? "🤖 분석 중..." : "저장"}
+            </Btn>
           </div>
         </Modal>
       )}
 
-      {/* 파일 미리보기 모달 */}
-      {preview && (
+      {preview&&(
         <Modal title={`첨부파일 — ${preview.name}`} onClose={()=>setPreview(null)} wide>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {(preview.files||[]).map((f,i)=>(
-              <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:280}}>
-                {f.type.startsWith("image/")?
-                  <img src={f.b64url} alt={f.name} style={{maxWidth:"100%",display:"block"}}/>:
+              <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",maxWidth:f.type==="application/pdf"?"100%":320,width:f.type==="application/pdf"?"100%":"auto",position:"relative",background:C.slateLight}}>
+                {f.type.startsWith("image/")?(
+                  <>
+                    <img src={f.b64url} alt={f.name} style={{maxWidth:"100%",display:"block",cursor:"zoom-in"}} onClick={()=>setLightboxImg(f.b64url)}/>
+                    <button onClick={()=>setLightboxImg(f.b64url)} style={{position:"absolute",top:8,right:8,width:32,height:32,borderRadius:8,border:"none",background:"rgba(0,0,0,.45)",color:"#fff",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
+                    <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white}}>{f.name}</div>
+                  </>
+                ):f.type==="application/pdf"?(
+                  <>
+                    <iframe src={f.b64url} title={f.name} style={{width:"100%",height:400,border:"none",display:"block"}}/>
+                    <div style={{padding:"6px 10px",fontSize:11,color:C.sub,borderTop:`1px solid ${C.border}`,background:C.white,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <span>📄 {f.name}</span>
+                      <a href={f.b64url} download={f.name} style={{fontSize:11,color:C.blue,textDecoration:"none",fontWeight:600}}>⬇ 다운로드</a>
+                    </div>
+                  </>
+                ):(
                   <div style={{padding:16,textAlign:"center",color:C.sub,fontSize:13}}>📄 {f.name}</div>
-                }
+                )}
               </div>
             ))}
           </div>
         </Modal>
       )}
-    </div>
-  );
-}
 
-// ═══════════════════════════════════════════════════════════
-// 결산서
-// ═══════════════════════════════════════════════════════════
-function SettlementView({ project, onConfirm }) {
-  const q = project.quote;
-  const b = project.budget;
-  const confirmed = !!project.settlementDate;
-
-  const supply = qSupply(q);
-  const total  = qTotal(q);
-  const spent  = vTotal(b);
-  const profit = supply - spent;
-  const margin = supply ? Math.round(profit/supply*100) : 0;
-
-  const catMap = {};
-  (b.vouchers||[]).forEach(v=>{ catMap[v.category]=(catMap[v.category]||0)+(v.amount||0); });
-  const rows = (q.items||[]).map(cat=>{
-    const planned=catAmt(cat), actual=catMap[cat.category]||0;
-    return {cat:cat.category, planned, actual, diff:planned-actual, rate:planned?Math.round(actual/planned*100):0};
-  });
-
-  return (
-    <div>
-      {confirmed ? (
-        <div style={{background:C.greenLight,border:`1px solid ${C.green}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>✅</span>
-          <div><div style={{fontWeight:700,fontSize:14,color:C.green}}>결산 확정 완료</div><div style={{fontSize:13,color:C.sub}}>확정일: {project.settlementDate}</div></div>
-        </div>
-      ) : (
-        <div style={{background:C.amberLight,border:`1px solid ${C.amber}30`,borderRadius:12,padding:"13px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>⚠️</span>
-          <div><div style={{fontWeight:700,fontSize:14,color:C.amber}}>결산 미확정</div><div style={{fontSize:13,color:C.sub}}>프로젝트 완료 후 확정하면 재무 대시보드에 반영됩니다.</div></div>
-          <Btn primary onClick={onConfirm} style={{marginLeft:"auto"}}>결산 확정하기</Btn>
+      {lightboxImg&&(
+        <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",backdropFilter:"blur(6px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{position:"relative",maxWidth:"90vw",maxHeight:"90vh"}}>
+            <img src={lightboxImg} alt="확대 보기" style={{maxWidth:"90vw",maxHeight:"85vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,.6)",display:"block",objectFit:"contain"}}/>
+            <button onClick={()=>setLightboxImg(null)} style={{position:"absolute",top:-14,right:-14,width:32,height:32,borderRadius:"50%",border:"none",background:"#fff",color:"#1e293b",cursor:"pointer",fontSize:18,fontWeight:700,boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+            <div style={{textAlign:"center",color:"rgba(255,255,255,.6)",fontSize:12,marginTop:10}}>클릭하거나 × 버튼으로 닫기</div>
+          </div>
         </div>
       )}
-
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
-        {[
-          {label:"수주금액(VAT포함)",val:total,color:C.blue,sub:"클라이언트 청구액"},
-          {label:"매출(공급가액)",val:supply,color:C.purple,sub:`VAT ${fmt(qVat(q))}`},
-          {label:"총 매입(집행)",val:spent,color:C.amber,sub:`${(b.vouchers||[]).length}건 증빙`},
-          {label:"최종 순이익",val:profit,color:profit>=0?C.green:C.red,sub:`이익률 ${margin}%`},
-        ].map(s=>(
-          <div key={s.label} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px",borderTop:`3px solid ${s.color}`}}>
-            <div style={{fontSize:11,color:C.sub,marginBottom:6,fontWeight:600}}>{s.label}</div>
-            <div style={{fontSize:20,fontWeight:800,color:s.color}}>{fmt(s.val)}</div>
-            <div style={{fontSize:11,color:C.faint,marginTop:3}}>{s.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <h3 style={{margin:"0 0 10px",fontSize:14,fontWeight:700}}>항목별 집행 현황 (견적 vs 실행)</h3>
-      <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 120px 120px 100px 60px",background:C.slateLight,padding:"8px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-          <span>대분류</span><span style={{textAlign:"right"}}>견적</span><span style={{textAlign:"right"}}>실행</span><span style={{textAlign:"right"}}>차이</span><span style={{textAlign:"right"}}>달성률</span>
-        </div>
-        {rows.map((r,i)=>(
-          <div key={r.cat} style={{display:"grid",gridTemplateColumns:"1fr 120px 120px 100px 60px",padding:"10px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-            <span style={{fontWeight:600,fontSize:13}}>{r.cat}</span>
-            <span style={{textAlign:"right",fontSize:13}}>{fmt(r.planned)}</span>
-            <span style={{textAlign:"right",fontSize:13}}>{fmt(r.actual)}</span>
-            <span style={{textAlign:"right",fontSize:13,color:r.diff>=0?C.green:C.red,fontWeight:600}}>{r.diff>=0?"+":""}{fmt(r.diff)}</span>
-            <span style={{textAlign:"right"}}><span style={{fontSize:12,padding:"2px 6px",borderRadius:99,background:r.rate>100?C.redLight:r.rate>80?C.amberLight:C.greenLight,color:r.rate>100?C.red:r.rate>80?C.amber:C.green,fontWeight:700}}>{r.rate}%</span></span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // 구성원 관리 컴포넌트
 // ═══════════════════════════════════════════════════════════
-const ROLES = ["대표","EPD","PD","감독","조감독","AE","AI","경영지원"];
+// 직책 (조직 레벨)
+const ROLES = ["대표","실장","팀장"];
+
+// 직함 (업무 역할)
+const JOB_TITLES = ["EPD","PD","감독","조감독","AE","CP","AI Director","경영지원"];
+
+// 팀 구조
+const TEAMS = [
+  { id:"management", name:"경영지원실",      color:"#d97706", bg:"#fffbeb", icon:"🏢" },
+  { id:"pd",         name:"PD팀",           color:"#2563eb", bg:"#eff6ff", icon:"🎬" },
+  { id:"ai",         name:"AI연출팀",        color:"#7c3aed", bg:"#f5f3ff", icon:"🤖" },
+  { id:"contents",   name:"콘텐츠전략기획팀", color:"#16a34a", bg:"#f0fdf4", icon:"📋" },
+];
+const TEAM_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
+// 수습 중 여부
+const isProbation = (m) => {
+  if (!m.probationEnd) return false;
+  return m.probationEnd >= new Date().toISOString().slice(0,10);
+};
+const ProbationBadge = () => (
+  <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:99,
+    background:"#fef3c7",color:"#d97706",border:"1px solid #fde68a",
+    verticalAlign:"middle",marginLeft:3}}>수습</span>
+);
+
+// 입사일 → 수습 종료일 (3개월 후)
+const calcProbationEnd = (joinDate) => {
+  if (!joinDate) return "";
+  const d = new Date(joinDate);
+  d.setMonth(d.getMonth() + 3);
+  d.setDate(d.getDate() - 1); // 3개월 후 - 1일
+  return d.toISOString().slice(0,10);
+};
+
+// 주민번호 앞 6자리(birthDate yyyymmdd) + 뒷자리 1번째 → 나이 계산
+// idLast4 첫 자리: 1/2=1900s 3/4=2000s 남/여
+const calcAgeFromId = (birthDate, idLast4) => {
+  if (!birthDate || birthDate.length < 8) return null;
+  const year  = parseInt(birthDate.slice(0,4));
+  const month = parseInt(birthDate.slice(4,6));
+  const day   = parseInt(birthDate.slice(6,8));
+  if (isNaN(year)||isNaN(month)||isNaN(day)) return null;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  if (today.getMonth()+1 < month || (today.getMonth()+1===month && today.getDate() < day)) age--;
+  return age;
+};
+
+// 주민번호 전체(앞6+뒷7) → 생년월일 파싱
+const parseIdNumber = (idNum) => {
+  // idNum: "YYMMDD-NXXXXXX" or "YYMMDDNXXXXXX"
+  const clean = idNum.replace(/[^0-9]/g,"");
+  if (clean.length < 7) return null;
+  const yy   = clean.slice(0,2);
+  const mm   = clean.slice(2,4);
+  const dd   = clean.slice(4,6);
+  const gen  = clean[6]; // 1/2=1900s, 3/4=2000s
+  const century = (gen==="3"||gen==="4") ? "20" : "19";
+  const yyyy = century + yy;
+  const birthDate = `${yyyy}${mm}${dd}`;
+  const today = new Date();
+  const year = parseInt(yyyy), month = parseInt(mm), dayN = parseInt(dd);
+  let age = today.getFullYear() - year;
+  if (today.getMonth()+1 < month || (today.getMonth()+1===month && today.getDate() < dayN)) age--;
+  const birthIso = `${yyyy}-${mm}-${dd}`;
+  return { birthDate, birthIso, age };
+};
+
+// 두 날짜 사이 근속기간
+const calcTenure_between = (start, end) => {
+  if (!start||!end) return "";
+  const s = new Date(start), e = new Date(end);
+  const months = (e.getFullYear()-s.getFullYear())*12+(e.getMonth()-s.getMonth());
+  if (months<1) return "1개월 미만";
+  if (months<12) return `${months}개월`;
+  const y = Math.floor(months/12), r = months%12;
+  return r>0?`${y}년 ${r}개월`:`${y}년`;
+};
+// 입사일 → 근속연수 텍스트
+const calcTenure = (joinDate) => {
+  if (!joinDate) return "";
+  const start = new Date(joinDate);
+  const today = new Date();
+  const months = (today.getFullYear()-start.getFullYear())*12 + (today.getMonth()-start.getMonth());
+  if (months < 1) return "1개월 미만";
+  if (months < 12) return `${months}개월`;
+  const years = Math.floor(months/12);
+  const rem   = months % 12;
+  return rem > 0 ? `${years}년 ${rem}개월` : `${years}년`;
+};
+
+function OrgChart({ accounts }) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {TEAMS.map(team=>{
+        const members = accounts.filter(a=>a.team===team.id)
+          .sort((a,b)=>{
+            const aLeader = a.role==="팀장"?0:1;
+            const bLeader = b.role==="팀장"?0:1;
+            if(aLeader!==bLeader) return aLeader-bLeader;
+            return (a.order||0)-(b.order||0);
+          });
+        return (
+          <div key={team.id} style={{borderRadius:14,border:`1px solid ${team.color}33`,overflow:"hidden"}}>
+            {/* 팀 헤더 */}
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 18px",
+              background:`linear-gradient(135deg,${team.bg},${team.color}18)`}}>
+              <span style={{fontSize:20}}>{team.icon}</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:15,color:team.color}}>{team.name}</div>
+                <div style={{fontSize:11,color:"#94a3b8"}}>{members.length}명</div>
+              </div>
+            </div>
+            {/* 팀원 카드 그리드 */}
+            {members.length===0
+              ? <div style={{padding:"18px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                  배정된 팀원이 없습니다
+                </div>
+              : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10,padding:"14px"}}>
+                  {members.map(m=>(
+                    <div key={m.id} style={{background:"#fff",borderRadius:10,
+                      border:"1px solid #e2e8f0",padding:"12px 14px",
+                      display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <Avatar name={m.name} size={36}/>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:2}}>
+                          {m.name}{isProbation(m)&&<ProbationBadge/>}
+                        </div>
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+                          <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,fontWeight:700,
+                            background:team.bg,color:team.color}}>{m.role}</span>
+                          {m.jobTitle&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                            background:"#f1f5f9",color:"#64748b"}}>{m.jobTitle}</span>}
+                        </div>
+                        {m.phone&&<div style={{fontSize:10,color:"#64748b"}}>📱 {m.phone}</div>}
+                        {m.email&&<div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>✉️ {m.email}</div>}
+                        {m.joinDate&&<div style={{fontSize:10,color:"#94a3b8"}}>
+                          입사 {m.joinDate}
+                          <span style={{marginLeft:4,color:"#2563eb",fontWeight:600}}>
+                            ({calcTenure(m.joinDate)})
+                          </span>
+                          {isProbation(m)&&<span style={{color:"#d97706",marginLeft:4}}>
+                            · 수습 ~{m.probationEnd}
+                          </span>}
+                        </div>}
+                        {m.age!=null&&<div style={{fontSize:10,color:"#94a3b8"}}>만 {m.age}세</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+        );
+      })}
+      {/* 미배정 인원 */}
+      {accounts.filter(a=>!a.team||!TEAMS.find(t=>t.id===a.team)).length>0&&(
+        <div style={{borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+          <div style={{padding:"12px 18px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0"}}>
+            <span style={{fontWeight:700,fontSize:14,color:"#94a3b8"}}>⬜ 팀 미배정</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10,padding:"14px"}}>
+            {accounts.filter(a=>!a.team||!TEAMS.find(t=>t.id===a.team)).map(m=>(
+              <div key={m.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",
+                padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                <Avatar name={m.name} size={36}/>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{m.name}</div>
+                  <span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                    background:"#f1f5f9",color:"#64748b",fontWeight:600}}>{m.role}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResignModal({ member, onClose, onConfirm }) {
+  const [resignDate,   setResignDate]   = useState(new Date().toISOString().slice(0,10));
+  const [resignReason, setResignReason] = useState("");
+  return (
+    <Modal title="퇴사 처리" onClose={onClose}>
+      <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:12}}>
+        {member.name} ({member.jobTitle||member.role}) 퇴사 처리
+      </div>
+      <Field label="퇴사일">
+        <input style={inp} type="date" value={resignDate}
+          onChange={e=>setResignDate(e.target.value)}/>
+      </Field>
+      <Field label="퇴사 사유">
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+          {["자진퇴사","계약만료","권고사직","해고","기타"].map(r=>(
+            <button key={r} type="button" onClick={()=>setResignReason(r)}
+              style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                fontSize:11,fontWeight:resignReason===r?700:400,
+                background:resignReason===r?"#ef4444":"#f1f5f9",
+                color:resignReason===r?"#fff":"#64748b"}}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <input style={inp} value={resignReason} placeholder="사유 직접 입력"
+          onChange={e=>setResignReason(e.target.value)}/>
+      </Field>
+      {member.joinDate&&resignDate&&(
+        <div style={{fontSize:12,color:"#64748b",padding:"8px 12px",
+          background:"#f8fafc",borderRadius:8,marginBottom:4}}>
+          근속기간: <strong>{calcTenure_between(member.joinDate, resignDate)}</strong>
+        </div>
+      )}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+        <Btn onClick={onClose}>취소</Btn>
+        <Btn danger onClick={()=>onConfirm(resignDate,resignReason)}
+          disabled={!resignDate}>퇴사 처리</Btn>
+      </div>
+    </Modal>
+  );
+}
 
 function MemberManagement({ accounts, onSave, onDelete }) {
+  const [viewMode, setViewMode] = useState("list"); // "list" | "org" | "resigned"
   const [modal, setModal] = useState(false);
   const [editM, setEditM] = useState(null);
   const [mf,    setMf]    = useState({});
   const [conf,  setConf]  = useState(null);
+  const [resignConf, setResignConf] = useState(null); // 퇴사 처리 확인
 
-  const openAdd  = () => { setEditM(null); setMf({name:"",role:ROLES[1],pw:"",canViewFinance:false,canManageMembers:false}); setModal(true); };
+  const active   = accounts.filter(a => !a.resigned);
+  const resigned = accounts.filter(a =>  a.resigned)
+    .sort((a,b) => (b.resignDate||"").localeCompare(a.resignDate||""));
+
+  const openAdd  = () => {
+    setEditM(null);
+    setMf({name:"",role:"",team:"",pw:"",
+           canViewFinance:false,canManageMembers:false,
+           jobTitle:"",phone:"",email:"",joinDate:"",probationEnd:"",birthDate:"",idLast4:"",emergencyContact:""});
+    setModal(true);
+  };
+
+  // 퇴사 처리 — resigned: true + 퇴사일 저장
+  const doResign = (m, resignDate, resignReason) => {
+    onSave({...m, resigned:true, resignDate, resignReason,
+            team:"", canViewFinance:false, canManageMembers:false});
+    setResignConf(null);
+  };
+  // 복직 처리
+  const doRestore = (m) => {
+    onSave({...m, resigned:false, resignDate:"", resignReason:""});
+  };
   const openEdit = m => { setEditM(m); setMf({...m}); setModal(true); };
   const save = () => {
-    if(!mf.name?.trim()||!mf.pw?.trim()) return;
+    if(!mf.name?.trim()||!mf.email?.trim()||!mf.jobTitle?.trim()) return;
     onSave({...mf, id:editM?editM.id:"m"+Date.now(), order:editM?(editM.order||0):accounts.length});
     setModal(false);
   };
 
+  const sorted = [...active].sort((a,b)=>{
+    const ta = TEAMS.findIndex(t=>t.id===a.team);
+    const tb = TEAMS.findIndex(t=>t.id===b.team);
+    if(ta!==tb) return (ta===-1?99:ta)-(tb===-1?99:tb);
+    // 같은 팀 내 팀장 우선
+    const aLeader = a.role==="팀장"?0:1;
+    const bLeader = b.role==="팀장"?0:1;
+    if(aLeader!==bLeader) return aLeader-bLeader;
+    return (a.order||0)-(b.order||0);
+  });
+
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div style={{fontWeight:700,fontSize:14}}>구성원 목록 ({accounts.length}명)</div>
-        <Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>
-      </div>
-      <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
-          <span/><span>이름</span><span>직책</span><span style={{textAlign:"center"}}>재무열람</span><span style={{textAlign:"center"}}>멤버관리</span><span>비밀번호</span><span/>
-        </div>
-        {accounts.length===0 && <div style={{padding:"30px",textAlign:"center",color:C.faint}}>구성원이 없습니다</div>}
-        {accounts.map((m,i)=>(
-          <div key={m.id} style={{display:"grid",gridTemplateColumns:"36px 1fr 100px 80px 80px 80px 60px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc"}}>
-            <Avatar name={m.name} size={28}/>
-            <div style={{fontWeight:700,fontSize:13}}>{m.name}</div>
-            <span style={{fontSize:12,padding:"2px 8px",borderRadius:99,background:C.slateLight,color:C.slate,fontWeight:600}}>{m.role}</span>
-            <div style={{textAlign:"center"}}>{m.canViewFinance?<span style={{color:C.green}}>✅</span>:<span style={{color:C.faint}}>—</span>}</div>
-            <div style={{textAlign:"center"}}>{m.canManageMembers?<span style={{color:C.blue}}>✅</span>:<span style={{color:C.faint}}>—</span>}</div>
-            <span style={{fontSize:12,color:C.faint,fontFamily:"monospace"}}>{m.pw}</span>
-            <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-              <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14}}>✏️</button>
-              <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:14}}>🗑️</button>
-            </div>
+      {/* 상단 바 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <div style={{fontWeight:700,fontSize:14}}>
+            재직 {active.length}명
+            {resigned.length>0&&<span style={{fontSize:12,color:"#94a3b8",marginLeft:6}}>퇴사 {resigned.length}명</span>}
           </div>
-        ))}
-      </div>
-      <div style={{marginTop:12,padding:"10px 14px",background:C.amberLight,borderRadius:8,fontSize:12,color:C.amber}}>
-        ⚠️ 비밀번호는 구성원이 앱에 로그인할 때 사용합니다.
+          {/* 뷰 전환 */}
+          <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>
+            {[{id:"list",label:"📋 목록"},{id:"org",label:"🏢 조직도"},{id:"resigned",label:"🚪 퇴사자"}].map(v=>(
+              <button key={v.id} onClick={()=>setViewMode(v.id)}
+                style={{padding:"5px 12px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
+                  background:viewMode===v.id?(v.id==="resigned"?"#f1f5f9":"#2563eb"):"#fff",
+                  color:viewMode===v.id?(v.id==="resigned"?"#64748b":"#fff"):"#64748b",
+                  position:"relative"}}>
+                {v.label}
+                {v.id==="resigned"&&resigned.length>0&&(
+                  <span style={{marginLeft:4,fontSize:9,fontWeight:800,padding:"1px 4px",
+                    borderRadius:99,background:"#94a3b8",color:"#fff"}}>
+                    {resigned.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+        {viewMode!=="resigned"&&<Btn primary sm onClick={openAdd}>+ 구성원 추가</Btn>}
       </div>
 
+      {viewMode==="resigned" ? (
+        /* ── 퇴사자 목록 ───────────────────────────────── */
+        <div>
+          {resigned.length===0
+            ? <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>퇴사자가 없습니다</div>
+            : <div style={{border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 100px 90px 60px",
+                  background:"#f8fafc",padding:"8px 12px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                  <span/><span>이름 / 직함</span><span>퇴사일</span><span>근속기간</span><span>퇴사 사유</span><span>연락처</span><span/>
+                </div>
+                {resigned.map((m,i)=>(
+                  <div key={m.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 100px 90px 60px",
+                    padding:"10px 12px",borderTop:"1px solid #f1f5f9",gap:6,alignItems:"center",
+                    background:i%2===0?"#fff":"#fafbfc",opacity:.8}}>
+                    <Avatar name={m.name} size={26}/>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:12,color:"#64748b"}}>{m.name}</div>
+                      {m.jobTitle&&<div style={{fontSize:10,color:"#94a3b8"}}>{m.jobTitle}</div>}
+                    </div>
+                    <span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>{m.resignDate||"—"}</span>
+                    <span style={{fontSize:10,color:"#94a3b8"}}>
+                      {m.joinDate&&m.resignDate ? calcTenure_between(m.joinDate,m.resignDate) : "—"}
+                    </span>
+                    <span style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {m.resignReason||"—"}
+                    </span>
+                    <span style={{fontSize:10,color:"#94a3b8"}}>{m.phone||"—"}</span>
+                    <div style={{display:"flex",gap:4}}>
+                      <button title="수정" onClick={()=>openEdit(m)}
+                        style={{border:"none",background:"none",cursor:"pointer",fontSize:12}}>✏️</button>
+                      <button title="복직" onClick={()=>doRestore(m)}
+                        style={{border:"1px solid #bbf7d0",background:"#f0fdf4",borderRadius:6,
+                          cursor:"pointer",fontSize:10,padding:"2px 6px",color:"#16a34a",fontWeight:700}}>복직</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+      ) : viewMode==="org" ? (
+        <OrgChart accounts={active}/>
+      ) : (
+          <>
+            {/* 팀별 그룹 목록 */}
+            {TEAMS.map(team=>{
+              const members = sorted.filter(m=>m.team===team.id);
+              if(members.length===0) return null;
+              return (
+                <div key={team.id} style={{marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+                    borderRadius:"10px 10px 0 0",background:team.bg,
+                    border:`1px solid ${team.color}44`}}>
+                    <span>{team.icon}</span>
+                    <span style={{fontWeight:700,fontSize:12,color:team.color}}>{team.name}</span>
+                    <span style={{fontSize:11,color:team.color,opacity:.7}}>{members.length}명</span>
+                  </div>
+                  <div style={{border:`1px solid ${team.color}33`,borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 80px 80px 70px 56px",
+                      background:"#f8fafc",padding:"8px 12px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6}}>
+                      <span/><span>이름 / 직함</span><span>직책</span><span>연락처</span>
+                      <span style={{textAlign:"center"}}>경영열람</span>
+                      <span style={{textAlign:"center"}}>멤버관리</span>
+                      <span>입사일</span><span/>
+                    </div>
+                    {members.map((m,i)=>(
+                      <div key={m.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 90px 90px 80px 80px 70px 56px",
+                        padding:"10px 12px",borderTop:"1px solid #f1f5f9",gap:6,alignItems:"center",
+                        background:i%2===0?"#fff":"#fafbfc"}}>
+                        <Avatar name={m.name} size={26}/>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>
+                          {m.name}{isProbation(m)&&<ProbationBadge/>}
+                        </div>
+                          {m.jobTitle&&<div style={{fontSize:10,color:"#94a3b8"}}>{m.jobTitle}</div>}
+                        </div>
+                        <span style={{fontSize:11,padding:"2px 7px",borderRadius:99,
+                          background:team.bg,color:team.color,fontWeight:600,whiteSpace:"nowrap"}}>{m.role}</span>
+                        <div style={{fontSize:10,color:"#64748b"}}>
+                          {m.phone&&<div>{m.phone}</div>}
+                          {m.email&&<div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{m.email}</div>}
+                        </div>
+                        <div style={{textAlign:"center"}}>{m.canViewFinance?<span style={{color:"#16a34a"}}>✅</span>:<span style={{color:"#cbd5e1"}}>—</span>}</div>
+                        <div style={{textAlign:"center"}}>{m.canManageMembers?<span style={{color:"#2563eb"}}>✅</span>:<span style={{color:"#cbd5e1"}}>—</span>}</div>
+                        <div style={{fontSize:10}}>
+                          <div style={{color:"#94a3b8"}}>{m.joinDate||"—"}</div>
+                          {m.joinDate&&<div style={{color:"#2563eb",fontWeight:600}}>{calcTenure(m.joinDate)}</div>}
+                          {isProbation(m)&&<div style={{color:"#d97706",fontWeight:600}}>수습 ~{m.probationEnd}</div>}
+                        </div>
+                        <div style={{display:"flex",gap:3,justifyContent:"flex-end"}}>
+                          <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                          <button onClick={()=>setResignConf(m)}
+                            style={{border:"1px solid #fca5a5",background:"#fff1f2",borderRadius:6,
+                              cursor:"pointer",fontSize:9,padding:"2px 5px",color:"#ef4444",fontWeight:700}}>퇴사</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* 팀 미배정 */}
+            {sorted.filter(m=>!m.team||!TEAMS.find(t=>t.id===m.team)).length>0&&(
+              <div style={{marginBottom:16}}>
+                <div style={{padding:"8px 12px",borderRadius:"10px 10px 0 0",
+                  background:"#f8fafc",border:"1px solid #e2e8f0",
+                  fontWeight:700,fontSize:12,color:"#94a3b8"}}>⬜ 팀 미배정</div>
+                <div style={{border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+                  {sorted.filter(m=>!m.team||!TEAMS.find(t=>t.id===m.team)).map((m,i)=>(
+                    <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,
+                      padding:"10px 12px",borderTop:i?`1px solid #f1f5f9`:undefined,
+                      background:i%2===0?"#fff":"#fafbfc"}}>
+                      <Avatar name={m.name} size={26}/>
+                      <div style={{flex:1}}>
+                        <span style={{fontWeight:700,fontSize:12,marginRight:8}}>{m.name}</span>
+                        <span style={{fontSize:11,padding:"1px 7px",borderRadius:99,
+                          background:"#f1f5f9",color:"#64748b"}}>{m.role}</span>
+                      </div>
+                      <button onClick={()=>openEdit(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                      <button onClick={()=>setConf(m)} style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )
+      }
+
+      {/* 추가/수정 모달 */}
       {modal && (
         <Modal title={editM?"구성원 수정":"구성원 추가"} onClose={()=>setModal(false)}>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="이름 *"><input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="홍길동"/></Field>
-            <Field label="직책 *" half><select style={inp} value={mf.role||ROLES[1]} onChange={e=>setMf(v=>({...v,role:e.target.value}))}>{ROLES.map(r=><option key={r}>{r}</option>)}</select></Field>
-            <Field label="비밀번호 *" half><input style={inp} value={mf.pw||""} onChange={e=>setMf(v=>({...v,pw:e.target.value}))} placeholder="로그인 비밀번호"/></Field>
-            <Field label="연락처" half><input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/></Field>
-            <Field label="이메일" half><input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/></Field>
+          {/* 기본 정보 */}
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>기본 정보</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Field label="이름 *" style={{gridColumn:"1/-1"}}>
+              <input style={inp} autoFocus value={mf.name||""} onChange={e=>setMf(v=>({...v,name:e.target.value}))} placeholder="홍길동"/>
+            </Field>
+            <Field label="팀">
+              <select style={inp} value={mf.team||""} onChange={e=>setMf(v=>({...v,team:e.target.value}))}>
+                <option value="">- 팀 미배정 -</option>
+                {TEAMS.map(t=><option key={t.id} value={t.id}>{t.icon} {t.name}</option>)}
+              </select>
+            </Field>
+            <Field label="직책" style={{gridColumn:"1/-1"}}>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {ROLES.map(r=>{
+                  const sel = mf.role===r;
+                  return (
+                    <button key={r} type="button" onClick={()=>setMf(v=>({...v,role:v.role===r?"":r}))}
+                      style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                        fontSize:12,fontWeight:sel?700:400,
+                        background:sel?"#1e293b":"#f1f5f9",
+                        color:sel?"#fff":"#64748b",
+                        outline:sel?"2px solid #1e293b":"none",
+                        transition:"all .1s"}}>
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+            <Field label="직함 *" style={{gridColumn:"1/-1"}}>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
+                {JOB_TITLES.map(t=>{
+                  const sel = (mf.jobTitle||"")===t;
+                  return (
+                    <button key={t} type="button" onClick={()=>setMf(v=>({...v,jobTitle:sel?"":t}))}
+                      style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                        fontSize:12,fontWeight:sel?700:400,
+                        background:sel?"#2563eb":"#f1f5f9",
+                        color:sel?"#fff":"#64748b",
+                        outline:sel?"2px solid #2563eb":"none",
+                        transition:"all .1s"}}>
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+              <input style={{...inp,marginTop:2}} value={mf.jobTitle||""}
+                placeholder="직접 입력 (위에서 선택하거나 직접 입력)"
+                onChange={e=>setMf(v=>({...v,jobTitle:e.target.value}))}/>
+            </Field>
+            <Field label="구글 계정 이메일 *">
+              <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))}
+                placeholder="example@gmail.com" type="email"/>
+            </Field>
           </div>
-          <div style={{marginTop:8,padding:"12px 14px",background:C.slateLight,borderRadius:10}}>
-            <div style={{fontWeight:700,fontSize:12,color:C.sub,marginBottom:10}}>권한 설정</div>
-            <div style={{display:"flex",gap:20}}>
+
+          {/* 연락처 */}
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>연락처</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Field label="휴대폰">
+              <input style={inp} value={mf.phone||""} onChange={e=>setMf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
+            </Field>
+            <Field label="이메일">
+              <input style={inp} value={mf.email||""} onChange={e=>setMf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
+            </Field>
+            <Field label="긴급연락처">
+              <input style={inp} value={mf.emergencyContact||""} onChange={e=>setMf(v=>({...v,emergencyContact:e.target.value}))} placeholder="이름 관계 010-0000-0000"/>
+            </Field>
+            <Field label="주소">
+              <input style={inp} value={mf.address||""} onChange={e=>setMf(v=>({...v,address:e.target.value}))} placeholder="서울시 강남구 ..."/>
+            </Field>
+          </div>
+
+          {/* 인사 정보 */}
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:1}}>인사 정보</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            {/* 입사일 → 수습 종료일 자동 계산 */}
+            <Field label="입사일 (고용일)">
+              <input style={inp} type="date" value={mf.joinDate||""}
+                onChange={e=>{
+                  const d = e.target.value;
+                  // 입사일 변경 시 수습 종료일 항상 자동 갱신
+                  setMf(v=>({...v, joinDate:d, probationEnd: calcProbationEnd(d)}));
+                }}/>
+              {mf.joinDate&&(
+                <div style={{fontSize:10,color:"#2563eb",marginTop:3}}>
+                  근속 {calcTenure(mf.joinDate)}
+                </div>
+              )}
+            </Field>
+            <Field label="수습 종료일 (입사일 +3개월 자동)">
+              <input style={{...inp,
+                background: mf.probationEnd&&mf.joinDate&&mf.probationEnd===calcProbationEnd(mf.joinDate)
+                  ? "#f0fdf4" : "#fff",
+                borderColor: mf.probationEnd&&mf.joinDate&&mf.probationEnd===calcProbationEnd(mf.joinDate)
+                  ? "#bbf7d0" : "#e2e8f0"}}
+                type="date" value={mf.probationEnd||""}
+                onChange={e=>setMf(v=>({...v,probationEnd:e.target.value}))}/>
+              {mf.probationEnd&&mf.joinDate&&mf.probationEnd===calcProbationEnd(mf.joinDate)&&(
+                <div style={{fontSize:10,color:"#16a34a",marginTop:3}}>✓ 자동 계산됨</div>
+              )}
+            </Field>
+            {/* 주민등록번호 전체 입력 → 생년월일 + 나이 자동 계산 */}
+            <Field label="주민등록번호 (급여용)" style={{gridColumn:"1/-1"}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input style={{...inp,flex:1,letterSpacing:2,fontFamily:"monospace"}}
+                  value={mf.idNumber||""}
+                  maxLength={14}
+                  placeholder="000000-0000000"
+                  onChange={e=>{
+                    const raw = e.target.value.replace(/[^0-9]/g,"");
+                    // 하이픈 자동 삽입
+                    const fmt = raw.length>6 ? raw.slice(0,6)+"-"+raw.slice(6,13) : raw;
+                    const parsed = parseIdNumber(raw);
+                    setMf(v=>({
+                      ...v,
+                      idNumber: fmt,
+                      ...(parsed ? { birthDate: parsed.birthIso, age: parsed.age } : {})
+                    }));
+                  }}/>
+                {mf.age!=null&&(
+                  <span style={{fontSize:12,fontWeight:700,color:"#1e293b",
+                    background:"#f0fdf4",padding:"4px 10px",borderRadius:8,
+                    border:"1px solid #bbf7d0",whiteSpace:"nowrap"}}>
+                    만 {mf.age}세
+                  </span>
+                )}
+              </div>
+              {mf.birthDate&&(
+                <div style={{fontSize:10,color:"#64748b",marginTop:3}}>
+                  생년월일: {mf.birthDate}
+                </div>
+              )}
+              <div style={{fontSize:10,color:"#ef4444",marginTop:3}}>
+                ⚠️ 민감정보 — 저장 시 암호화되지 않으므로 열람 권한자만 접근하세요
+              </div>
+            </Field>
+          </div>
+
+          {/* 권한 */}
+          <div style={{padding:"12px 14px",background:"#f8fafc",borderRadius:10,marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:11,color:"#94a3b8",marginBottom:10,letterSpacing:1}}>권한 설정</div>
+            <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-                <input type="checkbox" checked={!!mf.canViewFinance} onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))} style={{accentColor:C.green,width:16,height:16}}/>
-                <div><div style={{fontWeight:600}}>💰 재무 열람</div><div style={{fontSize:11,color:C.faint}}>재무 대시보드, 결산서</div></div>
+                <input type="checkbox" checked={!!mf.canViewFinance}
+                  onChange={e=>setMf(v=>({...v,canViewFinance:e.target.checked}))}
+                  style={{accentColor:C.green,width:16,height:16}}/>
+                <div><div style={{fontWeight:600}}>💰 경영관리 열람</div>
+                  <div style={{fontSize:11,color:C.faint}}>경영관리 대시보드, 결산서</div></div>
               </label>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
-                <input type="checkbox" checked={!!mf.canManageMembers} onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))} style={{accentColor:C.blue,width:16,height:16}}/>
-                <div><div style={{fontWeight:600}}>👥 구성원 관리</div><div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div></div>
+                <input type="checkbox" checked={!!mf.canManageMembers}
+                  onChange={e=>setMf(v=>({...v,canManageMembers:e.target.checked}))}
+                  style={{accentColor:C.blue,width:16,height:16}}/>
+                <div><div style={{fontWeight:600}}>👥 구성원 관리</div>
+                  <div style={{fontSize:11,color:C.faint}}>구성원 추가/수정/삭제</div></div>
               </label>
             </div>
           </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
-            {editM && <Btn danger sm onClick={()=>{setConf(editM);setModal(false);}}>삭제</Btn>}
+
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            {editM && <Btn danger sm onClick={()=>{setModal(false);setResignConf(editM);}}>퇴사 처리</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(false)}>취소</Btn>
-            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.pw?.trim()}>저장</Btn>
+            <Btn primary onClick={save} disabled={!mf.name?.trim()||!mf.email?.trim()||!mf.jobTitle?.trim()}>저장</Btn>
           </div>
         </Modal>
       )}
-      {conf && (
-        <Modal title="구성원 삭제" onClose={()=>setConf(null)}>
-          <div style={{fontSize:14,marginBottom:20}}><b>{conf.name}</b> ({conf.role})을 삭제하시겠습니까?</div>
-          <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-            <Btn onClick={()=>setConf(null)}>취소</Btn>
-            <Btn danger onClick={()=>{onDelete(conf.id);setConf(null);}}>삭제</Btn>
-          </div>
-        </Modal>
+      {/* 퇴사 처리 모달 */}
+      {resignConf&&(
+        <ResignModal
+          member={resignConf}
+          onClose={()=>setResignConf(null)}
+          onConfirm={(date,reason)=>doResign(resignConf,date,reason)}
+        />
       )}
+
+
     </div>
   );
 }
@@ -1494,18 +5276,67 @@ function MonthCalendar({ project, onChange, user }) {
 
   const events = project.calEvents || [];
   const ymd = (y,m,d) => `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  // 피드백 마감일을 가상 이벤트로 생성
+
+  // ── 프로젝트에서 자동 수집되는 읽기전용 이벤트 ──
+  const [showMeetings, setShowMeetings] = useState(true); // 회의 일정 표시 토글
+  const todayIso = new Date().toISOString().slice(0,10);
+
+  // 태스크 마감일 — 하위 태스크 우선, 상위 태스크는 하위 없을 때만
+  const allTasks   = project.tasks || [];
+  const hasChild   = new Set(allTasks.filter(t=>t.parentId).map(t=>t.parentId));
+  const dueTasks   = allTasks.filter(t => t.due && t.title && !hasChild.has(t.id));
+  const taskDueEvents = dueTasks.map(t => ({
+    id: "td-"+t.id,
+    title: "📋 "+t.title,
+    start: t.due.slice(0,10),
+    end:   t.due.slice(0,10),
+    color: t.status==="완료" ? "#94a3b8" : t.due.slice(0,10) < todayIso ? "#ef4444" : "#2563eb",
+    isAuto: true, autoType: "task",
+    taskId: t.id,
+    note: (t.assignees||[]).join(", ") || t.assignee || "",
+  }));
+
+  // 태스크 회의 일정 (토글 적용)
+  const meetingEvents = showMeetings
+    ? allTasks.flatMap(t =>
+        (t.meetings||[])
+          .filter(m => m.date && m.title)
+          .map(m => {
+            const attendeeArr = Array.isArray(m.attendees)
+              ? m.attendees : (m.attendees ? String(m.attendees).split(",").map(s=>s.trim()).filter(Boolean) : []);
+            const isClient = m.meetingType === "고객사";
+            return {
+              id: "mt-"+m.id,
+              title: (isClient?"🤝 ":"🏢 ")+m.title,
+              start: m.date.slice(0,10),
+              end:   m.date.slice(0,10),
+              color: isClient ? "#d97706" : "#7c3aed",
+              isAuto: true, autoType: "meeting",
+              meetingType: m.meetingType||"내부",
+              note: attendeeArr.join(", "),
+              location: m.location||"",
+              videoUrl: m.videoUrl||"",
+              parentTaskTitle: t.title,
+            };
+          })
+      )
+    : [];
+
+  // 피드백 마감일
   const feedbackEvents = (project.feedbacks||[])
     .filter(fb => fb.dueDate && fb.taskStatus !== "done")
     .map(fb => ({
       id: "fb-"+fb.id,
-      title: "[피드백] "+(fb.title||"(제목없음)"),
+      title: "[고객요청] "+(fb.title||"(제목없음)"),
       start: fb.dueDate,
       end: fb.dueDate,
       color: "#8b5cf6",
+      isAuto: true, autoType: "feedback",
       isFeedback: true,
     }));
-  const allEvents = [...events, ...feedbackEvents];
+
+  // 전체: 수동 생성 + 자동 수집
+  const allEvents = [...events, ...taskDueEvents, ...meetingEvents, ...feedbackEvents];
   const eventsOn = (date) => allEvents.filter(e => e.start <= date && date <= (e.end||e.start));
   const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -1524,8 +5355,11 @@ function MonthCalendar({ project, onChange, user }) {
     setEf({title:"",start:date,end:date,color:"#2563eb",note:""});
     setModal({mode:"add"});
   };
+  const [autoModal, setAutoModal] = useState(null); // 자동 이벤트 상세
+
   const openEdit = (ev, e) => {
     e.stopPropagation();
+    if(ev.isAuto) { setAutoModal(ev); return; }
     if(!canEdit) return;
     setEf({...ev});
     setModal({mode:"edit",id:ev.id});
@@ -1542,6 +5376,33 @@ function MonthCalendar({ project, onChange, user }) {
   };
   const del = (id) => { onChange(p=>({...p,calEvents:(p.calEvents||[]).filter(e=>e.id!==id)})); setModal(null); };
 
+  // 자동 이벤트 → 종합 캘린더 포함/제외 토글
+  const toggleMaster = (ev) => {
+    const masterId = "master-"+ev.id;
+    onChange(p => {
+      const prev = p.calEvents||[];
+      const already = prev.find(e=>e.id===masterId);
+      if(already) {
+        // 이미 포함됨 → 제거
+        return {...p, calEvents: prev.filter(e=>e.id!==masterId)};
+      } else {
+        // 새로 포함
+        const entry = {
+          ...ev,
+          id: masterId,
+          isAuto: false,
+          includeInMaster: true,
+          sourceAutoId: ev.id,
+        };
+        return {...p, calEvents: [...prev, entry]};
+      }
+    });
+  };
+
+  const isMasterIncluded = (ev) => {
+    return (project.calEvents||[]).some(e=>e.sourceAutoId===ev.id || e.id==="master-"+ev.id);
+  };
+
   const exportICal = () => {
     const lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CutFlow//KR","CALSCALE:GREGORIAN","METHOD:PUBLISH",`X-WR-CALNAME:${project.name}`];
     for(const ev of events){
@@ -1554,6 +5415,342 @@ function MonthCalendar({ project, onChange, user }) {
     const blob = new Blob([lines.filter(Boolean).join("\r\n")],{type:"text/calendar"});
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `${project.name}_schedule.ics`; a.click();
+  };
+
+  // 구글 캘린더 자동 연동
+  const syncToGoogleCalendar = async () => {
+    const CLIENT_ID = "22645531970-kje71cnuacg1oj8kmsolm6g85556a3vu.apps.googleusercontent.com";
+    const SCOPE = "https://www.googleapis.com/auth/calendar.events";
+
+    // 1. Google Identity Services 로드
+    if (!window.google?.accounts?.oauth2) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://accounts.google.com/gsi/client";
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    // 2. Access Token 요청
+    const token = await new Promise((resolve, reject) => {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPE,
+        callback: (resp) => {
+          if (resp.error) reject(new Error(resp.error));
+          else resolve(resp.access_token);
+        },
+      });
+      client.requestAccessToken();
+    });
+
+    // 3. 일정 업로드
+    const eventsToSync = allEvents.filter(e => !e.isFeedback);
+    let success = 0, fail = 0;
+
+    for (const ev of eventsToSync) {
+      const body = {
+        summary: ev.title,
+        description: ev.note || "",
+        start: { date: ev.start },
+        end:   { date: ev.end || ev.start },
+        colorId: "1",
+      };
+      try {
+        const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) success++; else fail++;
+      } catch { fail++; }
+    }
+
+    alert(`구글 캘린더 연동 완료!\n✅ 성공: ${success}건${fail > 0 ? "\n❌ 실패: " + fail + "건" : ""}`);
+  };
+
+  const exportCalPPT = async () => {
+    // pptxgenjs를 CDN에서 동적 로드
+    if (!window.PptxGenJS) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    const PptxGenJS = window.PptxGenJS;
+    const pres = new PptxGenJS();
+    pres.layout = "LAYOUT_16x9";
+    pres.title = `${project.name} 일정표`;
+
+    const NAVY = "1E3A5F";
+    const BLUE = "2563EB";
+    const LIGHT = "EFF6FF";
+    const WHITE = "FFFFFF";
+    const GRAY = "64748B";
+    const BORDER = "CBD5E1";
+    const DAYS_KO = ["일","월","화","수","목","금","토"];
+    const fmtDate = s => s ? s.replace(/-/g,".") : "";
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+    // ── 표지 슬라이드 ──────────────────────────────────
+    const cover = pres.addSlide();
+    cover.background = { color: NAVY };
+    cover.addShape(pres.shapes.RECTANGLE, { x:0, y:0, w:0.35, h:5.625, fill:{ color: BLUE } });
+    cover.addShape(pres.shapes.RECTANGLE, { x:0.35, y:3.8, w:9.65, h:1.825, fill:{ color:"1E3A5F", transparency:0 } });
+    cover.addText(project.name, { x:0.7, y:1.2, w:8.8, h:1.4, fontSize:40, bold:true, color:WHITE, fontFace:"Calibri", align:"left" });
+    cover.addText("프로젝트 일정표", { x:0.7, y:2.5, w:8.8, h:0.5, fontSize:18, color:"BFDBFE", fontFace:"Calibri", align:"left" });
+    const infoLines = [];
+    if(project.client) infoLines.push(project.client);
+    if(project.format) infoLines.push(project.format);
+    if(project.due) infoLines.push(`납품일 ${fmtDate(project.due)}`);
+    infoLines.push(`출력일 ${today.getFullYear()}.${today.getMonth()+1}.${today.getDate()}`);
+    cover.addText(infoLines.join("  ·  "), { x:0.7, y:4.0, w:8.8, h:0.5, fontSize:13, color:"93C5FD", fontFace:"Calibri", align:"left" });
+
+    // ── 3개월 캘린더 슬라이드 ──────────────────────────
+    const monthsToRender = [0,1,2].map(offset => {
+      let m = baseMonth + offset, y = baseYear;
+      if(m > 11){ m -= 12; y++; }
+      return {year:y, month:m};
+    });
+
+    monthsToRender.forEach(({year, month}) => {
+      const slide = pres.addSlide();
+      slide.background = { color: "F8FAFC" };
+
+      // 헤더 바
+      slide.addShape(pres.shapes.RECTANGLE, { x:0, y:0, w:10, h:0.75, fill:{ color: NAVY } });
+      slide.addText(`${year}년 ${month+1}월`, { x:0.4, y:0, w:5, h:0.75, fontSize:20, bold:true, color:WHITE, fontFace:"Calibri", valign:"middle", margin:0 });
+      slide.addText(project.name, { x:5, y:0, w:4.7, h:0.75, fontSize:12, color:"93C5FD", fontFace:"Calibri", valign:"middle", align:"right", margin:0 });
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month+1, 0).getDate();
+      const cells = [];
+      for(let i=0;i<firstDay;i++) cells.push(null);
+      for(let d=1;d<=daysInMonth;d++) cells.push(d);
+      while(cells.length % 7 !== 0) cells.push(null);
+
+      const numWeeks = cells.length / 7;
+      const calTop = 0.95;
+      const calH = 4.5;
+      const cellW = 10/7;
+      const dayHdrH = 0.35;
+      const cellH = (calH - dayHdrH) / numWeeks;
+
+      // 요일 헤더
+      DAYS_KO.forEach((d,i) => {
+        const col = i === 0 ? "EF4444" : i === 6 ? BLUE : GRAY;
+        slide.addShape(pres.shapes.RECTANGLE, { x: i*cellW, y: calTop, w: cellW, h: dayHdrH, fill:{ color: "F1F5F9" }, line:{ color: BORDER, pt:0.5 } });
+        slide.addText(d, { x: i*cellW, y: calTop, w: cellW, h: dayHdrH, fontSize:11, bold:true, color: col, align:"center", valign:"middle", margin:0 });
+      });
+
+      // 날짜 셀
+      cells.forEach((d, idx) => {
+        const row = Math.floor(idx/7);
+        const col = idx%7;
+        const cx = col * cellW;
+        const cy = calTop + dayHdrH + row * cellH;
+
+        if(!d) {
+          slide.addShape(pres.shapes.RECTANGLE, { x:cx, y:cy, w:cellW, h:cellH, fill:{ color:"F8FAFC" }, line:{ color:BORDER, pt:0.5 } });
+          return;
+        }
+        const dateKey = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const isToday = dateKey === todayKey;
+        const dayEvs = allEvents.filter(e => e.start <= dateKey && dateKey <= (e.end||e.start));
+        const dow = col;
+
+        slide.addShape(pres.shapes.RECTANGLE, { x:cx, y:cy, w:cellW, h:cellH, fill:{ color: isToday ? LIGHT : WHITE }, line:{ color: isToday ? BLUE : BORDER, pt: isToday ? 1 : 0.5 } });
+
+        const numColor = dow===0 ? "EF4444" : dow===6 ? BLUE : isToday ? BLUE : "1E293B";
+        // 오늘 날짜 원형 배경
+        if(isToday) {
+          slide.addShape(pres.shapes.OVAL, { x: cx + cellW/2 - 0.12, y: cy + 0.04, w: 0.24, h: 0.24, fill:{ color: BLUE }, line:{ color: BLUE, pt:0 } });
+          slide.addText(String(d), { x:cx, y:cy+0.04, w:cellW, h:0.24, fontSize:10, bold:true, color:WHITE, align:"center", valign:"middle", margin:0 });
+        } else {
+          slide.addText(String(d), { x:cx, y:cy+0.06, w:cellW, h:0.22, fontSize:10, bold:false, color:numColor, align:"center", margin:0 });
+        }
+
+        // 이벤트 표시 (최대 3개)
+        dayEvs.slice(0,3).forEach((ev, ei) => {
+          const evY = cy + 0.3 + ei * (cellH < 0.9 ? 0.19 : 0.22);
+          if(evY + 0.18 > cy + cellH) return;
+          const evColor = ev.isFeedback ? "8B5CF6" : ev.color.replace("#","");
+          const evBg = ev.isFeedback ? "F5F3FF" : evColor + "22";
+          slide.addShape(pres.shapes.RECTANGLE, { x:cx+0.04, y:evY, w:cellW-0.08, h:0.18, fill:{ color: evBg }, line:{ color: evColor, pt:0.5 } });
+          slide.addText(ev.title, { x:cx+0.06, y:evY, w:cellW-0.12, h:0.18, fontSize:7, color:evColor, bold:true, valign:"middle", margin:0 });
+        });
+        if(dayEvs.length > 3) {
+          slide.addText(`+${dayEvs.length-3}`, { x:cx, y:cy+cellH-0.2, w:cellW, h:0.2, fontSize:7, color:GRAY, align:"center", margin:0 });
+        }
+      });
+    });
+
+    // ── 일정 목록 슬라이드 ────────────────────────────
+    const sortedEvs = [...allEvents].sort((a,b) => a.start.localeCompare(b.start));
+    if(sortedEvs.length > 0) {
+      const ROWS_PER_SLIDE = 14;
+      const chunks = [];
+      for(let i=0; i<sortedEvs.length; i+=ROWS_PER_SLIDE) chunks.push(sortedEvs.slice(i,i+ROWS_PER_SLIDE));
+
+      chunks.forEach((chunk, pi) => {
+        const ls = pres.addSlide();
+        ls.background = { color: "F8FAFC" };
+        ls.addShape(pres.shapes.RECTANGLE, { x:0, y:0, w:10, h:0.75, fill:{ color: NAVY } });
+        ls.addText(`📋 일정 목록${chunks.length>1 ? ` (${pi+1}/${chunks.length})` : ""}`, { x:0.4, y:0, w:7, h:0.75, fontSize:20, bold:true, color:WHITE, fontFace:"Calibri", valign:"middle", margin:0 });
+        ls.addText(project.name, { x:5, y:0, w:4.7, h:0.75, fontSize:12, color:"93C5FD", fontFace:"Calibri", valign:"middle", align:"right", margin:0 });
+
+        // 테이블 헤더
+        const tblTop = 0.9;
+        const rowH = 0.31;
+        const cols = [{label:"일정명",x:0.3,w:4.5},{label:"시작일",x:4.8,w:1.5},{label:"종료일",x:6.3,w:1.5},{label:"메모",x:7.8,w:1.9}];
+        cols.forEach(col => {
+          ls.addShape(pres.shapes.RECTANGLE, { x:col.x, y:tblTop, w:col.w, h:rowH, fill:{color:"1E40AF"}, line:{color:"1E40AF",pt:0} });
+          ls.addText(col.label, { x:col.x+0.06, y:tblTop, w:col.w-0.06, h:rowH, fontSize:11, bold:true, color:WHITE, valign:"middle", margin:0 });
+        });
+        // 행
+        chunk.forEach((ev, ri) => {
+          const ry = tblTop + rowH * (ri+1);
+          const bg = ri%2===0 ? WHITE : "F8FAFC";
+          ls.addShape(pres.shapes.RECTANGLE, { x:0.3, y:ry, w:9.4, h:rowH, fill:{color:bg}, line:{color:BORDER,pt:0.3} });
+          const evColor = (ev.isFeedback ? "8B5CF6" : ev.color.replace("#","")) || BLUE;
+          ls.addShape(pres.shapes.OVAL, { x:0.36, y:ry+rowH/2-0.07, w:0.14, h:0.14, fill:{color:evColor}, line:{color:evColor,pt:0} });
+          ls.addText(ev.title+(ev.isFeedback?" [피드백]":""), { x:0.55, y:ry, w:4.2, h:rowH, fontSize:10, color:"1E293B", bold:!!ev.isFeedback, valign:"middle", margin:0 });
+          ls.addText(fmtDate(ev.start), { x:4.8, y:ry, w:1.5, h:rowH, fontSize:10, color:GRAY, align:"center", valign:"middle", margin:0 });
+          ls.addText(fmtDate(ev.end||ev.start), { x:6.3, y:ry, w:1.5, h:rowH, fontSize:10, color:GRAY, align:"center", valign:"middle", margin:0 });
+          ls.addText(ev.note||"", { x:7.8, y:ry, w:1.9, h:rowH, fontSize:9, color:GRAY, valign:"middle", margin:0 });
+        });
+      });
+    }
+
+    await pres.writeFile({ fileName: `${project.name}_일정표.pptx` });
+  };
+
+  const exportCalPDF = () => {
+    const DAYS = ["일","월","화","수","목","금","토"];
+    const fmtDate = s => s ? s.replace(/-/g,".") : "";
+    // 현재 보이는 3개월 수집
+    const monthsToRender = [0,1,2].map(offset => {
+      let m = baseMonth + offset, y = baseYear;
+      if(m > 11){ m -= 12; y++; }
+      return {year:y, month:m};
+    });
+
+    const renderMonth = ({year, month}) => {
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month+1, 0).getDate();
+      const cells = [];
+      for(let i=0;i<firstDay;i++) cells.push(null);
+      for(let d=1;d<=daysInMonth;d++) cells.push(d);
+      const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+      let rows = "";
+      let week = [...cells.slice(0, Math.ceil(cells.length/7)*7)];
+      // pad to multiple of 7
+      while(week.length % 7 !== 0) week.push(null);
+      for(let r=0; r<week.length/7; r++){
+        let rowHtml = "<tr>";
+        for(let c=0;c<7;c++){
+          const d = week[r*7+c];
+          if(!d){ rowHtml += `<td style="background:#fafafa;border:1px solid #e4e7ec;height:90px;vertical-align:top;padding:4px;"></td>`; continue; }
+          const dateKey = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const dayEvs = allEvents.filter(e => e.start <= dateKey && dateKey <= (e.end||e.start));
+          const isToday = dateKey === todayKey;
+          const dow = (firstDay+d-1)%7;
+          const numColor = dow===0?"#ef4444":dow===6?"#2563eb":"#1e293b";
+          let evHtml = "";
+          dayEvs.slice(0,4).forEach(ev=>{
+            const bg = ev.isFeedback?"#f5f3ff":ev.color+"22";
+            const col = ev.isFeedback?"#8b5cf6":ev.color;
+            const bl = ev.isFeedback?"2px solid #8b5cf6":"none";
+            evHtml += `<div style="font-size:9px;padding:1px 4px;border-radius:3px;background:${bg};color:${col};font-weight:600;margin-bottom:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border-left:${bl}">${ev.title}</div>`;
+          });
+          if(dayEvs.length>4) evHtml += `<div style="font-size:8px;color:#94a3b8;text-align:center">+${dayEvs.length-4}</div>`;
+          const numStyle = isToday
+            ? `display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#2563eb;color:#fff;font-size:11px;font-weight:800;`
+            : `font-size:12px;font-weight:${isToday?800:400};color:${numColor};`;
+          rowHtml += `<td style="border:1px solid #e4e7ec;height:90px;vertical-align:top;padding:4px;background:${isToday?"#eff6ff":"#fff"}"><div style="${numStyle}margin-bottom:2px;">${d}</div>${evHtml}</td>`;
+        }
+        rowHtml += "</tr>";
+        rows += rowHtml;
+      }
+      return `
+        <div style="margin-bottom:24px;break-inside:avoid;">
+          <div style="font-weight:800;font-size:15px;color:#1e293b;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #2563eb;">${year}년 ${month+1}월</div>
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+            <thead><tr>${DAYS.map((d,i)=>`<th style="text-align:center;padding:6px 2px;font-size:11px;font-weight:700;color:${i===0?"#ef4444":i===6?"#2563eb":"#6b7280"};background:#f8fafc;border:1px solid #e4e7ec;">${d}</th>`).join("")}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    };
+
+    // 이벤트 목록
+    const sortedEvs = [...allEvents].sort((a,b)=>a.start.localeCompare(b.start));
+    let evListHtml = "";
+    if(sortedEvs.length > 0){
+      evListHtml = `
+        <div style="break-before:auto;margin-top:20px;">
+          <div style="font-weight:800;font-size:14px;color:#1e293b;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #2563eb;">📋 일정 목록 (${sortedEvs.length}건)</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:left;border-radius:4px 0 0 0;">일정명</th>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:center;">시작일</th>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:center;">종료일</th>
+              <th style="padding:6px 10px;background:#1e40af;color:#fff;text-align:left;border-radius:0 4px 0 0;">메모</th>
+            </tr></thead>
+            <tbody>${sortedEvs.map((ev,i)=>`
+              <tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ev.isFeedback?"#8b5cf6":ev.color};margin-right:5px;vertical-align:middle;"></span>
+                  <span style="font-weight:600;color:${ev.isFeedback?"#8b5cf6":"#1e293b"}">${ev.title}</span>
+                  ${ev.isFeedback?`<span style="font-size:9px;margin-left:4px;padding:1px 5px;background:#f5f3ff;color:#8b5cf6;border-radius:99px;">피드백</span>`:""}
+                </td>
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;text-align:center;color:#475569;">${fmtDate(ev.start)}</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;text-align:center;color:#475569;">${fmtDate(ev.end||ev.start)}</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #e4e7ec;color:#6b7280;">${ev.note||""}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    const printDate = `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일`;
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
+<title>${project.name} — 일정표</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#f8fafc;color:#1e293b;font-size:13px}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 12mm 14mm}
+.no-print{background:#1e40af;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+@media print{body{background:#fff}.page{margin:0;padding:10mm}.no-print{display:none}@page{size:A4;margin:10mm}}
+</style></head><body>
+<div class="no-print">
+  <span style="color:#fff;font-weight:700;font-size:14px;">📅 ${project.name} — 일정표 미리보기</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e40af;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🖨️ PDF 저장 / 인쇄</button>
+</div>
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #2563eb;">
+    <div>
+      <div style="font-size:22px;font-weight:800;color:#1e293b;">${project.name}</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px;">${project.client||""} ${project.format?`· ${project.format}`:""} ${project.due?`· 납품일 ${fmtDate(project.due)}`:""}</div>
+    </div>
+    <div style="text-align:right;font-size:11px;color:#94a3b8;">
+      <div>📅 일정표</div>
+      <div>${printDate} 출력</div>
+    </div>
+  </div>
+  ${monthsToRender.map(renderMonth).join("")}
+  ${evListHtml}
+</div></body></html>`;
+
+    const blob = new Blob([html],{type:"text/html;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.target="_blank"; a.rel="noopener";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),3000);
   };
 
   const COLORS = ["#2563eb","#7c3aed","#db2777","#d97706","#16a34a","#0891b2","#dc2626","#64748b"];
@@ -1584,18 +5781,23 @@ function MonthCalendar({ project, onChange, user }) {
             return (
               <div key={i} onClick={()=>openAdd(dateStr)}
                 style={{minHeight:100,background:isToday?"#eff6ff":"transparent",borderRadius:8,padding:"6px 4px",cursor:canEdit?"pointer":"default",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
-                <div style={{fontSize:13,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:3,textAlign:"center",
-                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 3px",fontSize:12}:{})}}>
+                <div style={{fontWeight:isToday?800:400,marginBottom:3,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 3px",fontSize:12}:{fontSize:13,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark})}}>
                   {d}
                 </div>
                 {dayEvs.slice(0,3).map(ev=>(
-                  <div key={ev.id} onClick={e=>{if(!ev.isFeedback) openEdit(ev,e); else e.stopPropagation();}}
+                  <div key={ev.id}
+                    onClick={e=>{ e.stopPropagation(); openEdit(ev,e); }}
                     style={{fontSize:11,padding:"2px 5px",borderRadius:4,
-                      background:ev.isFeedback?"#f5f3ff":ev.color+"22",
-                      color:ev.isFeedback?"#8b5cf6":ev.color,
+                      background:ev.isAuto?ev.color+"15":ev.color+"22",
+                      color:ev.color,
                       fontWeight:600,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
-                      cursor:ev.isFeedback?"default":canEdit?"pointer":"default",
-                      lineHeight:1.5,borderLeft:ev.isFeedback?"2px solid #8b5cf6":"none"}}>
+                      cursor:"pointer",
+                      lineHeight:1.5,
+                      borderLeft:`2px solid ${ev.color}`,
+                      fontStyle:ev.isAuto?"italic":"normal",
+                      opacity:ev.isAuto?0.8:1}}>
+                    {isMasterIncluded&&isMasterIncluded(ev)&&<span style={{fontSize:8,marginRight:2}}>🗓</span>}
                     {ev.title}
                   </div>
                 ))}
@@ -1618,9 +5820,25 @@ function MonthCalendar({ project, onChange, user }) {
           <button onClick={nextGroup} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:16}}>›</button>
           <button onClick={()=>{setBaseYear(today.getFullYear());setBaseMonth(today.getMonth());}} style={{border:`1px solid ${C.border}`,background:C.white,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,color:C.sub}}>오늘</button>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {!canEdit&&<span style={{fontSize:12,color:C.faint,padding:"4px 10px",background:C.slateLight,borderRadius:99}}>🔒 읽기 전용</span>}
-          {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 구글 캘린더로 내보내기</button>}
+          {/* 회의 일정 표시 토글 */}
+          <button
+            onClick={()=>setShowMeetings(v=>!v)}
+            style={{padding:"5px 12px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",
+              border:`1px solid ${showMeetings?"#7c3aed":"#e2e8f0"}`,
+              background:showMeetings?"#f5f3ff":"#f8fafc",
+              color:showMeetings?"#7c3aed":"#94a3b8"}}>
+            📅 회의 일정 {showMeetings?"ON":"OFF"}
+          </button>
+          {allEvents.length>0&&<button onClick={exportCalPPT} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #7c3aed`,background:"#f5f3ff",color:"#7c3aed",cursor:"pointer",fontSize:12,fontWeight:600}}>📊 PPT로 내보내기</button>}
+          {allEvents.length>0&&<button onClick={exportCalPDF} style={{padding:"6px 14px",borderRadius:8,border:`1px solid #dc2626`,background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>📄 PDF로 내보내기</button>}
+          {allEvents.filter(e=>!e.isFeedback).length>0&&(
+            <button onClick={syncToGoogleCalendar} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>
+              🔄 구글 캘린더 연동
+            </button>
+          )}
+          {events.length>0&&<button onClick={exportICal} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.blue}`,background:C.blueLight,color:C.blue,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 .ics 내보내기</button>}
           {canEdit&&<Btn primary sm onClick={()=>{setEf({title:"",start:todayStr,end:todayStr,color:"#2563eb",note:""});setModal({mode:"add"});}}>+ 일정 추가</Btn>}
         </div>
       </div>
@@ -1629,6 +5847,74 @@ function MonthCalendar({ project, onChange, user }) {
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
         {months.map(({year,month})=><MiniCal key={`${year}-${month}`} year={year} month={month}/>)}
       </div>
+
+      {/* 전체 일정 목록 */}
+      {allEvents.length>0&&(
+        <div style={{marginTop:24}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:10,
+            display:"flex",alignItems:"center",gap:8}}>
+            📋 전체 일정 목록
+            <span style={{fontSize:11,color:"#94a3b8",fontWeight:400}}>
+              — 이탤릭체: 프로젝트에서 자동 수집  /  🗓: 종합 캘린더에 포함됨
+            </span>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {[...allEvents].sort((a,b)=>a.start.localeCompare(b.start)).map(ev=>{
+              const inMaster = isMasterIncluded(ev);
+              return (
+                <div key={ev.id}
+                  style={{display:"flex",alignItems:"center",gap:10,
+                    padding:"7px 12px",borderRadius:8,
+                    background:ev.isAuto?"#fafbfc":"#fff",
+                    border:`1px solid ${ev.isAuto?"#f1f5f9":"#e2e8f0"}`,
+                    opacity:ev.isAuto?0.9:1}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",
+                    background:ev.color,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:ev.isAuto?400:600,
+                      color:"#1e293b",fontStyle:ev.isAuto?"italic":"normal",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {ev.title}
+                    </div>
+                    {ev.note&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>{ev.note}</div>}
+                  </div>
+                  {/* 날짜 */}
+                  <span style={{fontSize:11,color:"#64748b",flexShrink:0,whiteSpace:"nowrap"}}>
+                    {ev.start}{ev.end&&ev.end!==ev.start&&" ~ "+ev.end}
+                  </span>
+                  {/* 구분 뱃지 */}
+                  {ev.isAuto&&(
+                    <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,flexShrink:0,
+                      background:ev.autoType==="task"?"#eff6ff":ev.autoType==="meeting"?"#f5f3ff":"#faf5ff",
+                      color:ev.autoType==="task"?"#2563eb":ev.autoType==="meeting"?"#7c3aed":"#8b5cf6",
+                      fontWeight:700}}>
+                      {ev.autoType==="task"?"태스크":ev.autoType==="meeting"?"회의":"피드백"}
+                    </span>
+                  )}
+                  {/* 종합 포함 토글 */}
+                  {ev.isAuto ? (
+                    <button type="button"
+                      onClick={()=>toggleMaster(ev)}
+                      title={inMaster?"종합 캘린더에서 제거":"종합 캘린더에 포함"}
+                      style={{padding:"3px 8px",borderRadius:6,border:"none",cursor:"pointer",
+                        fontSize:10,fontWeight:700,flexShrink:0,
+                        background:inMaster?"#f0fdf4":"#f8fafc",
+                        color:inMaster?"#16a34a":"#94a3b8"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=inMaster?"#dcfce7":"#f1f5f9"}
+                      onMouseLeave={e=>e.currentTarget.style.background=inMaster?"#f0fdf4":"#f8fafc"}>
+                      {inMaster?"🗓 포함됨":"+ 종합에 추가"}
+                    </button>
+                  ) : (
+                    <span style={{fontSize:10,color:"#94a3b8",flexShrink:0,padding:"3px 8px"}}>
+                      {ev.includeInMaster?"🗓 종합 포함":"수동 생성"}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 모달 */}
       {modal && (
@@ -1645,11 +5931,106 @@ function MonthCalendar({ project, onChange, user }) {
               {COLORS.map(c=><button key={c} onClick={()=>setEf(v=>({...v,color:c}))} style={{width:24,height:24,borderRadius:"50%",background:c,border:ef.color===c?"3px solid #1e293b":"2px solid transparent",cursor:"pointer"}}/>)}
             </div>
           </div>
+          {/* 수동 생성 일정도 종합 포함 여부 선택 */}
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+            background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0",marginBottom:8}}>
+            <span style={{fontSize:13}}>🗓</span>
+            <span style={{fontSize:12,color:"#475569",flex:1}}>종합 캘린더에 포함</span>
+            <button type="button"
+              onClick={()=>setEf(v=>({...v,includeInMaster:!v.includeInMaster}))}
+              style={{width:40,height:22,borderRadius:99,border:"none",cursor:"pointer",
+                background:ef.includeInMaster?"#2563eb":"#e2e8f0",
+                position:"relative",transition:"background .2s"}}>
+              <div style={{position:"absolute",top:3,left:ef.includeInMaster?20:3,
+                width:16,height:16,borderRadius:"50%",background:"#fff",
+                transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/>
+            </button>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
             {modal.mode==="edit"&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
             <Btn primary onClick={save} disabled={!ef.title?.trim()}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 자동 생성 이벤트 상세 모달 */}
+      {autoModal && (
+        <Modal title="일정 상세" onClose={()=>setAutoModal(null)}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+            <div style={{width:12,height:12,borderRadius:"50%",background:autoModal.color,flexShrink:0}}/>
+            <span style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{autoModal.title}</span>
+            <span style={{marginLeft:"auto",fontSize:11,padding:"2px 8px",borderRadius:99,
+              background: autoModal.autoType==="task"?"#eff6ff":autoModal.autoType==="meeting"?"#f5f3ff":"#faf5ff",
+              color: autoModal.autoType==="task"?"#2563eb":autoModal.autoType==="meeting"?"#7c3aed":"#8b5cf6",
+              fontWeight:700}}>
+              {autoModal.autoType==="task"?"태스크 마감":autoModal.autoType==="meeting"?"회의":autoModal.autoType==="feedback"?"요청 마감":""}
+            </span>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            <div style={{padding:"8px 12px",background:"#f8fafc",borderRadius:8,minWidth:90}}>
+              <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>날짜</div>
+              <div style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{autoModal.start}</div>
+            </div>
+            {autoModal.autoType==="meeting"&&autoModal.meetingType&&(
+              <div style={{padding:"8px 12px",borderRadius:8,
+                background:autoModal.meetingType==="고객사"?"#fffbeb":"#f5f3ff"}}>
+                <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>유형</div>
+                <div style={{fontSize:12,fontWeight:700,
+                  color:autoModal.meetingType==="고객사"?"#d97706":"#7c3aed"}}>
+                  {autoModal.meetingType==="고객사"?"🤝 고객사 회의":"🏢 내부 회의"}
+                </div>
+              </div>
+            )}
+            {autoModal.note&&(
+              <div style={{flex:1,minWidth:120,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+                <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>
+                  {autoModal.autoType==="meeting"?"참석자":"담당자"}
+                </div>
+                <div style={{fontSize:12,color:"#1e293b"}}>{autoModal.note}</div>
+              </div>
+            )}
+          </div>
+          {/* 장소 / 화상 URL */}
+          {autoModal.autoType==="meeting"&&(autoModal.location||autoModal.videoUrl)&&(
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+              {autoModal.location&&(
+                <div style={{flex:1,minWidth:120,padding:"8px 12px",background:"#f8fafc",borderRadius:8}}>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:2}}>📍 장소</div>
+                  <div style={{fontSize:12,color:"#1e293b"}}>{autoModal.location}</div>
+                </div>
+              )}
+              {autoModal.videoUrl&&(
+                <div style={{flex:1,minWidth:120,padding:"8px 12px",background:"#eff6ff",borderRadius:8}}>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:4}}>🎥 화상회의</div>
+                  <a href={autoModal.videoUrl} target="_blank" rel="noreferrer"
+                    style={{fontSize:12,fontWeight:700,color:"#2563eb",textDecoration:"none"}}>
+                    입장하기 →
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{padding:"12px 14px",background:"#fffbeb",border:"1px solid #fde68a",
+            borderRadius:10,marginBottom:12}}>
+            <div style={{fontSize:11,color:"#92400e",marginBottom:8,fontWeight:600}}>
+              🗓 종합 캘린더에 포함
+            </div>
+            <div style={{fontSize:11,color:"#b45309",marginBottom:10}}>
+              이 일정을 종합 캘린더에 포함시키면 다른 프로젝트 일정과 함께 볼 수 있어요.
+            </div>
+            <button type="button"
+              onClick={()=>{ toggleMaster(autoModal); setAutoModal(null); }}
+              style={{width:"100%",padding:"8px",borderRadius:8,border:"none",cursor:"pointer",
+                fontSize:12,fontWeight:700,
+                background:isMasterIncluded(autoModal)?"#fecaca":"#2563eb",
+                color:isMasterIncluded(autoModal)?"#dc2626":"#fff"}}>
+              {isMasterIncluded(autoModal)?"✕ 종합 캘린더에서 제거":"+ 종합 캘린더에 포함"}
+            </button>
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end"}}>
+            <Btn onClick={()=>setAutoModal(null)}>닫기</Btn>
           </div>
         </Modal>
       )}
@@ -1671,17 +6052,364 @@ const STAFF_ROLES = [
 
 const STAFF_GROUPS = [
   { label:"제작/연출",   roles:["EPD","총괄감독","감독","조감독 1st","조감독 2nd","PD","AD","AE"] },
-  { label:"촬영",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
+  { label:"PRODUCTION",        roles:["촬영감독","촬영 1st","촬영 2nd","촬영 3rd","DIT"] },
   { label:"조명",        roles:["조명감독","조명 1st","조명 Grip"] },
   { label:"미술",        roles:["미술감독","소품"] },
-  { label:"포스트",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
+  { label:"POST",      roles:["편집","DI","2D","3D","FLAME","녹음실","음악감독","성우"] },
   { label:"기타",        roles:["메이킹","작가","기타"] },
 ];
 
 // ═══════════════════════════════════════════════════════════
+// 스탭리스트
+// ═══════════════════════════════════════════════════════════
+function StaffList({ project, onChange, accounts }) {
+  const staff = project.staff || [];
+  const [modal, setModal] = useState(false);
+  const [editS, setEditS] = useState(null);
+  const [sf, setSf] = useState({});
+  const [conf, setConf] = useState(null);
+  const [filterGroup, setFilterGroup] = useState("전체");
+
+  const openAdd = () => {
+    setEditS(null);
+    setSf({ role: STAFF_ROLES[0], name: "", phone: "", email: "", company: "", note: "", fee: "", feeType: "건", confirmed: false });
+    setModal(true);
+  };
+  const openEdit = s => { setEditS(s); setSf({ ...s }); setModal(true); };
+
+  const save = () => {
+    if (!sf.name?.trim()) return;
+    const entry = { ...sf, id: editS ? editS.id : "s" + Date.now() };
+    const list = editS
+      ? staff.map(s => s.id === editS.id ? entry : s)
+      : [...staff, entry];
+    onChange(p => ({ ...p, staff: list }));
+    setModal(false);
+  };
+
+  const del = id => {
+    onChange(p => ({ ...p, staff: staff.filter(s => s.id !== id) }));
+    setConf(null);
+  };
+
+  const toggleConfirm = id => {
+    onChange(p => ({
+      ...p,
+      staff: staff.map(s => s.id === id ? { ...s, confirmed: !s.confirmed } : s)
+    }));
+  };
+
+  // 그룹 필터링
+  const groupLabels = ["전체", ...STAFF_GROUPS.map(g => g.label)];
+  const visibleStaff = filterGroup === "전체"
+    ? staff
+    : staff.filter(s => {
+        const grp = STAFF_GROUPS.find(g => g.roles.includes(s.role));
+        return grp?.label === filterGroup;
+      });
+
+  // 그룹별 정렬
+  const getRoleOrder = role => {
+    for (let i = 0; i < STAFF_GROUPS.length; i++) {
+      const idx = STAFF_GROUPS[i].roles.indexOf(role);
+      if (idx !== -1) return i * 100 + idx;
+    }
+    return 9999;
+  };
+  const sorted = [...visibleStaff].sort((a, b) => getRoleOrder(a.role) - getRoleOrder(b.role));
+
+  // 그룹별 합계
+  const totalFee = staff.reduce((s, m) => s + (Number(m.fee) || 0), 0);
+  const confirmedCount = staff.filter(s => s.confirmed).length;
+
+  return (
+    <div>
+      {/* 헤더 */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div>
+          <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800 }}>👤 스탭리스트</h3>
+          <div style={{ display: "flex", gap: 12, fontSize: 12, color: C.sub }}>
+            <span>총 <b style={{ color: C.text }}>{staff.length}명</b></span>
+            <span>컨펌 <b style={{ color: C.green }}>{confirmedCount}명</b></span>
+            <span>미컨펌 <b style={{ color: C.amber }}>{staff.length - confirmedCount}명</b></span>
+            {totalFee > 0 && <span>총 스탭비 <b style={{ color: C.blue }}>{totalFee.toLocaleString("ko-KR")}원</b></span>}
+          </div>
+        </div>
+        <Btn primary onClick={openAdd}>+ 스탭 추가</Btn>
+      </div>
+
+      {/* 그룹 필터 탭 */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+        {groupLabels.map(g => (
+          <button key={g} onClick={() => setFilterGroup(g)}
+            style={{
+              padding: "5px 14px", borderRadius: 99, border: `1.5px solid ${filterGroup === g ? C.blue : C.border}`,
+              background: filterGroup === g ? C.blueLight : "#fff",
+              color: filterGroup === g ? C.blue : C.sub,
+              fontSize: 12, fontWeight: filterGroup === g ? 700 : 400, cursor: "pointer"
+            }}>
+            {g}
+            {g !== "전체" && (
+              <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>
+                ({staff.filter(s => STAFF_GROUPS.find(x => x.label === g)?.roles.includes(s.role)).length})
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 스탭 테이블 */}
+      {sorted.length === 0 ? (
+        <div style={{ padding: "48px 0", textAlign: "center", color: C.faint, fontSize: 13, border: `2px dashed ${C.border}`, borderRadius: 12 }}>
+          스탭을 추가해주세요
+        </div>
+      ) : (
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {/* 컬럼 헤더 */}
+          <div style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 120px 120px 90px 70px 60px", background: C.slateLight, padding: "9px 14px", fontSize: 11, fontWeight: 700, color: C.sub, gap: 8 }}>
+            <span>파트/직책</span><span>이름</span><span>소속/업체</span><span>연락처</span><span>이메일</span><span style={{ textAlign: "right" }}>스탭비</span><span style={{ textAlign: "center" }}>컨펌</span><span />
+          </div>
+
+          {/* 그룹별 행 */}
+          {STAFF_GROUPS.map(grp => {
+            const members = sorted.filter(s => grp.roles.includes(s.role));
+            if (!members.length) return null;
+            const showGroup = filterGroup === "전체";
+            return (
+              <div key={grp.label}>
+                {showGroup && (
+                  <div style={{ padding: "7px 14px", background: "#f0f4ff", borderTop: `1px solid ${C.border}`, fontSize: 12, fontWeight: 700, color: C.blue }}>
+                    {grp.label}
+                  </div>
+                )}
+                {members.map((s, i) => (
+                  <div key={s.id}
+                    style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 120px 120px 90px 70px 60px", padding: "10px 14px", borderTop: `1px solid ${C.border}`, gap: 8, alignItems: "center", background: s.confirmed ? "#f8fffe" : i % 2 === 0 ? C.white : "#fafbfc" }}>
+                    {/* 직책 */}
+                    <div>
+                      <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 99, background: C.purpleLight, color: C.purple, fontWeight: 700 }}>{s.role}</span>
+                    </div>
+                    {/* 이름 */}
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name}</div>
+                    {/* 소속 + 메모 */}
+                    <div>
+                      {s.company && <div style={{ fontSize: 12, color: C.sub }}>{s.company}</div>}
+                      {s.note && <div style={{ fontSize: 11, color: C.faint }}>{s.note}</div>}
+                    </div>
+                    {/* 연락처 */}
+                    <div style={{ fontSize: 12, color: C.sub }}>
+                      {s.phone ? <a href={`tel:${s.phone}`} style={{ color: C.blue, textDecoration: "none" }}>📞 {s.phone}</a> : <span style={{ color: C.border }}>—</span>}
+                    </div>
+                    {/* 이메일 */}
+                    <div style={{ fontSize: 11, color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.email ? <a href={`mailto:${s.email}`} style={{ color: C.blue, textDecoration: "none" }}>✉️ {s.email}</a> : <span style={{ color: C.border }}>—</span>}
+                    </div>
+                    {/* 스탭비 */}
+                    <div style={{ textAlign: "right", fontSize: 12, fontWeight: 600 }}>
+                      {s.fee ? `${Number(s.fee).toLocaleString("ko-KR")}원` : <span style={{ color: C.border }}>—</span>}
+                      {s.fee && s.feeType && <div style={{ fontSize: 10, color: C.faint }}>/{s.feeType}</div>}
+                    </div>
+                    {/* 컨펌 */}
+                    <div style={{ textAlign: "center" }}>
+                      <button onClick={() => toggleConfirm(s.id)}
+                        style={{ padding: "3px 8px", borderRadius: 6, border: `1.5px solid ${s.confirmed ? C.green : C.border}`, background: s.confirmed ? C.greenLight : "#fff", color: s.confirmed ? C.green : C.faint, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {s.confirmed ? "✅" : "⬜"}
+                      </button>
+                    </div>
+                    {/* 액션 */}
+                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                      <button onClick={() => openEdit(s)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14 }}>✏️</button>
+                      <button onClick={() => setConf(s)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14 }}>🗑️</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* 합계 행 */}
+          {totalFee > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 120px 120px 90px 70px 60px", padding: "10px 14px", borderTop: `2px solid ${C.border}`, gap: 8, background: "#f0f4ff" }}>
+              <span /><span /><span /><span /><span />
+              <span style={{ textAlign: "right", fontWeight: 800, fontSize: 13, color: C.blue }}>
+                총 {totalFee.toLocaleString("ko-KR")}원
+              </span>
+              <span /><span />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 추가/수정 모달 */}
+      {modal && (
+        <Modal title={editS ? "스탭 수정" : "스탭 추가"} onClose={() => setModal(false)}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <Field label="직책" half>
+              <select style={inp} value={sf.role || STAFF_ROLES[0]} onChange={e => setSf(v => ({ ...v, role: e.target.value }))}>
+                {STAFF_GROUPS.map(grp => (
+                  <optgroup key={grp.label} label={grp.label}>
+                    {grp.roles.map(r => <option key={r} value={r}>{r}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </Field>
+            <Field label="이름 *" half>
+              <input style={inp} autoFocus value={sf.name || ""} onChange={e => setSf(v => ({ ...v, name: e.target.value }))} placeholder="홍길동" />
+            </Field>
+            <Field label="소속 / 업체" half>
+              <input style={inp} value={sf.company || ""} onChange={e => setSf(v => ({ ...v, company: e.target.value }))} placeholder="프리랜서 / 회사명" />
+            </Field>
+            <Field label="연락처" half>
+              <input style={inp} value={sf.phone || ""} onChange={e => setSf(v => ({ ...v, phone: e.target.value }))} placeholder="010-0000-0000" />
+            </Field>
+            <Field label="이메일">
+              <input style={inp} value={sf.email || ""} onChange={e => setSf(v => ({ ...v, email: e.target.value }))} placeholder="name@email.com" />
+            </Field>
+            <Field label="스탭비 (원)" half>
+              <input style={inp} type="number" value={sf.fee || ""} onChange={e => setSf(v => ({ ...v, fee: e.target.value }))} placeholder="0" />
+            </Field>
+            <Field label="단위" half>
+              <select style={inp} value={sf.feeType || "건"} onChange={e => setSf(v => ({ ...v, feeType: e.target.value }))}>
+                {["건", "일", "시간", "회"].map(u => <option key={u}>{u}</option>)}
+              </select>
+            </Field>
+            <Field label="메모">
+              <input style={inp} value={sf.note || ""} onChange={e => setSf(v => ({ ...v, note: e.target.value }))} placeholder="특이사항, 계약 내용 등" />
+            </Field>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 16, padding: "10px 12px", borderRadius: 8, border: `1.5px solid ${sf.confirmed ? C.green : C.border}`, background: sf.confirmed ? C.greenLight : "#fff" }}>
+            <input type="checkbox" checked={!!sf.confirmed} onChange={e => setSf(v => ({ ...v, confirmed: e.target.checked }))} style={{ accentColor: C.green, width: 16, height: 16 }} />
+            ✅ 컨펌 완료 (섭외/계약 확정)
+          </label>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            {editS && <Btn danger sm onClick={() => { del(editS.id); setModal(false); }}>삭제</Btn>}
+            <div style={{ flex: 1 }} />
+            <Btn onClick={() => setModal(false)}>취소</Btn>
+            <Btn primary onClick={save} disabled={!sf.name?.trim()}>저장</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* 삭제 확인 */}
+      {conf && (
+        <Modal title="스탭 삭제" onClose={() => setConf(null)}>
+          <div style={{ fontSize: 14, marginBottom: 20 }}><b>{conf.name}</b> ({conf.role})을 삭제하시겠습니까?</div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Btn onClick={() => setConf(null)}>취소</Btn>
+            <Btn danger onClick={() => del(conf.id)}>삭제</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // 피드백 히스토리
 // ═══════════════════════════════════════════════════════════
-function FeedbackTab({project, patchProj, user, accounts}) {
+// ── 댓글 입력 컴포넌트 (버튼 방식 멘션) ──────────────────────────────
+function CommentInput({ accounts, user, onSubmit }) {
+  const [text, setText] = useState("");
+  const [showMention, setShowMention] = useState(false);
+  const taRef = useRef(null);
+
+  const insertMention = (name) => {
+    const ta = taRef.current;
+    const pos = ta ? ta.selectionStart : text.length;
+    const newText = text.slice(0, pos) + "@" + name + " " + text.slice(pos);
+    setText(newText);
+    setShowMention(false);
+    setTimeout(() => { ta && ta.focus(); }, 0);
+  };
+
+  const submit = () => {
+    if (!text.trim()) return;
+    onSubmit(text.trim());
+    setText("");
+    setShowMention(false);
+  };
+
+  const others = accounts.filter(a => a.name !== user.name);
+
+  return (
+    <div style={{position:"relative"}}>
+      {/* 멘션 팝업 */}
+      {showMention && (
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,
+          boxShadow:"0 6px 20px rgba(0,0,0,.1)",marginBottom:4,overflow:"hidden"}}>
+          <div style={{padding:"6px 12px",fontSize:11,fontWeight:700,color:"#64748b",
+            background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+            멘션할 팀원 선택
+          </div>
+          {others.length === 0
+            ? <div style={{padding:"12px",fontSize:12,color:"#94a3b8",textAlign:"center"}}>다른 팀원이 없습니다</div>
+            : others.map(a => (
+              <div key={a.id}
+                onMouseDown={e => { e.preventDefault(); insertMention(a.name); }}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",cursor:"pointer",
+                  borderBottom:"1px solid #f8fafc"}}
+                onMouseEnter={e => e.currentTarget.style.background="#eff6ff"}
+                onMouseLeave={e => e.currentTarget.style.background=""}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:"#2563eb",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>
+                  {a.name[0]}
+                </div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{a.name}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{a.role}</div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+        <div style={{flex:1,position:"relative"}}>
+          <textarea
+            ref={taRef}
+            value={text}
+            rows={2}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => {
+              if (showMention && e.key === "Escape") { e.preventDefault(); setShowMention(false); return; }
+              if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); submit(); }
+            }}
+            placeholder="댓글 입력  (Shift+Enter 전송 · Enter 줄바꿈)"
+            style={{width:"100%",padding:"8px 12px",paddingRight:others.length>0?"38px":"12px",
+              borderRadius:8,border:"1px solid #e2e8f0",fontSize:13,resize:"none",
+              lineHeight:1.6,fontFamily:"inherit",outline:"none",
+              background:"#fff",color:"#1e293b",boxSizing:"border-box"}}
+          />
+          {others.length > 0 && (
+            <button
+              onMouseDown={e => { e.preventDefault(); setShowMention(v => !v); taRef.current?.focus(); }}
+              style={{position:"absolute",right:8,top:7,padding:"2px 7px",borderRadius:5,
+                border:"1px solid #e2e8f0",background:showMention?"#eff6ff":"#f8fafc",
+                color:showMention?"#2563eb":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              @
+            </button>
+          )}
+        </div>
+        <button
+          onMouseDown={e => { e.preventDefault(); submit(); }}
+          disabled={!text.trim()}
+          style={{padding:"0 16px",height:52,borderRadius:8,border:"none",
+            background:text.trim()?"#2563eb":"#e2e8f0",
+            color:text.trim()?"#fff":"#94a3b8",
+            fontSize:13,fontWeight:700,cursor:text.trim()?"pointer":"default",
+            whiteSpace:"nowrap",flexShrink:0}}>
+          전송
+        </button>
+      </div>
+      <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>
+        Shift+Enter 전송 · Enter 줄바꿈 · @ 버튼으로 멘션
+      </div>
+    </div>
+  );
+}
+function TaskRequestTab({project, patchProj, user, accounts, setNotifications}) {
   const feedbacks = project.feedbacks || [];
   const [modal, setModal] = useState(null);
   const [ff, setFf] = useState({});
@@ -1690,8 +6418,10 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   const [uploadError, setUploadError] = useState("");
   const [lightbox, setLightbox] = useState(null);
   const [commentText, setCommentText] = useState("");
-  const [mentionSuggest, setMentionSuggest] = useState([]); // @멘션 후보
+  const [mentionSuggest, setMentionSuggest] = useState([]);
+  const [mentionIdx, setMentionIdx] = useState(-1);
   const commentRef = useRef(null);
+  const composingRef = useRef(false);
 
   const today = () => { const d=new Date(),p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
@@ -1786,9 +6516,9 @@ function FeedbackTab({project, patchProj, user, accounts}) {
   };
   const del = () => { patchProj(p=>({...p, feedbacks:feedbacks.filter(f=>f.id!==ff.id)})); setModal(null); };
 
-  const addComment = (fb) => {
-    if(!commentText.trim()) return;
-    const text = commentText.trim();
+  const addComment = (fb, commentTextArg) => {
+    const text = (commentTextArg||commentText||"").trim();
+    if(!text) return;
     const comment = {
       id: "c"+Date.now(),
       author: user.name,
@@ -1827,7 +6557,6 @@ function FeedbackTab({project, patchProj, user, accounts}) {
     patchProj(p=>({...p, feedbacks:list}));
     setDetail(updated);
     setCommentText("");
-    setMentionSuggest([]);
   };
 
   const deleteComment = (fb, commentId) => {
@@ -1870,7 +6599,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
             </div>
           </div>
         </div>
-        <Btn primary onClick={openAdd}>+ 피드백 추가</Btn>
+        <Btn primary onClick={openAdd}>+ 태스크 요청 추가</Btn>
       </div>
 
       {feedbacks.length===0 ? (
@@ -1905,8 +6634,18 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                   {fb.dueDate||"-"}{isOver&&" ⚠️"}
                 </span>
                 <span>{fb.stage
-                  ? <span style={{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",whiteSpace:"nowrap"}}>{fb.stage}</span>
-                  : <span style={{color:C.border,fontSize:12}}>—</span>}
+                  ? (() => {
+                      const ph = PROJECT_TEMPLATE.find(p=>p.id===fb.phaseId);
+                      return (
+                        <span style={{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:99,
+                          background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",
+                          whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                          {ph && <span style={{fontSize:9,background:"#7c3aed",color:"#fff",borderRadius:99,padding:"0 4px",marginRight:2}}>{ph.order}</span>}
+                          {fb.stage}
+                        </span>
+                      );
+                    })()
+                  : <span style={{color:C.border,fontSize:12}}>-</span>}
                 </span>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:tskSt.id==="done"?"#94a3b8":C.dark,
@@ -1991,7 +6730,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
 
       {/* 세부내용 모달 */}
       {detail&&(
-        <Modal title={detail.title||"피드백 상세"} onClose={()=>setDetail(null)}>
+        <Modal title={detail.title||"태스크 요청 상세"} onClose={()=>setDetail(null)}>
           <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
             {detail.stage&&<span style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:99,background:"#f5f3ff",color:"#7c3aed",border:"1.5px solid #ddd6fe"}}>📍 {detail.stage}</span>}
             {(detail.tags||[]).map(t=><span key={t} style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:99,background:"#ecfeff",color:"#0891b2",border:"1px solid #a5f3fc"}}>#{t}</span>)}
@@ -2056,61 +6795,14 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                 </div>
             }
             {/* 댓글 입력 */}
-            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-              <Avatar name={user.name} size={28}/>
-              <div style={{flex:1,position:"relative"}}>
-                {/* @멘션 자동완성 */}
-                {mentionSuggest.length>0&&(
-                  <div style={{position:"absolute",bottom:"100%",left:0,marginBottom:4,
-                    background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,
-                    boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:100,minWidth:160}}>
-                    {mentionSuggest.map(a=>(
-                      <div key={a.id} onClick={()=>{
-                        const cur = commentText;
-                        const atIdx = cur.lastIndexOf("@");
-                        setCommentText(cur.slice(0,atIdx)+"@"+a.name+" ");
-                        setMentionSuggest([]);
-                        commentRef.current?.focus();
-                      }} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
-                        cursor:"pointer",borderBottom:`1px solid ${C.border}`}}
-                        onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
-                        onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                        <Avatar name={a.name} size={22}/>
-                        <span style={{fontSize:13,fontWeight:600}}>{a.name}</span>
-                        <span style={{fontSize:11,color:C.faint}}>{a.role}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  ref={commentRef}
-                  value={commentText}
-                  onChange={e=>{
-                    const val = e.target.value;
-                    setCommentText(val);
-                    // @멘션 감지
-                    const atIdx = val.lastIndexOf("@");
-                    if(atIdx!==-1 && (atIdx===0||val[atIdx-1]===" ")) {
-                      const query = val.slice(atIdx+1).toLowerCase();
-                      const suggestions = accounts.filter(a=>a.name.toLowerCase().includes(query)&&a.name!==user.name);
-                      setMentionSuggest(suggestions.slice(0,5));
-                    } else {
-                      setMentionSuggest([]);
-                    }
-                  }}
-                  onKeyDown={e=>{
-                    if(e.key==="Escape") setMentionSuggest([]);
-                    if(e.key==="Enter"&&!e.shiftKey&&mentionSuggest.length===0){e.preventDefault();addComment(detail);}
-                  }}
-                  placeholder="댓글을 입력하세요... (@이름 으로 멘션, Enter 전송)"
-                  style={{...inp,resize:"none",minHeight:44,paddingRight:70,lineHeight:1.5}}/>
-                <button onClick={()=>addComment(detail)}
-                  disabled={!commentText.trim()}
-                  style={{position:"absolute",right:8,bottom:8,padding:"4px 12px",borderRadius:6,
-                    border:"none",background:commentText.trim()?"#2563eb":"#e2e8f0",
-                    color:commentText.trim()?"#fff":"#94a3b8",fontSize:12,fontWeight:600,cursor:commentText.trim()?"pointer":"default"}}>
-                  전송
-                </button>
+            <div style={{display:"flex",gap:8,alignItems:"flex-start",marginTop:4}}>
+              <Avatar name={user.name} size={28} style={{marginTop:4}}/>
+              <div style={{flex:1}}>
+                <CommentInput
+                  accounts={accounts}
+                  user={user}
+                  onSubmit={(text) => addComment(detail, text)}
+                />
               </div>
             </div>
           </div>
@@ -2124,22 +6816,20 @@ function FeedbackTab({project, patchProj, user, accounts}) {
 
       {/* 추가/수정 모달 */}
       {modal&&(
-        <Modal title={modal==="add"?"피드백 추가":"피드백 수정"} onClose={()=>setModal(null)}>
+        <Modal title={modal==="add"?"태스크 요청 추가":"태스크 요청 수정"} onClose={()=>setModal(null)}>
           <Field label="제목 *">
             <input style={inp} autoFocus value={ff.title||""} onChange={e=>setFf(v=>({...v,title:e.target.value}))} placeholder="피드백 제목 (예: 1차 컷 수정 요청)"/>
           </Field>
-          <Field label="단계">
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {["기획","트리트먼트","PPM","촬영","편집","DI","사운드","시각디자인","기타"].map(s=>{
-                const sel = ff.stage===s;
-                return <button key={s} onClick={()=>setFf(v=>({...v,stage:v.stage===s?"":s}))}
-                  style={{padding:"5px 12px",borderRadius:99,cursor:"pointer",fontSize:12,fontWeight:sel?700:400,
-                    border:`1.5px solid ${sel?"#7c3aed":C.border}`,
-                    background:sel?"#f5f3ff":"#fff",color:sel?"#7c3aed":C.sub}}>
-                  {s}
-                </button>;
-              })}
-            </div>
+          <Field label="단계 연결">
+            <select style={inp} value={ff.phaseId||""} onChange={e=>{
+              const phase = PROJECT_TEMPLATE.find(p=>p.id===e.target.value);
+              setFf(v=>({...v, phaseId:e.target.value, stage:phase?phase.phase:""}));
+            }}>
+              <option value="">— 단계 선택 (선택사항) —</option>
+              {PROJECT_TEMPLATE.map(p=>(
+                <option key={p.id} value={p.id}>{p.order}. {p.phase}</option>
+              ))}
+            </select>
           </Field>
           <div style={{display:"flex",gap:12}}>
             <Field label="수신일 *" half><input style={inp} type="date" value={ff.receivedDate||""} onChange={e=>setFf(v=>({...v,receivedDate:e.target.value}))}/></Field>
@@ -2174,7 +6864,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
               </div>
             )}
           </Field>
-          <Field label="피드백 내용">
+          <Field label="요청 내용">
             <textarea style={{...inp,resize:"vertical",minHeight:80}} value={ff.content||""} onChange={e=>setFf(v=>({...v,content:e.target.value}))} placeholder="클라이언트 피드백 내용..."/>
           </Field>
           <Field label="세부내용">
@@ -2199,7 +6889,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                 {PD_ST.map(s=>(
                   <button key={s.id} onClick={()=>setFf(v=>({...v,pdStatus:s.id}))}
                     style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:ff.pdStatus===s.id?800:400,
-                      border:`2px solid ${ff.pdStatus===s.id?s.color:C.border}`,
+                      outline:`2px solid ${ff.pdStatus===s.id?s.color:"transparent"}`,
                       background:ff.pdStatus===s.id?s.bg:"#fff",color:ff.pdStatus===s.id?s.color:C.sub}}>
                     {s.icon}<br/>{s.label}
                   </button>
@@ -2211,7 +6901,7 @@ function FeedbackTab({project, patchProj, user, accounts}) {
                 {TASK_ST.map(s=>(
                   <button key={s.id} onClick={()=>setFf(v=>({...v,taskStatus:s.id}))}
                     style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:ff.taskStatus===s.id?800:400,
-                      border:`2px solid ${ff.taskStatus===s.id?s.color:C.border}`,
+                      outline:`2px solid ${ff.taskStatus===s.id?s.color:"transparent"}`,
                       background:ff.taskStatus===s.id?s.bg:"#fff",color:ff.taskStatus===s.id?s.color:C.sub}}>
                     {s.icon}<br/>{s.label}
                   </button>
@@ -2641,14 +7331,16 @@ function MasterCalendar({ projects, user, onCalName }) {
   // 프로젝트 캘린더 표시명 (calName 우선, 없으면 프로젝트명)
   const projLabel = (p) => p.calName || p.name;
 
-  // 전체 이벤트 수집 (프로젝트 정보 포함)
+  // 종합 캘린더: 수동 생성이거나 includeInMaster가 true인 것만
   const allEvents = projects.flatMap(p =>
-    (p.calEvents||[]).map(ev => ({
-      ...ev,
-      projId:    p.id,
-      projLabel: projLabel(p),
-      projColor: p.color || "#2563eb",
-    }))
+    (p.calEvents||[])
+      .filter(ev => !ev.isAuto || ev.includeInMaster)
+      .map(ev => ({
+        ...ev,
+        projId:    p.id,
+        projLabel: projLabel(p),
+        projColor: p.color || "#2563eb",
+      }))
   );
 
   const filtered = filterProj==="all" ? allEvents : allEvents.filter(e=>e.projId===filterProj);
@@ -2695,8 +7387,8 @@ function MasterCalendar({ projects, user, onCalName }) {
             const dow     = (firstDay+d-1)%7;
             return (
               <div key={i} style={{minHeight:68,background:isToday?"#eff6ff":"transparent",borderRadius:6,padding:"3px 2px",border:`1px solid ${isToday?C.blue:"transparent"}`}}>
-                <div style={{fontSize:11,fontWeight:isToday?800:400,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark,marginBottom:2,textAlign:"center",
-                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{})}}>
+                <div style={{fontWeight:isToday?800:400,marginBottom:2,textAlign:"center",
+                  ...(isToday?{background:C.blue,color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 2px",fontSize:10}:{fontSize:11,color:dow===0?"#ef4444":dow===6?"#2563eb":C.dark})}}>
                   {d}
                 </div>
                 {dayEvs.slice(0,3).map(ev=>(
@@ -2799,80 +7491,2022 @@ function CalNameInput({ project, onSave }) {
 // ═══════════════════════════════════════════════════════════
 // CRM 페이지
 // ═══════════════════════════════════════════════════════════
-function CRMPage({ projects }) {
-  const [search, setSearch] = useState("");
-  const [selProj, setSelProj] = useState(null);
 
-  // 프로젝트에서 클라이언트/대행사 정보 집계
-  const clients = {};
-  for (const p of projects) {
-    const key = p.client;
-    if (!clients[key]) clients[key] = { name:p.client, agency:p.agency||"", projects:[], contacts:[] };
-    clients[key].projects.push(p);
-    if (p.contactName) {
-      const exists = clients[key].contacts.find(c=>c.name===p.contactName);
-      if (!exists) clients[key].contacts.push({ name:p.contactName, phone:p.contactPhone||"", email:p.contactEmail||"", agency:p.agency||"" });
-    }
-  }
-  const list = Object.values(clients).filter(c =>
-    !search || c.name.includes(search) || c.agency.includes(search) ||
-    c.contacts.some(ct=>ct.name.includes(search)||ct.phone.includes(search))
-  );
+// ══════════════════════════════════════════════════════════
+// 오피스
+// ══════════════════════════════════════════════════════════
 
-  return (
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontSize:18,fontWeight:800,margin:0}}>👥 CRM — 거래처 관리</h2>
-        <input style={{...inp,width:220}} placeholder="🔍 거래처·대행사·담당자 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
-      </div>
+function OfficeTab({ user, accounts, company, officeData, setOfficeData }) {
+  const [tab, setTab] = useState("notice");  // "rooms" | "notice" | "request"
 
-      {list.length===0 && <div style={{textAlign:"center",padding:60,color:C.faint}}>검색 결과가 없습니다</div>}
+  // ── 데이터 헬퍼 ──────────────────────────────────────────
+  const rooms      = officeData.rooms      || [{ id:"r1", name:"회의실 A" }, { id:"r2", name:"회의실 B" }];
+  const bookings   = officeData.bookings   || [];
+  const notices    = officeData.notices    || [];
+  const requests   = officeData.requests   || [];
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
-        {list.map(cl=>(
-          <div key={cl.name} onClick={()=>setSelProj(selProj===cl.name?null:cl.name)}
-            style={{background:C.white,border:`1px solid ${selProj===cl.name?C.blue:C.border}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .15s",boxShadow:selProj===cl.name?"0 0 0 2px "+C.blue+"30":"none"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:15}}>{cl.name}</div>
-                {cl.agency&&<div style={{fontSize:12,color:C.sub,marginTop:2}}>📌 {cl.agency}</div>}
-              </div>
-              <span style={{fontSize:11,padding:"2px 8px",background:C.blueLight,color:C.blue,borderRadius:99,fontWeight:600}}>{cl.projects.length}건</span>
+  const patch = (key, val) => setOfficeData(d => ({ ...d, [key]: val }));
+
+  const canManage = user.canManageMembers;
+
+  // ────────────────────────────────────────────────────────
+  // 회의실 예약
+  // ────────────────────────────────────────────────────────
+  const RoomsSection = () => {
+    const today = new Date();
+    const [weekOffset, setWeekOffset] = useState(0);
+    const [bookModal, setBookModal]   = useState(null); // {slot, roomId} or {booking} for edit
+    const [bf, setBf] = useState({});
+
+    // 주의 월요일 계산
+    const getMonday = (offset) => {
+      const d = new Date(today);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7;
+      d.setDate(diff);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    const monday = getMonday(weekOffset);
+    const weekDays = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d;
+    });
+
+    const HOURS = Array.from({ length: 10 }, (_, i) => i + 9); // 9~18
+    const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    const todayStr = ymd(today);
+
+    const bookingsOn = (roomId, dateStr, hour) =>
+      bookings.filter(b => b.roomId === roomId && b.date === dateStr && b.startHour <= hour && hour < b.endHour);
+
+    const openAdd = (roomId, dateStr, hour) => {
+      setBf({ roomId, date: dateStr, startHour: hour, endHour: hour + 1, title: "", attendees: [user.name] });
+      setBookModal({ mode: "add" });
+    };
+
+    const openEdit = (b) => {
+      setBf({ ...b });
+      setBookModal({ mode: "edit", id: b.id });
+    };
+
+    const save = () => {
+      if (!bf.title?.trim()) return;
+      if (bf.startHour >= bf.endHour) return;
+      // 충돌 검사
+      const conflict = bookings.find(b =>
+        b.id !== bookModal.id &&
+        b.roomId === bf.roomId &&
+        b.date   === bf.date &&
+        b.startHour < bf.endHour &&
+        bf.startHour < b.endHour
+      );
+      if (conflict) { alert(`"${conflict.title}" 예약과 시간이 겹칩니다.`); return; }
+
+      const entry = { ...bf, id: bookModal.id || "bk" + Date.now(), bookedBy: user.name };
+      const next = bookModal.mode === "edit"
+        ? bookings.map(b => b.id === bookModal.id ? entry : b)
+        : [...bookings, entry];
+      patch("bookings", next);
+      setBookModal(null);
+    };
+
+    const del = (id) => {
+      patch("bookings", bookings.filter(b => b.id !== id));
+      setBookModal(null);
+    };
+
+    const fmtDate = d => `${d.getMonth()+1}/${d.getDate()} (${["일","월","화","수","목","금","토"][d.getDay()]})`;
+    const isToday = d => ymd(d) === todayStr;
+
+    return (
+      <div>
+        {/* 주간 네비게이션 */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <button onClick={() => setWeekOffset(w => w-1)}
+            style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #e2e8f0", background:"#fff", cursor:"pointer", fontSize:13 }}>‹</button>
+          <span style={{ fontWeight:700, fontSize:14, color:"#1e293b" }}>
+            {monday.getMonth()+1}월 {monday.getDate()}일 — {weekDays[4].getMonth()+1}월 {weekDays[4].getDate()}일
+          </span>
+          <button onClick={() => setWeekOffset(w => w+1)}
+            style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #e2e8f0", background:"#fff", cursor:"pointer", fontSize:13 }}>›</button>
+          <button onClick={() => setWeekOffset(0)}
+            style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #e2e8f0", background:"#fff", cursor:"pointer", fontSize:11, color:"#64748b" }}>이번 주</button>
+          {canManage && (
+            <button onClick={() => {
+              const name = prompt("회의실 이름:");
+              if (name?.trim()) patch("rooms", [...rooms, { id:"r"+Date.now(), name:name.trim() }]);
+            }}
+              style={{ marginLeft:"auto", padding:"5px 12px", borderRadius:7, border:"1px solid #bfdbfe",
+                background:"#eff6ff", color:"#2563eb", cursor:"pointer", fontSize:11, fontWeight:600 }}>
+              + 회의실 추가
+            </button>
+          )}
+        </div>
+
+        {/* 타임라인 그리드 */}
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ borderCollapse:"collapse", width:"100%", minWidth:700 }}>
+            <thead>
+              <tr>
+                <th style={{ width:80, padding:"6px 8px", fontSize:10, color:"#94a3b8", fontWeight:600, textAlign:"left", borderBottom:"2px solid #e2e8f0" }}>시간</th>
+                {weekDays.map(d => (
+                  <th key={ymd(d)} style={{ padding:"6px 4px", fontSize:11, fontWeight:isToday(d)?800:600,
+                    color:isToday(d)?"#2563eb":"#475569",
+                    background:isToday(d)?"#eff6ff":"transparent",
+                    borderRadius:isToday(d)?6:0, borderBottom:"2px solid #e2e8f0", textAlign:"center" }}>
+                    {fmtDate(d)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rooms.map(room => (
+                <>
+                  {/* 회의실 헤더 행 */}
+                  <tr key={"room-"+room.id}>
+                    <td colSpan={6} style={{ padding:"8px 10px", background:"#f8fafc",
+                      fontSize:12, fontWeight:700, color:"#334155",
+                      borderTop:"2px solid #e2e8f0", borderBottom:"1px solid #f1f5f9" }}>
+                      🚪 {room.name}
+                      {canManage && (
+                        <button onClick={() => {
+                          if (window.confirm(`"${room.name}" 삭제?`))
+                            patch("rooms", rooms.filter(r => r.id !== room.id));
+                        }}
+                          style={{ marginLeft:8, fontSize:9, color:"#94a3b8", background:"none", border:"none", cursor:"pointer" }}>✕</button>
+                      )}
+                    </td>
+                  </tr>
+                  {/* 시간대 행 */}
+                  {HOURS.map(hour => (
+                    <tr key={room.id+"-"+hour}>
+                      <td style={{ padding:"2px 8px", fontSize:10, color:"#94a3b8", fontWeight:500,
+                        borderRight:"1px solid #f1f5f9", verticalAlign:"top", whiteSpace:"nowrap" }}>
+                        {hour}:00
+                      </td>
+                      {weekDays.map(d => {
+                        const dateStr = ymd(d);
+                        const bks = bookingsOn(room.id, dateStr, hour);
+                        const isFirst = bks.length > 0 && bks[0].startHour === hour;
+                        const myBook = bks.find(b => b.bookedBy === user.name);
+                        const isPast = dateStr < todayStr || (dateStr === todayStr && hour < today.getHours());
+                        return (
+                          <td key={dateStr+"-"+hour}
+                            onClick={() => bks.length === 0 && !isPast && openAdd(room.id, dateStr, hour)}
+                            style={{ padding:"1px 2px", height:32, verticalAlign:"top",
+                              borderLeft:"1px solid #f1f5f9", borderBottom:"1px solid #f8fafc",
+                              background:isToday(d)?"#fafeff":"#fff",
+                              cursor:bks.length===0&&!isPast?"pointer":"default" }}
+                            onMouseEnter={e => { if(bks.length===0&&!isPast) e.currentTarget.style.background="#f0f7ff"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background=isToday(d)?"#fafeff":"#fff"; }}>
+                            {isFirst && bks.map(b => (
+                              <div key={b.id}
+                                onClick={e => { e.stopPropagation(); openEdit(b); }}
+                                style={{ margin:"1px 2px", padding:"2px 6px", borderRadius:5,
+                                  background:b.bookedBy===user.name?"#2563eb":"#64748b",
+                                  color:"#fff", fontSize:10, fontWeight:600,
+                                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                                  cursor:"pointer", lineHeight:1.4 }}>
+                                {b.title}
+                                <span style={{ fontSize:9, opacity:.8, marginLeft:3 }}>
+                                  {b.startHour}~{b.endHour}시
+                                </span>
+                              </div>
+                            ))}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 예약 모달 */}
+        {bookModal && (
+          <Modal title={bookModal.mode==="add"?"회의실 예약":"예약 수정"} onClose={()=>setBookModal(null)}>
+            <Field label="회의 제목 *">
+              <input style={inp} autoFocus value={bf.title||""} placeholder="회의 제목 입력"
+                onChange={e=>setBf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="회의실" style={{flex:1}}>
+                <select style={inp} value={bf.roomId||""} onChange={e=>setBf(v=>({...v,roomId:e.target.value}))}>
+                  {rooms.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </Field>
+              <Field label="날짜" style={{flex:1}}>
+                <input style={inp} type="date" value={bf.date||""}
+                  onChange={e=>setBf(v=>({...v,date:e.target.value}))}/>
+              </Field>
             </div>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="시작" style={{flex:1}}>
+                <select style={inp} value={bf.startHour||9} onChange={e=>setBf(v=>({...v,startHour:Number(e.target.value)}))}>
+                  {HOURS.map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </Field>
+              <Field label="종료" style={{flex:1}}>
+                <select style={inp} value={bf.endHour||10} onChange={e=>setBf(v=>({...v,endHour:Number(e.target.value)}))}>
+                  {HOURS.slice(1).concat([19]).map(h=><option key={h} value={h}>{h}:00</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="참석자">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {(accounts||[]).map(a=>{
+                  const sel=(bf.attendees||[]).includes(a.name);
+                  return(
+                    <button key={a.id} type="button"
+                      onClick={()=>setBf(v=>({...v,attendees:sel?v.attendees.filter(n=>n!==a.name):[...(v.attendees||[]),a.name]}))}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+                        borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                        background:sel?"#2563eb":"#f1f5f9",color:sel?"#fff":"#475569",fontWeight:sel?700:400}}>
+                      <Avatar name={a.name} size={14}/>{a.name}{sel&&" ✓"}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+            <Field label="메모">
+              <input style={inp} value={bf.memo||""} placeholder="안건, 준비물 등"
+                onChange={e=>setBf(v=>({...v,memo:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {bookModal.mode==="edit" && (bf.bookedBy===user.name||canManage) &&
+                <Btn danger sm onClick={()=>del(bookModal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setBookModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!bf.title?.trim()||bf.startHour>=bf.endHour}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
 
-            {cl.contacts.length>0 && (
-              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginBottom:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>담당자</div>
-                {cl.contacts.map((ct,i)=>(
-                  <div key={i} style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6,padding:"6px 8px",background:C.slateLight,borderRadius:8}}>
-                    <span style={{fontWeight:700,fontSize:12,width:"100%"}}>{ct.name} {ct.agency&&<span style={{fontWeight:400,color:C.faint}}>({ct.agency})</span>}</span>
-                    {ct.phone&&<a href={`tel:${ct.phone}`} style={{fontSize:11,color:C.blue,textDecoration:"none"}}>📞 {ct.phone}</a>}
-                    {ct.email&&<a href={`mailto:${ct.email}`} style={{fontSize:11,color:C.blue,textDecoration:"none",marginLeft:8}}>✉️ {ct.email}</a>}
+  // ────────────────────────────────────────────────────────
+  // 공지사항
+  // ────────────────────────────────────────────────────────
+  const NoticeSection = ({ readIds=[], onRead=()=>{}, onReadAll=()=>{} }) => {
+    const [modal, setModal] = useState(null);
+    const [nf, setNf]       = useState({});
+
+    const IMPORTANCE = [
+      { id:"normal",    label:"일반",  color:"#64748b", bg:"#f1f5f9" },
+      { id:"important", label:"중요",  color:"#2563eb", bg:"#eff6ff" },
+      { id:"urgent",    label:"긴급",  color:"#ef4444", bg:"#fff1f2" },
+    ];
+
+    const sorted = [...notices].sort((a,b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    const save = () => {
+      if (!nf.title?.trim()) return;
+      const entry = { ...nf, id: modal.id||"nt"+Date.now(),
+        author: user.name, createdAt: new Date().toISOString() };
+      const next = modal.id ? notices.map(n=>n.id===modal.id?entry:n) : [...notices, entry];
+      patch("notices", next);
+      setModal(null);
+    };
+
+    const del = (id) => { patch("notices", notices.filter(n=>n.id!==id)); setModal(null); };
+    const togglePin = (id) => patch("notices", notices.map(n=>n.id===id?{...n,pinned:!n.pinned}:n));
+
+    const fmtDate = iso => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+    };
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:12}}>
+          {notices.length>0&&readIds.length<notices.length&&(
+            <Btn sm onClick={onReadAll}>모두 읽음</Btn>
+          )}
+          {canManage && (
+            <Btn primary sm onClick={()=>{setNf({importance:"normal",pinned:false,title:"",content:""});setModal({});}}>
+              + 공지 작성
+            </Btn>
+          )}
+        </div>
+
+        {sorted.length === 0 && (
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            등록된 공지사항이 없습니다
+          </div>
+        )}
+
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {sorted.map(n => {
+            const imp = IMPORTANCE.find(i=>i.id===n.importance)||IMPORTANCE[0];
+            return (
+              <div key={n.id}
+                onClick={()=>onRead(n.id)}
+                style={{background:"#fff",borderRadius:12,cursor:"pointer",
+                  border:`1px solid ${n.importance==="urgent"?"#fca5a5":n.importance==="important"?"#bfdbfe":"#e2e8f0"}`,
+                  opacity:readIds.includes(n.id)?0.65:1,
+                  overflow:"hidden",transition:"opacity .2s"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",
+                  background:n.pinned?"#fffbeb":"transparent",
+                  borderBottom:n.content?"1px solid #f8fafc":"none",
+                  borderLeft:!readIds.includes(n.id)?`3px solid ${imp.color}`:"3px solid transparent"}}>
+                  {n.pinned && <span style={{fontSize:12}}>📌</span>}
+                  <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                    background:imp.bg,color:imp.color}}>{imp.label}</span>
+                  <span style={{fontSize:13,fontWeight:readIds.includes(n.id)?500:700,
+                    color:readIds.includes(n.id)?"#94a3b8":"#1e293b",flex:1}}>{n.title}</span>
+                  {!readIds.includes(n.id)&&<span style={{width:7,height:7,borderRadius:"50%",
+                    background:"#ef4444",flexShrink:0}}/>}
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{fmtDate(n.createdAt)}</span>
+                  <span style={{fontSize:11,color:"#64748b"}}>{n.author}</span>
+                  {canManage && (
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>togglePin(n.id)}
+                        style={{padding:"2px 7px",borderRadius:6,border:"1px solid #e2e8f0",
+                          background:n.pinned?"#fef3c7":"#f8fafc",fontSize:10,cursor:"pointer",
+                          color:n.pinned?"#d97706":"#94a3b8"}}>
+                        {n.pinned?"📌 고정됨":"📌 고정"}
+                      </button>
+                      <button onClick={()=>{setNf({...n});setModal({id:n.id});}}
+                        style={{padding:"2px 7px",borderRadius:6,border:"1px solid #e2e8f0",
+                          background:"#f8fafc",fontSize:10,cursor:"pointer",color:"#64748b"}}>수정</button>
+                    </div>
+                  )}
+                </div>
+                {n.content && (
+                  <div style={{padding:"10px 16px",fontSize:12,color:"#475569",
+                    lineHeight:1.7,whiteSpace:"pre-wrap"}}>
+                    {n.content}
                   </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {modal && (
+          <Modal title={modal.id?"공지 수정":"공지 작성"} onClose={()=>setModal(null)}>
+            <Field label="중요도">
+              <div style={{display:"flex",gap:6}}>
+                {IMPORTANCE.map(i=>(
+                  <button key={i.id} type="button"
+                    onClick={()=>setNf(v=>({...v,importance:i.id}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:nf.importance===i.id?700:400,
+                      background:nf.importance===i.id?i.bg:"#f8fafc",
+                      color:nf.importance===i.id?i.color:"#94a3b8",
+                      outline:nf.importance===i.id?`2px solid ${i.color}`:"1px solid #f1f5f9"}}>
+                    {i.label}
+                  </button>
                 ))}
               </div>
-            )}
+            </Field>
+            <Field label="제목 *">
+              <input style={inp} autoFocus value={nf.title||""} placeholder="공지 제목"
+                onChange={e=>setNf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <Field label="내용">
+              <textarea style={{...inp,minHeight:100,resize:"vertical",lineHeight:1.6}}
+                value={nf.content||""} placeholder="공지 내용을 입력하세요"
+                onChange={e=>setNf(v=>({...v,content:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
+              background:"#f8fafc",borderRadius:8,marginBottom:8}}>
+              <span style={{fontSize:12,color:"#475569",flex:1}}>상단 고정</span>
+              <button type="button" onClick={()=>setNf(v=>({...v,pinned:!v.pinned}))}
+                style={{width:40,height:22,borderRadius:99,border:"none",cursor:"pointer",
+                  background:nf.pinned?"#f59e0b":"#e2e8f0",position:"relative",transition:"background .2s"}}>
+                <div style={{position:"absolute",top:3,left:nf.pinned?20:3,width:16,height:16,
+                  borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/>
+              </button>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!nf.title?.trim()}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
 
-            {selProj===cl.name && (
-              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>진행 프로젝트</div>
-                {cl.projects.map(p=>(
-                  <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-                    <div>
-                      <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",marginRight:6}}/>
-                      <span style={{fontWeight:600}}>{p.name}</span>
-                    </div>
-                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                      <span style={{fontSize:11,padding:"1px 6px",background:C.slateLight,borderRadius:99,color:C.sub}}>{p.stage}</span>
-                      {p.due&&<span style={{fontSize:11,color:C.faint}}>{p.due}</span>}
-                    </div>
-                  </div>
+  // ────────────────────────────────────────────────────────
+  // 업무 요청 / 총무
+  // ────────────────────────────────────────────────────────
+  const RequestSection = () => {
+    const [modal, setModal] = useState(null);
+    const [rf, setRf]       = useState({});
+
+    const TYPES = ["소모품", "사무용품", "IT 장비", "시설 수리", "기타"];
+    const STATUS = [
+      { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
+      { id:"검토중", color:"#d97706", bg:"#fffbeb" },
+      { id:"처리중", color:"#2563eb", bg:"#eff6ff" },
+      { id:"완료",   color:"#16a34a", bg:"#f0fdf4" },
+    ];
+
+    const myRequests    = requests.filter(r => r.requestedBy === user.name);
+    const otherRequests = requests.filter(r => r.requestedBy !== user.name);
+
+    const save = () => {
+      if (!rf.title?.trim()) return;
+      const entry = { ...rf, id: modal.id||"rq"+Date.now(),
+        requestedBy: modal.id ? rf.requestedBy : user.name,
+        status: rf.status||"접수",
+        createdAt: modal.id ? rf.createdAt : new Date().toISOString() };
+      const next = modal.id ? requests.map(r=>r.id===modal.id?entry:r) : [...requests, entry];
+      patch("requests", next);
+      setModal(null);
+    };
+
+    const del = (id) => { patch("requests", requests.filter(r=>r.id!==id)); setModal(null); };
+
+    const patchStatus = (id, status) => patch("requests", requests.map(r=>r.id===id?{...r,status}:r));
+
+    const fmtDate = iso => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+
+    const RequestCard = ({ r }) => {
+      const st = STATUS.find(s=>s.id===r.status)||STATUS[0];
+      const canEdit2 = r.requestedBy===user.name||canManage;
+      return (
+        <div style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",
+          padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+              <span style={{fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:700,
+                background:"#f1f5f9",color:"#475569"}}>{r.type||"기타"}</span>
+              <span style={{fontSize:13,fontWeight:600,color:"#1e293b",
+                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.title}</span>
+            </div>
+            {r.content && (
+              <div style={{fontSize:11,color:"#64748b",marginBottom:4,
+                overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,
+                WebkitBoxOrient:"vertical"}}>{r.content}</div>
+            )}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"#94a3b8"}}>요청: {r.requestedBy}</span>
+              {r.needBy && <span style={{fontSize:10,color:"#94a3b8"}}>필요일: {r.needBy}</span>}
+              {r.amount && <span style={{fontSize:10,color:"#94a3b8"}}>예상: {Number(r.amount).toLocaleString()}원</span>}
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(r.createdAt)}</span>
+            </div>
+            {/* 담당자 처리 메모 */}
+            {r.processMemo && (
+              <div style={{marginTop:6,padding:"5px 8px",background:"#f0fdf4",borderRadius:6,
+                fontSize:11,color:"#16a34a"}}>
+                ✅ {r.processMemo}
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
+            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+              background:st.bg,color:st.color}}>{r.status}</span>
+            {canEdit2 && (
+              <button onClick={()=>{setRf({...r});setModal({id:r.id});}}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+            )}
+            {/* 상태 변경 버튼 (관리자) */}
+            {canManage && r.status !== "완료" && (
+              <select value={r.status}
+                onChange={e=>patchStatus(r.id, e.target.value)}
+                style={{fontSize:10,padding:"2px 5px",borderRadius:6,border:"1px solid #e2e8f0",
+                  background:"#f8fafc",cursor:"pointer",color:"#475569",outline:"none"}}>
+                {STATUS.map(s=><option key={s.id}>{s.id}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          <Btn primary sm onClick={()=>{setRf({type:"비품 구매",status:"접수"});setModal({});}}>
+            + 비품 요청
+          </Btn>
+        </div>
+
+        {/* 내 요청 */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>내 요청</div>
+          {myRequests.length===0
+            ? <div style={{fontSize:12,color:"#94a3b8",padding:"12px 0",textAlign:"center",
+                border:"1px dashed #e2e8f0",borderRadius:8}}>등록한 요청이 없어요</div>
+            : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {myRequests.map(r=><RequestCard key={r.id} r={r}/>)}
+              </div>
+          }
+        </div>
+
+        {/* 전체 요청 (관리자 or 모든 팀원에게 표시) */}
+        {otherRequests.length > 0 && (
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>팀 전체 요청</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {otherRequests.map(r=><RequestCard key={r.id} r={r}/>)}
+            </div>
+          </div>
+        )}
+
+        {requests.length === 0 && (
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            등록된 요청이 없습니다
+          </div>
+        )}
+
+        {modal && (
+          <Modal title={modal.id?"요청 수정":"비품 요청 등록"} onClose={()=>setModal(null)}>
+            <Field label="유형">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {TYPES.map(t=>(
+                  <button key={t} type="button" onClick={()=>setRf(v=>({...v,type:t}))}
+                    style={{padding:"5px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:rf.type===t?700:400,
+                      background:rf.type===t?"#1e293b":"#f1f5f9",
+                      color:rf.type===t?"#fff":"#475569"}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="제목 *">
+              <input style={inp} autoFocus value={rf.title||""} placeholder="요청 내용 요약"
+                onChange={e=>setRf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+            <Field label="상세 내용">
+              <textarea style={{...inp,minHeight:80,resize:"vertical",lineHeight:1.6}}
+                value={rf.content||""} placeholder="구체적인 내용, 규격, 수량 등"
+                onChange={e=>setRf(v=>({...v,content:e.target.value}))}/>
+            </Field>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="필요일" style={{flex:1}}>
+                <input style={inp} type="date" value={rf.needBy||""}
+                  onChange={e=>setRf(v=>({...v,needBy:e.target.value}))}/>
+              </Field>
+              <Field label="예상 금액" style={{flex:1}}>
+                <input style={inp} type="number" value={rf.amount||""} placeholder="원"
+                  onChange={e=>setRf(v=>({...v,amount:e.target.value}))}/>
+              </Field>
+            </div>
+            {/* 관리자: 처리 메모 */}
+            {canManage && modal.id && (
+              <Field label="처리 메모">
+                <input style={inp} value={rf.processMemo||""} placeholder="처리 내용 기록"
+                  onChange={e=>setRf(v=>({...v,processMemo:e.target.value}))}/>
+              </Field>
+            )}
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id && (rf.requestedBy===user.name||canManage) &&
+                <Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!rf.title?.trim()}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+
+  // ────────────────────────────────────────────────────────
+  // 야근 공유
+  // ────────────────────────────────────────────────────────
+  const OvertimeSection = () => {
+    const overtimes = officeData.overtimes || [];
+    const [modal, setModal] = useState(null);
+    const [of_, setOf_] = useState({});
+
+    const todayStr = new Date().toISOString().slice(0,10);
+    const getWeekDays = () => {
+      const d = new Date(); const day = d.getDay();
+      const mon = new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+      return Array.from({length:5},(_,i)=>{ const x=new Date(mon); x.setDate(mon.getDate()+i); return x.toISOString().slice(0,10); });
+    };
+    const weekDays = getWeekDays();
+    const fmtDate = d => { const [,m,dd] = d.split("-"); return `${Number(m)}/${Number(dd)}`; };
+    const DOW = ["일","월","화","수","목","금","토"];
+    const getDow = d => DOW[new Date(d).getDay()];
+    const MEAL = ["필요","불필요"];
+
+    // ── 결재 단계 ──────────────────────────────────────────
+    // approval: "팀장결재대기" | "팀장승인" | "대표결재대기" | "확정" | "반려"
+    const APPROVAL_FLOW = [
+      { id:"팀장결재대기", label:"팀장 결재 대기", color:"#d97706", bg:"#fffbeb", icon:"⏳" },
+      { id:"팀장승인",     label:"팀장 승인",      color:"#2563eb", bg:"#eff6ff", icon:"👔" },
+      { id:"대표결재대기", label:"대표 결재 대기", color:"#7c3aed", bg:"#f5f3ff", icon:"⏳" },
+      { id:"확정",         label:"확정",           color:"#16a34a", bg:"#f0fdf4", icon:"✅" },
+      { id:"반려",         label:"반려",           color:"#ef4444", bg:"#fff1f2", icon:"❌" },
+    ];
+    const approvalInfo = (id) => APPROVAL_FLOW.find(a=>a.id===id) || APPROVAL_FLOW[0];
+
+    // 결재 타입: 팀장만 / 팀장+대표
+    const APPROVAL_TYPE = ["팀장 결재", "팀장+대표 결재"];
+
+    const save = () => {
+      if (!of_.date) return;
+      const isNew = !modal.id;
+      const entry = {
+        ...of_,
+        id: modal.id || "ot"+Date.now(),
+        name: modal.id ? of_.name : user.name,
+        // 신규 등록 시 결재 상태 초기화
+        approval: modal.id ? of_.approval : "팀장결재대기",
+        approvalLog: modal.id ? (of_.approvalLog||[]) : [],
+      };
+      const next = modal.id ? overtimes.map(o=>o.id===modal.id?entry:o) : [...overtimes, entry];
+      patch("overtimes", next);
+      setModal(null);
+    };
+
+    // 결재 처리 (팀장/대표)
+    const doApprove = (id, action) => {
+      const ot = overtimes.find(o=>o.id===id);
+      if (!ot) return;
+      const log = [...(ot.approvalLog||[]), {
+        action, by: user.name, role: user.role, at: new Date().toISOString()
+      }];
+      let nextApproval = ot.approval;
+      if (action === "팀장승인") {
+        nextApproval = ot.approvalType==="팀장+대표 결재" ? "대표결재대기" : "확정";
+      } else if (action === "대표승인") {
+        nextApproval = "확정";
+      } else if (action === "반려") {
+        nextApproval = "반려";
+      }
+      patch("overtimes", overtimes.map(o=>o.id===id?{...o,approval:nextApproval,approvalLog:log}:o));
+    };
+
+    const del = (id) => { patch("overtimes", overtimes.filter(o=>o.id!==id)); setModal(null); };
+
+    // 결재 권한 체크
+    const isTeamLeader = ["팀장","PD","EPD","대표"].includes(user.role);
+    const isCEO       = ["대표"].includes(user.role);
+
+    const todayOTs = overtimes.filter(o=>o.date===todayStr);
+    const weekOTs  = overtimes.filter(o=>weekDays.includes(o.date));
+
+    return (
+      <div>
+        {/* 오늘 야근 현황 배너 */}
+        <div style={{background:todayOTs.length>0?"#fffbeb":"#f0fdf4",borderRadius:12,
+          padding:"14px 18px",marginBottom:16,
+          border:`1px solid ${todayOTs.length>0?"#fde68a":"#bbf7d0"}`,
+          display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:22}}>{todayOTs.length>0?"🌙":"🌅"}</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:4}}>
+              오늘 야근 {todayOTs.length>0?`${todayOTs.length}명`:"없음"}
+            </div>
+            {todayOTs.length>0&&(
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {todayOTs.map(o=>(
+                  <span key={o.id} style={{display:"flex",alignItems:"center",gap:4,
+                    fontSize:11,padding:"2px 8px",borderRadius:99,
+                    background:"#fef3c7",color:"#92400e",fontWeight:600}}>
+                    <Avatar name={o.name} size={14}/>{o.name}
+                    {o.until&&<span style={{opacity:.7}}>~{o.until}</span>}
+                    {o.meal&&<span style={{fontSize:9,opacity:.8}}>{o.meal==="필요"?"🍱":""}{o.meal}</span>}
+                    {o.taxi&&<span style={{fontSize:9,opacity:.8}}>🚕</span>}
+                  </span>
                 ))}
               </div>
             )}
           </div>
+          <Btn primary sm onClick={()=>{ setOf_({date:todayStr,meal:"불필요",taxi:false}); setModal({}); }}>
+            + 야근 등록
+          </Btn>
+        </div>
+
+        {/* 이번 주 달력 */}
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+          padding:"14px 16px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:10}}>이번 주 야근 현황</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+            {weekDays.map(d=>{
+              const dayOTs=weekOTs.filter(o=>o.date===d);
+              const isToday2=d===todayStr;
+              return (
+                <div key={d} style={{borderRadius:8,padding:"8px 6px",textAlign:"center",
+                  background:isToday2?"#eff6ff":"#f8fafc",
+                  border:`1px solid ${isToday2?"#bfdbfe":"#f1f5f9"}`}}>
+                  <div style={{fontSize:10,fontWeight:700,
+                    color:isToday2?"#2563eb":"#94a3b8",marginBottom:4}}>
+                    {fmtDate(d)}({getDow(d)})
+                  </div>
+                  {dayOTs.length===0
+                    ? <div style={{fontSize:9,color:"#cbd5e1"}}>-</div>
+                    : dayOTs.map(o=>(
+                        <div key={o.id} style={{fontSize:9,padding:"2px 4px",borderRadius:4,
+                          background:"#fef3c7",color:"#92400e",fontWeight:600,
+                          marginBottom:2,textAlign:"left",lineHeight:1.4}}>
+                          <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {o.name}
+                          </div>
+                          {o.until&&<div style={{opacity:.7}}>~{o.until}</div>}
+                          {o.project&&<div style={{fontSize:8,color:"#b45309",opacity:.8,
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {o.project}
+                          </div>}
+                        </div>
+                      ))
+                  }
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 결재 대기 섹션 — 권한별 분리 표시 */}
+        {(()=>{
+          // 내가 볼 수 있는 결재 대기 항목만 필터
+          const myPending = overtimes.filter(o => {
+            if (o.approval === "팀장결재대기") return isTeamLeader; // 팀장 이상만
+            if (o.approval === "대표결재대기") return isCEO;        // 대표만
+            return false;
+          }).sort((a,b)=>b.date.localeCompare(a.date));
+
+          if (myPending.length === 0) return null;
+
+          return (
+            <div style={{background:"#fffbeb",borderRadius:12,border:"1px solid #fde68a",
+              padding:"12px 16px",marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>
+                ⏳ 결재 대기 ({myPending.length}건)
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {myPending.map(o=>{
+                  const ap = approvalInfo(o.approval);
+                  const isTeamStep = o.approval === "팀장결재대기";
+                  const isCEOStep  = o.approval === "대표결재대기";
+                  return (
+                    <div key={o.id} style={{display:"flex",alignItems:"center",gap:8,
+                      padding:"10px 12px",borderRadius:8,background:"#fff",
+                      border:`1px solid ${isCEOStep?"#ddd6fe":"#fde68a"}`}}>
+                      <Avatar name={o.name} size={26}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#1e293b",marginBottom:2}}>
+                          {o.name}
+                          {o.project&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                            background:"#eff6ff",color:"#2563eb",fontWeight:600,marginLeft:6}}>
+                            {o.project}
+                          </span>}
+                        </div>
+                        <div style={{fontSize:10,color:"#64748b",display:"flex",gap:8,flexWrap:"wrap"}}>
+                          <span>{o.date}({getDow(o.date)}){o.until&&` ~${o.until}`}</span>
+                          {o.reason&&<span>🎯 {o.reason}</span>}
+                          {o.meal==="필요"&&<span>🍱 식사</span>}
+                          {o.taxi&&<span>🚕 택시</span>}
+                        </div>
+                        {/* 팀장+대표 결재 건 → 단계 표시 */}
+                        {o.approvalType==="팀장+대표 결재"&&isCEOStep&&(
+                          <div style={{fontSize:9,marginTop:3,color:"#7c3aed",fontWeight:600}}>
+                            👔 팀장 승인 완료 → 👑 대표 결재 차례
+                          </div>
+                        )}
+                      </div>
+                      <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                        background:ap.bg,color:ap.color,flexShrink:0,whiteSpace:"nowrap"}}>
+                        {ap.icon} {ap.label}
+                      </span>
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        <button
+                          onClick={()=>doApprove(o.id, isTeamStep?"팀장승인":"대표승인")}
+                          style={{padding:"5px 12px",borderRadius:6,border:"none",
+                            background:"#16a34a",color:"#fff",fontSize:11,
+                            fontWeight:700,cursor:"pointer"}}>승인</button>
+                        <button onClick={()=>doApprove(o.id,"반려")}
+                          style={{padding:"5px 10px",borderRadius:6,border:"none",
+                            background:"#ef4444",color:"#fff",fontSize:11,
+                            fontWeight:700,cursor:"pointer"}}>반려</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 전체 야근 기록 목록 */}
+        <div style={{marginBottom:8,fontSize:12,fontWeight:700,color:"#475569"}}>야근 기록</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {[...overtimes].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(o=>{
+            const ap = approvalInfo(o.approval||"팀장결재대기");
+            return (
+              <div key={o.id} style={{padding:"10px 14px",borderRadius:10,background:"#fff",
+                border:`1px solid ${o.approval==="반려"?"#fca5a5":o.approval==="확정"?"#bbf7d0":"#e2e8f0"}`,
+                display:"flex",gap:10,alignItems:"center"}}>
+                <Avatar name={o.name} size={28}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{o.name}</span>
+                    {/* 결재 상태 뱃지 */}
+                    <span style={{fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:99,
+                      background:ap.bg,color:ap.color}}>{ap.icon} {ap.label}</span>
+                    {o.project&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+                      background:"#eff6ff",color:"#2563eb",fontWeight:600}}>{o.project}</span>}
+                    {o.meal==="필요"&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                      background:"#fef3c7",color:"#d97706",fontWeight:600}}>🍱 식사</span>}
+                    {o.taxi&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,
+                      background:"#f5f3ff",color:"#7c3aed",fontWeight:600}}>🚕 택시</span>}
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:10,color:"#64748b"}}>{o.date}({getDow(o.date)})</span>
+                    {o.until&&<span style={{fontSize:10,color:"#d97706",fontWeight:600}}>~{o.until}</span>}
+                    {o.workDetail&&<span style={{fontSize:10,color:"#475569",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>
+                      📋 {o.workDetail}
+                    </span>}
+                  </div>
+                  {o.reason&&<div style={{fontSize:10,color:"#64748b",marginTop:1}}>🎯 {o.reason}</div>}
+                </div>
+                {(o.name===user.name||canManage)&&(
+                  <button onClick={()=>{setOf_({...o});setModal({id:o.id});}}
+                    style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                      background:"#f8fafc",cursor:"pointer",color:"#64748b",flexShrink:0}}>수정</button>
+                )}
+              </div>
+            );
+          })}
+          {overtimes.length===0&&(
+            <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12,
+              background:"#f8fafc",borderRadius:8,border:"1px dashed #e2e8f0"}}>
+              야근 기록이 없어요 🎉
+            </div>
+          )}
+        </div>
+
+        {/* 등록/수정 모달 */}
+        {modal&&(
+          <Modal title={modal.id?"야근 수정":"야근 등록"} onClose={()=>setModal(null)}>
+
+            {/* 야근자 */}
+            <Field label="야근자">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {(accounts||[]).map(a=>{
+                  const sel=(of_.name||user.name)===a.name;
+                  return (
+                    <button key={a.id} type="button" onClick={()=>setOf_(v=>({...v,name:a.name}))}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+                        borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                        background:sel?"#2563eb":"#f1f5f9",
+                        color:sel?"#fff":"#475569",fontWeight:sel?700:400}}>
+                      <Avatar name={a.name} size={14}/>{a.name}{sel&&" ✓"}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            <div style={{display:"flex",gap:10}}>
+              <Field label="날짜" style={{flex:1}}>
+                <input style={inp} type="date" value={of_.date||""}
+                  onChange={e=>setOf_(v=>({...v,date:e.target.value}))}/>
+              </Field>
+              <Field label="예상 퇴근 시간" style={{flex:1}}>
+                <input style={inp} type="time" value={of_.until||""}
+                  onChange={e=>setOf_(v=>({...v,until:e.target.value}))} placeholder="22:00"/>
+              </Field>
+            </div>
+
+            {/* 프로젝트 */}
+            <Field label="프로젝트">
+              <select style={inp} value={of_.project||""} onChange={e=>setOf_(v=>({...v,project:e.target.value}))}>
+                <option value="">- 선택 -</option>
+                {(officeData._projects||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                <option value="사내업무">사내업무</option>
+                <option value="기타">기타</option>
+              </select>
+            </Field>
+
+            {/* 근무 내역 */}
+            <Field label="근무 내역">
+              <textarea style={{...inp,minHeight:60,resize:"vertical",lineHeight:1.6}}
+                value={of_.workDetail||""} placeholder="오늘 진행한 작업 내용"
+                onChange={e=>setOf_(v=>({...v,workDetail:e.target.value}))}/>
+            </Field>
+
+            {/* 야근 사유 */}
+            <Field label="야근 사유 / 목표">
+              <input style={inp} value={of_.reason||""} placeholder="마감, 긴급 수정, 촬영 준비 등"
+                onChange={e=>setOf_(v=>({...v,reason:e.target.value}))}/>
+            </Field>
+
+            {/* 식사 여부 */}
+            <Field label="🍱 식사 여부">
+              <div style={{display:"flex",gap:6}}>
+                {MEAL.map(m=>(
+                  <button key={m} type="button" onClick={()=>setOf_(v=>({...v,meal:m}))}
+                    style={{flex:1,padding:"9px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:(of_.meal||"불필요")===m?700:400,
+                      background:(of_.meal||"불필요")===m
+                        ?(m==="필요"?"#fef3c7":"#f1f5f9"):"#f8fafc",
+                      color:(of_.meal||"불필요")===m
+                        ?(m==="필요"?"#d97706":"#475569"):"#94a3b8",
+                      outline:(of_.meal||"불필요")===m
+                        ?(m==="필요"?"2px solid #f59e0b":"2px solid #e2e8f0"):"1px solid #f1f5f9"}}>
+                    {m==="필요"?"🍱 필요":"불필요"}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* 야근 택시 */}
+            <Field label="🚕 야근 택시">
+              <label style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                borderRadius:8,border:`1px solid ${of_.taxi?"#7c3aed":"#e2e8f0"}`,
+                background:of_.taxi?"#f5f3ff":"#f8fafc",cursor:"pointer",userSelect:"none"}}>
+                <input type="checkbox" checked={!!of_.taxi}
+                  onChange={e=>setOf_(v=>({...v,taxi:e.target.checked}))}
+                  style={{width:16,height:16,accentColor:"#7c3aed",cursor:"pointer"}}/>
+                <span style={{fontSize:12,fontWeight:of_.taxi?700:400,
+                  color:of_.taxi?"#7c3aed":"#94a3b8"}}>
+                  {of_.taxi?"🚕 택시 이용":"택시 미이용"}
+                </span>
+              </label>
+            </Field>
+
+            {/* 결재 구분 */}
+            <Field label="🔏 야근 결재 구분">
+              <div style={{display:"flex",gap:6}}>
+                {APPROVAL_TYPE.map(t=>(
+                  <button key={t} type="button"
+                    onClick={()=>setOf_(v=>({...v,approvalType:t}))}
+                    style={{flex:1,padding:"9px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:(of_.approvalType||"팀장 결재")===t?700:400,
+                      background:(of_.approvalType||"팀장 결재")===t
+                        ?(t==="팀장 결재"?"#eff6ff":"#f5f3ff"):"#f8fafc",
+                      color:(of_.approvalType||"팀장 결재")===t
+                        ?(t==="팀장 결재"?"#2563eb":"#7c3aed"):"#94a3b8",
+                      outline:(of_.approvalType||"팀장 결재")===t
+                        ?`2px solid ${t==="팀장 결재"?"#2563eb":"#7c3aed"}`:"1px solid #f1f5f9"}}>
+                    {t==="팀장 결재"?"👔 팀장 결재":"👔→👑 팀장+대표 결재"}
+                  </button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>
+                {(of_.approvalType||"팀장 결재")==="팀장 결재"
+                  ?"팀장 승인 후 확정됩니다"
+                  :"팀장 승인 → 대표 승인 후 확정됩니다"}
+              </div>
+            </Field>
+
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id&&(of_.name===user.name||canManage)&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!of_.date}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────
+  // 회계 처리 요청
+  // ────────────────────────────────────────────────────────
+  const AccountingSection = () => {
+    const accts = officeData.accounting || [];
+    const [modal, setModal] = useState(null);
+    const [af, setAf]       = useState({});
+
+    // 유형 (법인카드 제외)
+    const TYPES = ["프로젝트 결제","AI 크레딧","경비 청구","세금계산서","기타"];
+    const TYPE_COLOR = {
+      "프로젝트 결제":"#2563eb","AI 크레딧":"#7c3aed",
+      "경비 청구":"#d97706","세금계산서":"#64748b","기타":"#94a3b8",
+    };
+
+    // 결제 방법
+    const PAY_METHODS = ["계좌이체","법인카드"];
+
+    // 긴급도
+    const URGENCY = [
+      { id:"긴급", color:"#ef4444", bg:"#fff1f2", icon:"🔴" },
+      { id:"보통", color:"#d97706", bg:"#fffbeb", icon:"🟡" },
+      { id:"여유", color:"#16a34a", bg:"#f0fdf4", icon:"🟢" },
+    ];
+
+    // 처리 상태 (3단계)
+    const STATUS = [
+      { id:"접수",   color:"#94a3b8", bg:"#f8fafc" },
+      { id:"검토중", color:"#d97706", bg:"#fffbeb" },
+      { id:"완료",   color:"#16a34a", bg:"#f0fdf4" },
+    ];
+
+    const fmtDate = iso => {
+      if(!iso) return "";
+      const d=new Date(iso);
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+
+    const save = () => {
+      if (!af.title?.trim()) return;
+      const entry = {
+        ...af,
+        id: modal.id || "ac"+Date.now(),
+        requestedBy: modal.id ? af.requestedBy : user.name,
+        status:  af.status  || "접수",
+        urgency: af.urgency || "보통",
+        createdAt: modal.id ? af.createdAt : new Date().toISOString(),
+      };
+      const next = modal.id
+        ? accts.map(a=>a.id===modal.id?entry:a)
+        : [...accts, entry];
+      patch("accounting", next);
+      setModal(null);
+    };
+
+    const del = (id) => { patch("accounting", accts.filter(a=>a.id!==id)); setModal(null); };
+    const patchStatus = (id, status) => patch("accounting", accts.map(a=>a.id===id?{...a,status}:a));
+    const patchProcessMemo = (id, memo) => patch("accounting", accts.map(a=>a.id===id?{...a,processMemo:memo}:a));
+
+    // 파일 첨부 (base64)
+    const handleFiles = (e, field) => {
+      const files = Array.from(e.target.files);
+      Promise.all(files.map(f=>new Promise(res=>{
+        const r=new FileReader();
+        r.onload=()=>res({name:f.name,url:r.result,type:f.type,size:f.size});
+        r.readAsDataURL(f);
+      }))).then(newFiles=>{
+        setAf(v=>({...v,[field]:[...(v[field]||[]),...newFiles]}));
+      });
+    };
+    const removeFile = (field, idx) => setAf(v=>({...v,[field]:(v[field]||[]).filter((_,i)=>i!==idx)}));
+
+    const URGENCY_ORDER = {"긴급":0,"보통":1,"여유":2};
+    const sorted = [...accts].sort((a,b)=>{
+      const uDiff=(URGENCY_ORDER[a.urgency]??1)-(URGENCY_ORDER[b.urgency]??1);
+      return uDiff!==0?uDiff:new Date(b.createdAt)-new Date(a.createdAt);
+    });
+    const myAccts    = sorted.filter(a=>a.requestedBy===user.name);
+    const otherAccts = sorted.filter(a=>a.requestedBy!==user.name);
+    const statusCounts = STATUS.map(s=>({...s, cnt:accts.filter(a=>a.status===s.id).length}));
+
+    // ── 카드 컴포넌트 ──
+    const AcctCard = ({a}) => {
+      const st  = STATUS.find(s=>s.id===a.status)||STATUS[0];
+      const urg = URGENCY.find(u=>u.id===a.urgency)||URGENCY[1];
+      const tc  = TYPE_COLOR[a.type]||"#94a3b8";
+      const canEdit2 = a.requestedBy===user.name||canManage;
+      const [editMemo, setEditMemo] = useState(false);
+      const [memoVal, setMemoVal]   = useState(a.processMemo||"");
+
+      return (
+        <div style={{background:"#fff",borderRadius:12,
+          border:`1px solid ${a.urgency==="긴급"?"#fca5a5":"#e2e8f0"}`,overflow:"hidden"}}>
+
+          {/* 헤더 */}
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",
+            background:urg.bg,borderBottom:"1px solid #f1f5f9"}}>
+            <span style={{fontSize:11}}>{urg.icon}</span>
+            <span style={{fontSize:11,fontWeight:700,color:urg.color}}>{a.urgency}</span>
+            <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,fontWeight:700,
+              background:tc+"18",color:tc,marginLeft:2}}>{a.type}</span>
+            {a.payMethod&&(
+              <span style={{fontSize:10,padding:"1px 8px",borderRadius:99,fontWeight:600,
+                background:a.payMethod==="계좌이체"?"#f0fdf4":"#eff6ff",
+                color:a.payMethod==="계좌이체"?"#16a34a":"#2563eb"}}>
+                {a.payMethod==="계좌이체"?"🏦 계좌이체":"💳 법인카드"}
+              </span>
+            )}
+            <span style={{flex:1,fontSize:13,fontWeight:700,color:"#1e293b",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.title}</span>
+            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+              background:st.bg,color:st.color,flexShrink:0}}>{a.status}</span>
+          </div>
+
+          <div style={{padding:"10px 14px"}}>
+            {/* 메타 */}
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontSize:11,color:"#64748b"}}>👤 {a.requestedBy}</span>
+              {a.amount&&<span style={{fontSize:11,color:"#1e293b",fontWeight:700}}>
+                💰 {Number(a.amount).toLocaleString()}원
+              </span>}
+              {a.dueDate&&<span style={{fontSize:11,
+                color:a.urgency==="긴급"?"#ef4444":"#64748b",fontWeight:600}}>
+                📅 {a.dueDate}까지
+              </span>}
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(a.createdAt)}</span>
+              {a.project&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,fontWeight:600,
+                background:"#eff6ff",color:"#2563eb"}}>{a.project}</span>}
+            </div>
+
+            {/* 상세 내용 */}
+            {a.memo&&<div style={{fontSize:11,color:"#475569",lineHeight:1.6,
+              padding:"6px 8px",background:"#f8fafc",borderRadius:6,marginBottom:6,
+              whiteSpace:"pre-wrap"}}>{a.memo}</div>}
+
+            {/* 계좌 정보 */}
+            {a.bankInfo&&(
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",
+                background:"#f0fdf4",borderRadius:6,marginBottom:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#16a34a"}}>🏦 계좌</span>
+                <span style={{fontSize:11,color:"#1e293b",fontFamily:"monospace"}}>{a.bankInfo}</span>
+              </div>
+            )}
+
+            {/* 결제 URL */}
+            {a.payUrl&&(
+              <div style={{marginBottom:6}}>
+                <a href={a.payUrl} target="_blank" rel="noreferrer"
+                  style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,
+                    padding:"5px 10px",borderRadius:6,background:"#eff6ff",
+                    border:"1px solid #bfdbfe",color:"#2563eb",
+                    textDecoration:"none",fontWeight:600}}>
+                  🔗 결제 링크 바로가기 →
+                </a>
+              </div>
+            )}
+
+            {/* 첨부 파일 (견적서/영수증 + 증빙자료) */}
+            {[(a.attachments||[]),"견적서/영수증",(a.evidence||[]),"증빙자료"].reduce((acc,item,i)=>{
+              if(typeof item==="string") { acc.label=item; return acc; }
+              if(item.length>0) acc.groups.push({label:acc.label,files:item});
+              return acc;
+            },{groups:[],label:""}).groups.map(g=>(
+              <div key={g.label} style={{marginBottom:5}}>
+                <div style={{fontSize:9,color:"#94a3b8",fontWeight:600,marginBottom:3}}>{g.label}</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {g.files.map((att,i)=>(
+                    <a key={i} href={att.url} download={att.name} target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",gap:3,fontSize:10,
+                        padding:"3px 8px",borderRadius:6,background:"#f8fafc",
+                        color:"#475569",textDecoration:"none",border:"1px solid #e2e8f0"}}>
+                      📎 {att.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* 완료 회신 메모 */}
+            {a.processMemo&&!editMemo&&(
+              <div style={{padding:"6px 8px",background:"#f0fdf4",borderRadius:6,
+                fontSize:11,color:"#16a34a",marginBottom:6,lineHeight:1.5}}>
+                ✅ {a.processMemo}
+                {canManage&&<button onClick={()=>setEditMemo(true)}
+                  style={{marginLeft:8,fontSize:9,color:"#94a3b8",background:"none",
+                    border:"none",cursor:"pointer"}}>수정</button>}
+              </div>
+            )}
+            {canManage&&editMemo&&(
+              <div style={{display:"flex",gap:6,marginBottom:6}}>
+                <input value={memoVal} onChange={e=>setMemoVal(e.target.value)}
+                  placeholder="처리 내용 및 완료 회신 내용"
+                  style={{flex:1,...inp,padding:"5px 8px",fontSize:11}}/>
+                <button onClick={()=>{patchProcessMemo(a.id,memoVal);setEditMemo(false);}}
+                  style={{padding:"5px 10px",borderRadius:6,border:"none",
+                    background:"#2563eb",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600}}>저장</button>
+                <button onClick={()=>setEditMemo(false)}
+                  style={{padding:"5px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                    background:"#f8fafc",fontSize:11,cursor:"pointer",color:"#64748b"}}>취소</button>
+              </div>
+            )}
+
+            {/* 액션 */}
+            <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
+              {canManage&&(
+                <>
+                  {STATUS.map(s=>(
+                    <button key={s.id} onClick={()=>patchStatus(a.id,s.id)}
+                      style={{padding:"3px 8px",borderRadius:6,border:"none",cursor:"pointer",
+                        fontSize:10,fontWeight:a.status===s.id?700:400,
+                        background:a.status===s.id?s.bg:"#f8fafc",
+                        color:a.status===s.id?s.color:"#94a3b8",
+                        outline:a.status===s.id?`1.5px solid ${s.color}`:"none"}}>
+                      {s.id}
+                    </button>
+                  ))}
+                  {!a.processMemo&&!editMemo&&(
+                    <button onClick={()=>setEditMemo(true)}
+                      style={{padding:"3px 8px",borderRadius:6,border:"1px solid #bbf7d0",
+                        background:"#f0fdf4",fontSize:10,cursor:"pointer",color:"#16a34a",fontWeight:600}}>
+                      ✅ 완료 처리
+                    </button>
+                  )}
+                </>
+              )}
+              <div style={{flex:1}}/>
+              {canEdit2&&(
+                <button onClick={()=>{setAf({...a});setModal({id:a.id});}}
+                  style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid #e2e8f0",
+                    background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ── FileAttachField 헬퍼 ──
+    const FileField = ({label, field}) => (
+      <Field label={label}>
+        <label style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
+          borderRadius:8,border:"2px dashed #bfdbfe",background:"#f8fbff",
+          cursor:"pointer",fontSize:12,color:"#2563eb",fontWeight:600,marginBottom:4}}>
+          + 파일 선택
+          <input type="file" multiple accept="image/*,.pdf,.xlsx,.xls,.docx"
+            onChange={e=>handleFiles(e,field)} style={{display:"none"}}/>
+        </label>
+        {(af[field]||[]).length>0&&(
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {af[field].map((att,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,
+                padding:"3px 8px",borderRadius:6,background:"#eff6ff",
+                border:"1px solid #bfdbfe",color:"#2563eb"}}>
+                📎 {att.name}
+                <button onClick={()=>removeFile(field,i)}
+                  style={{background:"none",border:"none",cursor:"pointer",
+                    color:"#94a3b8",fontSize:10,padding:0}}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Field>
+    );
+
+    return (
+      <div>
+        {/* 상단 요약 + 등록 버튼 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:6,flex:1,flexWrap:"wrap"}}>
+            {statusCounts.map(s=>(
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:4,
+                padding:"4px 12px",borderRadius:99,background:s.bg,
+                border:`1px solid ${s.color}33`}}>
+                <span style={{fontSize:16,fontWeight:800,color:s.color}}>{s.cnt}</span>
+                <span style={{fontSize:10,color:s.color,fontWeight:600}}>{s.id}</span>
+              </div>
+            ))}
+          </div>
+          <Btn primary sm onClick={()=>{setAf({type:"프로젝트 결제",urgency:"보통",payMethod:"계좌이체"});setModal({});}}>
+            + 회계 요청
+          </Btn>
+        </div>
+
+        {[{title:"내 요청",list:myAccts},{title:"팀 전체 요청",list:otherAccts}].map(({title,list})=>
+          list.length>0&&(
+            <div key={title} style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>{title}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {list.map(a=><AcctCard key={a.id} a={a}/>)}
+              </div>
+            </div>
+          )
+        )}
+        {accts.length===0&&(
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            등록된 회계 요청이 없습니다
+          </div>
+        )}
+
+        {/* 등록/수정 모달 */}
+        {modal&&(
+          <Modal title={modal.id?"회계 요청 수정":"회계 처리 요청"} onClose={()=>setModal(null)}>
+
+            {/* 긴급도 */}
+            <Field label="긴급도">
+              <div style={{display:"flex",gap:6}}>
+                {URGENCY.map(u=>(
+                  <button key={u.id} type="button" onClick={()=>setAf(v=>({...v,urgency:u.id}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:(af.urgency||"보통")===u.id?700:400,
+                      background:(af.urgency||"보통")===u.id?u.bg:"#f8fafc",
+                      color:(af.urgency||"보통")===u.id?u.color:"#94a3b8",
+                      outline:(af.urgency||"보통")===u.id?`2px solid ${u.color}`:"1px solid #f1f5f9"}}>
+                    {u.icon} {u.id}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* 유형 */}
+            <Field label="유형">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {TYPES.map(t=>(
+                  <button key={t} type="button" onClick={()=>setAf(v=>({...v,type:t}))}
+                    style={{padding:"5px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                      fontSize:11,fontWeight:(af.type)===t?700:400,
+                      background:(af.type)===t?(TYPE_COLOR[t]+"20"):"#f1f5f9",
+                      color:(af.type)===t?(TYPE_COLOR[t]):"#475569",
+                      outline:(af.type)===t?`2px solid ${TYPE_COLOR[t]}`:"none"}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* 결제 방법 */}
+            <Field label="결제 방법">
+              <div style={{display:"flex",gap:6}}>
+                {PAY_METHODS.map(m=>(
+                  <button key={m} type="button" onClick={()=>setAf(v=>({...v,payMethod:m}))}
+                    style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",
+                      fontSize:12,fontWeight:(af.payMethod||"계좌이체")===m?700:400,
+                      background:(af.payMethod||"계좌이체")===m
+                        ?(m==="계좌이체"?"#f0fdf4":"#eff6ff"):"#f8fafc",
+                      color:(af.payMethod||"계좌이체")===m
+                        ?(m==="계좌이체"?"#16a34a":"#2563eb"):"#94a3b8",
+                      outline:(af.payMethod||"계좌이체")===m
+                        ?`2px solid ${m==="계좌이체"?"#16a34a":"#2563eb"}`:"1px solid #f1f5f9"}}>
+                    {m==="계좌이체"?"🏦 계좌이체":"💳 법인카드"}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* 프로젝트 선택 */}
+            <Field label="프로젝트">
+              <select style={inp} value={af.project||""}
+                onChange={e=>setAf(v=>({...v,project:e.target.value}))}>
+                <option value="">- 프로젝트 선택 (선택사항) -</option>
+                {(officeData._projects||[]).map(p=>(
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+                <option value="사내업무">사내업무</option>
+                <option value="기타">기타</option>
+              </select>
+            </Field>
+
+            {/* 회계처리 사항 */}
+            <Field label="회계처리 사항 *">
+              <input style={inp} autoFocus value={af.title||""} placeholder="예: 3월 촬영 장비 렌탈비 결제 요청"
+                onChange={e=>setAf(v=>({...v,title:e.target.value}))}/>
+            </Field>
+
+            <div style={{display:"flex",gap:10}}>
+              <Field label="금액" style={{flex:1}}>
+                <input style={inp} type="number" value={af.amount||""} placeholder="원"
+                  onChange={e=>setAf(v=>({...v,amount:e.target.value}))}/>
+              </Field>
+              <Field label="처리 기한" style={{flex:1}}>
+                <input style={inp} type="date" value={af.dueDate||""}
+                  onChange={e=>setAf(v=>({...v,dueDate:e.target.value}))}/>
+              </Field>
+            </div>
+
+            {/* 계좌 정보 (계좌이체 선택 시 강조) */}
+            <Field label={`🏦 계좌 정보${(af.payMethod||"계좌이체")==="계좌이체"?" *":""}`}>
+              <input style={{...inp,
+                borderColor:(af.payMethod||"계좌이체")==="계좌이체"?"#86efac":"#e2e8f0",
+                background:(af.payMethod||"계좌이체")==="계좌이체"?"#f0fdf4":"#fff"}}
+                value={af.bankInfo||""}
+                placeholder="은행명 / 계좌번호 / 예금주 (예: 국민은행 123-456-789 홍길동)"
+                onChange={e=>setAf(v=>({...v,bankInfo:e.target.value}))}/>
+            </Field>
+
+            {/* 결제 URL */}
+            <Field label="🔗 결제 URL">
+              <input style={inp} value={af.payUrl||""}
+                placeholder="결제 페이지 링크 (쇼핑몰, 서비스 구독 등)"
+                onChange={e=>setAf(v=>({...v,payUrl:e.target.value}))}/>
+            </Field>
+
+            {/* 상세 내용 */}
+            <Field label="상세 내용">
+              <textarea style={{...inp,minHeight:60,resize:"vertical",lineHeight:1.6}}
+                value={af.memo||""} placeholder="기타 요청 사항, 특이 사항 등"
+                onChange={e=>setAf(v=>({...v,memo:e.target.value}))}/>
+            </Field>
+
+            {/* 견적서/영수증 */}
+            <FileField label="📎 견적서 / 영수증" field="attachments"/>
+
+            {/* 증빙자료 */}
+            <FileField label="🗂 증빙자료" field="evidence"/>
+
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              {modal.id&&(af.requestedBy===user.name||canManage)&&
+                <Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!af.title?.trim()}>저장</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────
+  // 자유 게시판
+  // ────────────────────────────────────────────────────────
+  const BoardSection = () => {
+    const posts  = officeData.board || [];
+    const [modal, setModal]   = useState(null);
+    const [pf, setPf]         = useState({});
+    const [selPost, setSelPost] = useState(null);
+    const [commentInput, setCommentInput] = useState("");
+
+    const CATEGORIES = ["잡담","음식 추천","분실물","공구/나눔","건의","기타"];
+    const CAT_COLOR  = {
+      "잡담":"#2563eb","음식 추천":"#d97706","분실물":"#ef4444",
+      "공구/나눔":"#16a34a","건의":"#7c3aed","기타":"#94a3b8"
+    };
+    const CAT_BG = {
+      "잡담":"#eff6ff","음식 추천":"#fffbeb","분실물":"#fff1f2",
+      "공구/나눔":"#f0fdf4","건의":"#f5f3ff","기타":"#f8fafc"
+    };
+
+    const sorted = [...posts].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+    const save = () => {
+      if (!pf.title?.trim()) return;
+      const entry = { ...pf, id: modal.id||"bd"+Date.now(),
+        author: user.name,
+        createdAt: modal.id ? pf.createdAt : new Date().toISOString(),
+        comments: pf.comments||[], likes: pf.likes||[] };
+      const next = modal.id ? posts.map(p=>p.id===modal.id?entry:p) : [...posts, entry];
+      patch("board", next);
+      setModal(null);
+      if (selPost?.id === modal.id) setSelPost(entry);
+    };
+
+    const del = (id) => {
+      patch("board", posts.filter(p=>p.id!==id));
+      setModal(null);
+      if (selPost?.id===id) setSelPost(null);
+    };
+
+    const toggleLike = (postId) => {
+      const next = posts.map(p=>{
+        if (p.id!==postId) return p;
+        const likes = p.likes||[];
+        const newLikes = likes.includes(user.name) ? likes.filter(n=>n!==user.name) : [...likes, user.name];
+        return {...p, likes:newLikes};
+      });
+      patch("board", next);
+      if (selPost?.id===postId) setSelPost(next.find(p=>p.id===postId));
+    };
+
+    const addComment = (postId) => {
+      if (!commentInput.trim()) return;
+      const comment = { id:"cm"+Date.now(), author:user.name,
+        text:commentInput.trim(), createdAt:new Date().toISOString() };
+      const next = posts.map(p=>p.id===postId?{...p,comments:[...(p.comments||[]),comment]}:p);
+      patch("board", next);
+      setCommentInput("");
+      setSelPost(next.find(p=>p.id===postId));
+    };
+
+    const delComment = (postId, cmId) => {
+      const next = posts.map(p=>p.id===postId?{...p,comments:(p.comments||[]).filter(c=>c.id!==cmId)}:p);
+      patch("board", next);
+      setSelPost(next.find(p=>p.id===postId));
+    };
+
+    const fmtDate = iso => {
+      const d = new Date(iso);
+      const now = new Date();
+      const diff = Math.floor((now-d)/1000);
+      if (diff<60)   return "방금";
+      if (diff<3600) return Math.floor(diff/60)+"분 전";
+      if (diff<86400)return Math.floor(diff/3600)+"시간 전";
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+
+    if (selPost) {
+      const post = posts.find(p=>p.id===selPost.id)||selPost;
+      return (
+        <div>
+          <button onClick={()=>setSelPost(null)}
+            style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#64748b",
+              background:"none",border:"none",cursor:"pointer",padding:"0 0 12px 0",fontWeight:600}}>
+            ← 목록으로
+          </button>
+          <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:"1px solid #f1f5f9"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,fontWeight:700,
+                  background:CAT_BG[post.category]||"#f8fafc",
+                  color:CAT_COLOR[post.category]||"#94a3b8"}}>{post.category||"기타"}</span>
+                {(post.author===user.name||canManage)&&(
+                  <button onClick={()=>{setPf({...post});setModal({id:post.id});}}
+                    style={{marginLeft:"auto",fontSize:11,padding:"2px 8px",borderRadius:6,
+                      border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",color:"#64748b"}}>수정</button>
+                )}
+              </div>
+              <div style={{fontSize:16,fontWeight:700,color:"#1e293b",marginBottom:8}}>{post.title}</div>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+                <Avatar name={post.author} size={20}/>
+                <span style={{fontSize:12,color:"#64748b"}}>{post.author}</span>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{fmtDate(post.createdAt)}</span>
+              </div>
+              <div style={{fontSize:13,color:"#334155",lineHeight:1.8,whiteSpace:"pre-wrap",
+                padding:"12px 14px",background:"#f8fafc",borderRadius:8}}>
+                {post.content}
+              </div>
+              <div style={{marginTop:10,display:"flex",gap:6}}>
+                <button onClick={()=>toggleLike(post.id)}
+                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 14px",
+                    borderRadius:99,border:`1px solid ${(post.likes||[]).includes(user.name)?"#fca5a5":"#e2e8f0"}`,
+                    background:(post.likes||[]).includes(user.name)?"#fff1f2":"#f8fafc",
+                    cursor:"pointer",fontSize:12,fontWeight:600,
+                    color:(post.likes||[]).includes(user.name)?"#ef4444":"#94a3b8"}}>
+                  ❤️ {(post.likes||[]).length}
+                </button>
+              </div>
+            </div>
+            {/* 댓글 */}
+            <div style={{padding:"14px 18px"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:10}}>
+                댓글 {(post.comments||[]).length}
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                {(post.comments||[]).map(c=>(
+                  <div key={c.id} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                    <Avatar name={c.author} size={22}/>
+                    <div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                        <span style={{fontSize:11,fontWeight:700,color:"#334155"}}>{c.author}</span>
+                        <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(c.createdAt)}</span>
+                        {(c.author===user.name||canManage)&&(
+                          <button onClick={()=>delComment(post.id,c.id)}
+                            style={{marginLeft:"auto",fontSize:9,color:"#94a3b8",
+                              background:"none",border:"none",cursor:"pointer"}}>✕</button>
+                        )}
+                      </div>
+                      <div style={{fontSize:12,color:"#475569",lineHeight:1.6}}>{c.text}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={commentInput} onChange={e=>setCommentInput(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addComment(post.id);}}}
+                  placeholder="댓글 입력... (Enter로 등록)"
+                  style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                    fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                <Btn primary sm onClick={()=>addComment(post.id)} disabled={!commentInput.trim()}>등록</Btn>
+              </div>
+            </div>
+          </div>
+          {modal&&(
+            <Modal title="글 수정" onClose={()=>setModal(null)}>
+              <Field label="카테고리">
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {CATEGORIES.map(c=>(
+                    <button key={c} type="button" onClick={()=>setPf(v=>({...v,category:c}))}
+                      style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                        fontWeight:pf.category===c?700:400,
+                        background:pf.category===c?(CAT_BG[c]||"#f8fafc"):"#f1f5f9",
+                        color:pf.category===c?(CAT_COLOR[c]||"#94a3b8"):"#475569",
+                        outline:pf.category===c?`2px solid ${CAT_COLOR[c]||"#94a3b8"}`:"none"}}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label="제목 *"><input style={inp} autoFocus value={pf.title||""} onChange={e=>setPf(v=>({...v,title:e.target.value}))}/></Field>
+              <Field label="내용"><textarea style={{...inp,minHeight:100,resize:"vertical",lineHeight:1.6}} value={pf.content||""} onChange={e=>setPf(v=>({...v,content:e.target.value}))}/></Field>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                {modal.id&&(pf.author===user.name||canManage)&&<Btn danger sm onClick={()=>del(modal.id)}>삭제</Btn>}
+                <div style={{flex:1}}/><Btn onClick={()=>setModal(null)}>취소</Btn>
+                <Btn primary onClick={save} disabled={!pf.title?.trim()}>저장</Btn>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          <Btn primary sm onClick={()=>{setPf({category:"잡담",title:"",content:""});setModal({});}}>
+            + 글쓰기
+          </Btn>
+        </div>
+        {sorted.length===0&&(
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13,
+            background:"#f8fafc",borderRadius:12,border:"1px dashed #e2e8f0"}}>
+            아직 게시물이 없어요. 첫 글을 남겨보세요 ✍️
+          </div>
+        )}
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {sorted.map(p=>(
+            <div key={p.id} onClick={()=>setSelPost(p)}
+              style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",
+                padding:"11px 14px",cursor:"pointer",display:"flex",gap:10,alignItems:"center"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+              <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,fontWeight:700,flexShrink:0,
+                background:CAT_BG[p.category]||"#f8fafc",
+                color:CAT_COLOR[p.category]||"#94a3b8"}}>{p.category||"기타"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#1e293b",
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:2,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.content}</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{p.author}</span>
+                {(p.comments||[]).length>0&&(
+                  <span style={{fontSize:10,color:"#64748b"}}>💬{p.comments.length}</span>
+                )}
+                {(p.likes||[]).length>0&&(
+                  <span style={{fontSize:10,color:"#ef4444"}}>❤️{p.likes.length}</span>
+                )}
+                <span style={{fontSize:10,color:"#94a3b8"}}>{fmtDate(p.createdAt)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {modal&&(
+          <Modal title="글쓰기" onClose={()=>setModal(null)}>
+            <Field label="카테고리">
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {CATEGORIES.map(c=>(
+                  <button key={c} type="button" onClick={()=>setPf(v=>({...v,category:c}))}
+                    style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",fontSize:11,
+                      fontWeight:pf.category===c?700:400,
+                      background:pf.category===c?(CAT_BG[c]||"#f8fafc"):"#f1f5f9",
+                      color:pf.category===c?(CAT_COLOR[c]||"#94a3b8"):"#475569",
+                      outline:pf.category===c?`2px solid ${CAT_COLOR[c]||"#94a3b8"}`:"none"}}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="제목 *"><input style={inp} autoFocus value={pf.title||""} onChange={e=>setPf(v=>({...v,title:e.target.value}))}/></Field>
+            <Field label="내용"><textarea style={{...inp,minHeight:100,resize:"vertical",lineHeight:1.6}} value={pf.content||""} placeholder="자유롭게 작성해주세요" onChange={e=>setPf(v=>({...v,content:e.target.value}))}/></Field>
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:4,gap:6}}>
+              <Btn onClick={()=>setModal(null)}>취소</Btn>
+              <Btn primary onClick={save} disabled={!pf.title?.trim()}>등록</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ── 탭 렌더 ──────────────────────────────────────────────
+  const overtimes   = officeData.overtimes   || [];
+  const accounting  = officeData.accounting  || [];
+  const board       = officeData.board       || [];
+
+  // 공지사항 읽음 목록 (로컬 — 세션 기준)
+  const [readNoticeIds, setReadNoticeIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("readNoticeIds_"+user?.id)||"[]"); } catch{ return []; }
+  });
+  const markNoticeRead = (id) => {
+    setReadNoticeIds(prev => {
+      const next = prev.includes(id) ? prev : [...prev, id];
+      try { localStorage.setItem("readNoticeIds_"+user?.id, JSON.stringify(next)); } catch{}
+      return next;
+    });
+  };
+  const markAllNoticesRead = () => {
+    const ids = notices.map(n=>n.id);
+    setReadNoticeIds(ids);
+    try { localStorage.setItem("readNoticeIds_"+user?.id, JSON.stringify(ids)); } catch{}
+  };
+
+  // 뱃지 계산
+  const unreadNotices   = notices.filter(n=>!readNoticeIds.includes(n.id)).length;
+  // 회계/비품: 내가 요청했거나 관리자면 미처리 건수
+  const pendingAcct     = accounting.filter(a=>a.status==="접수"||a.status==="검토중").length;
+  const pendingReq      = requests.filter(r=>r.status==="접수"||r.status==="검토중").length;
+  const todayOT         = overtimes.filter(o=>o.approval==="팀장결재대기"||o.approval==="대표결재대기").length;
+
+  const TABS = [
+    { id:"notice",     icon:"📢", label:"공지사항",   badge: unreadNotices },
+    { id:"rooms",      icon:"🚪", label:"회의실 예약" },
+    { id:"overtime",   icon:"🌙", label:"야근 공유",   badge: todayOT },
+    { id:"accounting", icon:"💳", label:"회계 요청",   badge: pendingAcct },
+    { id:"request",    icon:"📦", label:"비품 요청",   badge: pendingReq },
+    { id:"board",      icon:"💬", label:"자유게시판" },
+  ];
+
+  return (
+    <div>
+      {/* 탭 */}
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e2e8f0",paddingBottom:0,overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{padding:"8px 16px",borderRadius:"8px 8px 0 0",border:"none",cursor:"pointer",
+              fontSize:13,fontWeight:tab===t.id?700:500,
+              background:tab===t.id?"#fff":"transparent",
+              color:tab===t.id?"#1e293b":"#64748b",
+              borderBottom:tab===t.id?"2px solid #2563eb":"2px solid transparent",
+              marginBottom:-2,position:"relative",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:0}}>
+            {t.icon} {t.label}
+            {(t.badge||0)>0&&(
+              <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:99,
+                background:"#ef4444",color:"#fff",minWidth:14,textAlign:"center"}}>
+                {t.badge}
+              </span>
+            )}
+          </button>
         ))}
       </div>
+
+      {tab==="rooms"      && <RoomsSection/>}
+      {tab==="notice"     && <NoticeSection readIds={readNoticeIds} onRead={markNoticeRead} onReadAll={markAllNoticesRead}/>}
+      {tab==="overtime"   && <OvertimeSection/>}
+      {tab==="accounting" && <AccountingSection/>}
+      {tab==="request"    && <RequestSection/>}
+      {tab==="board"      && <BoardSection/>}
+    </div>
+  );
+}
+
+// ── 외주 유형 ──────────────────────────────────────────────
+// OUTSOURCE_TYPES — 상단에 정의됨
+const OUTSOURCE_STATUS = [
+  {id:"활성",   label:"활성",   color:"#16a34a", bg:"#f0fdf4"},
+  {id:"비활성", label:"비활성", color:"#94a3b8", bg:"#f8fafc"},
+  {id:"블랙리스트", label:"블랙리스트", color:"#ef4444", bg:"#fff1f2"},
+];
+
+function CRMPage({ projects }) {
+  const [crmTab,   setCrmTab]   = useState("client");   // "client" | "outsource"
+  const [search,   setSearch]   = useState("");
+  const [selProj,  setSelProj]  = useState(null);
+
+  // ── 외주 목록 (localStorage 로컬 저장) ──────────────────
+  const [vendors, setVendors] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("crm_vendors")||"[]"); } catch { return []; }
+  });
+  const [vModal,  setVModal]  = useState(null); // null | {} | {id}
+  const [vf,      setVf]      = useState({});
+
+  const saveVendors = (next) => {
+    setVendors(next);
+    try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
+  };
+  const openAddVendor = () => {
+    setVf({name:"",type:"",status:"활성",phone:"",email:"",contactName:"",note:"",rate:"",rateUnit:"건"});
+    setVModal({});
+  };
+  const openEditVendor = v => { setVf({...v}); setVModal({id:v.id}); };
+  const saveVendor = () => {
+    if(!vf.name?.trim()) return;
+    const entry = {...vf, id:vModal.id||"v"+Date.now()};
+    saveVendors(vModal.id ? vendors.map(v=>v.id===vModal.id?entry:v) : [...vendors, entry]);
+    setVModal(null);
+  };
+  const deleteVendor = (id) => saveVendors(vendors.filter(v=>v.id!==id));
+
+  // ── 고객사 집계 (프로젝트 기반) ─────────────────────────
+  const clients = {};
+  for (const p of projects) {
+    const key = p.client;
+    if(!key) continue;
+    if(!clients[key]) clients[key] = { name:p.client, agency:p.agency||"", projects:[], contacts:[] };
+    clients[key].projects.push(p);
+    if(p.contactName) {
+      const exists = clients[key].contacts.find(c=>c.name===p.contactName);
+      if(!exists) clients[key].contacts.push({ name:p.contactName, phone:p.contactPhone||"", email:p.contactEmail||"", agency:p.agency||"" });
+    }
+  }
+  const clientList = Object.values(clients).filter(c=>
+    !search || c.name.includes(search) || c.agency.includes(search) ||
+    c.contacts.some(ct=>ct.name.includes(search)||ct.phone.includes(search))
+  );
+  const vendorList = vendors.filter(v=>
+    !search || v.name.includes(search) || (v.type||"").includes(search) ||
+    (v.contactName||"").includes(search)
+  );
+
+  const TAB_STYLE = (id) => ({
+    padding:"8px 18px", borderRadius:"8px 8px 0 0", border:"none", cursor:"pointer",
+    fontSize:13, fontWeight:crmTab===id?700:500,
+    background:crmTab===id?"#fff":"transparent",
+    color:crmTab===id?"#1e293b":"#64748b",
+    borderBottom:crmTab===id?"2px solid #2563eb":"2px solid transparent",
+    marginBottom:-2,
+  });
+
+  return (
+    <div>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <h2 style={{fontSize:18,fontWeight:800,margin:0}}>👥 CRM</h2>
+        <input style={{...inp,width:220}} placeholder="🔍 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
+      </div>
+
+      {/* 탭 */}
+      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:20,overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+        <button style={{...TAB_STYLE("client"),whiteSpace:"nowrap",flexShrink:0}} onClick={()=>setCrmTab("client")}>
+          🏢 고객사 <span style={{fontSize:11,marginLeft:4,opacity:.7}}>{clientList.length}</span>
+        </button>
+        <button style={{...TAB_STYLE("outsource"),whiteSpace:"nowrap",flexShrink:0}} onClick={()=>setCrmTab("outsource")}>
+          🔧 외주 관리 <span style={{fontSize:11,marginLeft:4,opacity:.7}}>{vendors.length}</span>
+        </button>
+      </div>
+
+      {/* ── 고객사 탭 ─────────────────────────────────────── */}
+      {crmTab==="client" && (
+        <>
+          {clientList.length===0 && <div style={{textAlign:"center",padding:60,color:C.faint}}>
+            {search ? "검색 결과가 없습니다" : "프로젝트에 고객사를 입력하면 자동으로 표시됩니다"}
+          </div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+            {clientList.map(cl=>(
+              <div key={cl.name} onClick={()=>setSelProj(selProj===cl.name?null:cl.name)}
+                style={{background:C.white,border:`1px solid ${selProj===cl.name?C.blue:C.border}`,
+                  borderRadius:14,padding:"16px 18px",cursor:"pointer",transition:"all .15s",
+                  boxShadow:selProj===cl.name?"0 0 0 2px "+C.blue+"30":"none"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:15}}>{cl.name}</div>
+                    {cl.agency&&<div style={{fontSize:12,color:C.sub,marginTop:2}}>📌 {cl.agency}</div>}
+                  </div>
+                  <span style={{fontSize:11,padding:"2px 8px",background:C.blueLight,color:C.blue,borderRadius:99,fontWeight:600}}>{cl.projects.length}건</span>
+                </div>
+                {cl.contacts.length>0&&(
+                  <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>담당자</div>
+                    {cl.contacts.map((ct,i)=>(
+                      <div key={i} style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6,padding:"6px 8px",background:C.slateLight,borderRadius:8}}>
+                        <span style={{fontWeight:700,fontSize:12,width:"100%"}}>{ct.name}{ct.agency&&<span style={{fontWeight:400,color:C.faint}}> ({ct.agency})</span>}</span>
+                        {ct.phone&&<a href={`tel:${ct.phone}`} style={{fontSize:11,color:C.blue,textDecoration:"none"}}>📞 {ct.phone}</a>}
+                        {ct.email&&<a href={`mailto:${ct.email}`} style={{fontSize:11,color:C.blue,textDecoration:"none",marginLeft:8}}>✉️ {ct.email}</a>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selProj===cl.name&&(
+                  <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.sub,marginBottom:6}}>진행 프로젝트</div>
+                    {cl.projects.map(p=>(
+                      <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
+                        <div>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",marginRight:6}}/>
+                          <span style={{fontWeight:600}}>{p.name}</span>
+                        </div>
+                        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                          <span style={{fontSize:11,padding:"1px 6px",background:C.slateLight,borderRadius:99,color:C.sub}}>{p.stage}</span>
+                          {p.due&&<span style={{fontSize:11,color:C.faint}}>{p.due}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── 외주 관리 탭 ──────────────────────────────────── */}
+      {crmTab==="outsource" && (
+        <>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+            <Btn primary sm onClick={openAddVendor}>+ 외주 등록</Btn>
+          </div>
+
+          {vendorList.length===0 && (
+            <div style={{textAlign:"center",padding:60,color:C.faint}}>
+              {search ? "검색 결과가 없습니다" : "외주 업체/프리랜서를 등록해보세요"}
+            </div>
+          )}
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+            {vendorList.map(v=>{
+              const st = OUTSOURCE_STATUS.find(s=>s.id===v.status)||OUTSOURCE_STATUS[0];
+              return (
+                <div key={v.id} style={{background:"#fff",border:`1px solid ${v.status==="블랙리스트"?"#fca5a5":"#e2e8f0"}`,
+                  borderRadius:14,padding:"14px 16px",
+                  opacity:v.status==="비활성"?.6:1}}>
+                  {/* 헤더 */}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div>
+                      <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>{v.name}</div>
+                      {v.type&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:99,
+                        background:"#eff6ff",color:"#2563eb",fontWeight:600,marginTop:3,display:"inline-block"}}>
+                        {v.type}
+                      </span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,
+                        background:st.bg,color:st.color}}>{st.label}</span>
+                      <button onClick={()=>openEditVendor(v)}
+                        style={{border:"none",background:"none",cursor:"pointer",fontSize:13,padding:2}}>✏️</button>
+                    </div>
+                  </div>
+                  {/* 담당자 */}
+                  {v.contactName&&<div style={{fontSize:12,color:"#475569",marginBottom:4}}>
+                    👤 {v.contactName}
+                  </div>}
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:v.note?6:0}}>
+                    {v.phone&&<a href={`tel:${v.phone}`} style={{fontSize:11,color:"#2563eb",textDecoration:"none"}}>📞 {v.phone}</a>}
+                    {v.email&&<a href={`mailto:${v.email}`} style={{fontSize:11,color:"#2563eb",textDecoration:"none"}}>✉️ {v.email}</a>}
+                  </div>
+                  {/* 단가 */}
+                  {v.rate&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>
+                    💰 {Number(v.rate).toLocaleString()}원 / {v.rateUnit||"건"}
+                  </div>}
+                  {/* 메모 */}
+                  {v.note&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,padding:"6px 8px",
+                    background:"#f8fafc",borderRadius:6,whiteSpace:"pre-wrap"}}>{v.note}</div>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 외주 등록/수정 모달 */}
+          {vModal&&(
+            <Modal title={vModal.id?"외주 수정":"외주 등록"} onClose={()=>setVModal(null)}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <Field label="업체명 / 이름 *" style={{gridColumn:"1/-1"}}>
+                  <input style={inp} autoFocus value={vf.name||""} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="업체명 또는 프리랜서 이름"/>
+                </Field>
+                <Field label="유형">
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {OUTSOURCE_TYPES.map(t=>{
+                      const sel=vf.type===t;
+                      return (
+                        <button key={t} type="button" onClick={()=>setVf(v=>({...v,type:sel?"":t}))}
+                          style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:sel?700:400,
+                            background:sel?"#2563eb":"#f1f5f9",
+                            color:sel?"#fff":"#64748b"}}>
+                          {t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="상태">
+                  <div style={{display:"flex",gap:6}}>
+                    {OUTSOURCE_STATUS.map(s=>{
+                      const sel=vf.status===s.id;
+                      return (
+                        <button key={s.id} type="button" onClick={()=>setVf(v=>({...v,status:s.id}))}
+                          style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:sel?700:400,
+                            background:sel?s.bg:"#f8fafc",color:sel?s.color:"#94a3b8",
+                            outline:sel?`2px solid ${s.color}`:"none"}}>
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="담당자명">
+                  <input style={inp} value={vf.contactName||""} onChange={e=>setVf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동"/>
+                </Field>
+                <Field label="연락처">
+                  <input style={inp} value={vf.phone||""} onChange={e=>setVf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
+                </Field>
+                <Field label="이메일">
+                  <input style={inp} value={vf.email||""} onChange={e=>setVf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
+                </Field>
+                <Field label="기본 단가">
+                  <input style={inp} type="number" value={vf.rate||""} onChange={e=>setVf(v=>({...v,rate:e.target.value}))} placeholder="0"/>
+                </Field>
+                <Field label="단가 기준">
+                  <div style={{display:"flex",gap:6}}>
+                    {["건","일","시간","월"].map(u=>{
+                      const sel=vf.rateUnit===u;
+                      return (
+                        <button key={u} type="button" onClick={()=>setVf(v=>({...v,rateUnit:u}))}
+                          style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
+                            fontSize:11,fontWeight:sel?700:400,
+                            background:sel?"#2563eb":"#f1f5f9",color:sel?"#fff":"#64748b"}}>
+                          {u}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="메모" style={{gridColumn:"1/-1"}}>
+                  <textarea style={{...inp,minHeight:64,resize:"vertical"}} value={vf.note||""}
+                    onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 강점, 주의사항 등"/>
+                </Field>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                {vModal.id&&<Btn danger sm onClick={()=>{deleteVendor(vModal.id);setVModal(null);}}>삭제</Btn>}
+                <div style={{flex:1}}/>
+                <Btn onClick={()=>setVModal(null)}>취소</Btn>
+                <Btn primary onClick={saveVendor} disabled={!vf.name?.trim()}>저장</Btn>
+              </div>
+            </Modal>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -2958,7 +9592,7 @@ function CompanySettings({ company, onChange, accounts, onSaveMember, onDeleteMe
 
 
 // ═══════════════════════════════════════════════════════════
-// 재무 대시보드
+// 경영관리 대시보드
 // ═══════════════════════════════════════════════════════════
 function FinanceDash({ projects }) {
   const active  = projects.filter(p=>!p.settled);
@@ -2992,7 +9626,7 @@ function FinanceDash({ projects }) {
 
   return (
     <div style={{padding:"0 4px"}}>
-      <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>재무 대시보드</h2>
+      <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:800}}>경영관리 대시보드</h2>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
         {[
@@ -3134,6 +9768,561 @@ function FinanceDash({ projects }) {
 // ═══════════════════════════════════════════════════════════
 const AppContext = { Provider: ({children}) => children };
 
+function ProjectSelector({ projects, selId, setSelId, proj, setAddProjModal }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{position:"relative",flex:1,minWidth:0}}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{display:"flex",alignItems:"center",gap:8,padding:"5px 12px",
+          borderRadius:8,border:`1.5px solid ${open?C.blue:C.border}`,
+          background:open?"#eff6ff":C.white,cursor:"pointer",
+          width:"100%",maxWidth:320,transition:"all .15s",
+          boxShadow:open?"0 0 0 3px #2563eb18":"none"}}>
+        <span style={{width:8,height:8,borderRadius:"50%",background:proj?.color||C.blue,flexShrink:0}}/>
+        <span style={{fontSize:13,fontWeight:700,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,textAlign:"left"}}>
+          {proj?.name||"프로젝트 선택"}
+        </span>
+        {proj?.isBidding&&<span style={{fontSize:10,fontWeight:800,padding:"1px 6px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆 비딩</span>}
+        {proj?.status&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:99,background:proj.color+"22",color:proj.color,fontWeight:700,flexShrink:0}}>{proj.status}</span>}
+        <span style={{fontSize:10,color:C.faint,flexShrink:0,transition:"transform .2s",display:"inline-block",transform:open?"rotate(180deg)":"none"}}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:300,
+          background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
+          boxShadow:"0 8px 32px rgba(0,0,0,.12)",minWidth:260,maxWidth:360,overflow:"hidden"}}>
+          <div style={{padding:"8px 12px",fontSize:11,fontWeight:700,color:C.faint,background:C.bg,borderBottom:`1px solid ${C.border}`,letterSpacing:.5}}>
+            프로젝트 ({projects.length})
+          </div>
+          <div style={{maxHeight:320,overflowY:"auto"}}>
+            {projects.map(p => {
+              const sel = p.id === selId;
+              const tasks = p.tasks || [];
+              const done = tasks.filter(t => t.status === "done").length;
+              return (
+                <div key={p.id} onClick={() => { setSelId(p.id); setOpen(false); setBiddingView("tasks"); }}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                    cursor:"pointer",background:sel?"#eff6ff":C.white,
+                    borderBottom:`1px solid ${C.border}`}}
+                  onMouseEnter={e=>{if(!sel)e.currentTarget.style.background="#f8fafc"}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=sel?"#eff6ff":C.white}}>
+                  <span style={{width:10,height:10,borderRadius:"50%",background:p.color,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:sel?700:500,color:sel?C.blue:C.dark,overflow:"hidden",whiteSpace:"nowrap"}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</span>
+                      {p.isBidding&&<span style={{fontSize:10,fontWeight:800,padding:"1px 6px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆 비딩</span>}
+                    </div>
+                    <div style={{fontSize:10,color:C.faint,marginTop:1}}>
+                      {p.client&&`${p.client} · `}{tasks.length>0?`태스크 ${done}/${tasks.length}`:"태스크 없음"}{p.due&&` · 납품 ${p.due}`}
+                    </div>
+                  </div>
+                  {sel && <span style={{color:C.blue,fontSize:14,fontWeight:800}}>✓</span>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{padding:"8px 12px",borderTop:`1px solid ${C.border}`,background:C.bg}}>
+            <button onClick={() => { setAddProjModal(true); setOpen(false); }}
+              style={{width:"100%",padding:"7px",borderRadius:8,border:`1.5px dashed ${C.border}`,
+                background:"none",cursor:"pointer",fontSize:12,color:C.faint,fontWeight:600}}>
+              + 새 프로젝트
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function FigJamTab({ project, onChange }) {
+  const urls = project.figjaUrls || [];
+  const [input, setInput] = useState("");
+  const [active, setActive] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [editLabel, setEditLabel] = useState("");
+
+  const toEmbedUrl = (url) => {
+    // 피그마 공식 임베드: www.figma.com/embed?embed_host=XXX&url=ORIGINAL_URL
+    try {
+      new URL(url); // URL 유효성 검사
+      if (!url.includes("figma.com")) return null;
+      return "https://www.figma.com/embed?embed_host=cutflow-namucreative&url=" + encodeURIComponent(url);
+    } catch { return null; }
+  };
+
+  const addUrl = () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    const embed = toEmbedUrl(trimmed);
+    if (!embed) { alert("유효한 피그마잼 URL을 입력해주세요.\n예: https://www.figma.com/board/..."); return; }
+    const newItem = { id: Date.now().toString(), url: trimmed, embed, label: "FigJam " + (urls.length + 1) };
+    const updated = [...urls, newItem];
+    onChange(p => ({ ...p, figjaUrls: updated }));
+    setInput("");
+    setActive(updated.length - 1);
+  };
+
+  const removeUrl = (idx) => {
+    const updated = urls.filter((_, i) => i !== idx);
+    onChange(p => ({ ...p, figjaUrls: updated }));
+    setActive(Math.max(0, Math.min(active, updated.length - 1)));
+  };
+
+  const updateLabel = (idx, label) => {
+    const updated = urls.map((u, i) => i === idx ? { ...u, label } : u);
+    onChange(p => ({ ...p, figjaUrls: updated }));
+    setEditing(false);
+  };
+
+  const cur = urls[active];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:0,height:"calc(100vh - 180px)",minHeight:500}}>
+      {/* 상단 탭 + 추가 */}
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",flexWrap:"wrap",borderBottom:"1px solid #e2e8f0",marginBottom:0}}>
+        <div style={{display:"flex",gap:4,flex:1,flexWrap:"wrap"}}>
+          {urls.map((u, i) => (
+            <div key={u.id} style={{display:"flex",alignItems:"center",gap:0,
+              background:i===active?"#eff6ff":"#f8fafc",
+              border:`1.5px solid ${i===active?"#2563eb":"#e2e8f0"}`,
+              borderRadius:8,overflow:"hidden"}}>
+              {editing===i
+                ? <input autoFocus value={editLabel}
+                    onChange={e=>setEditLabel(e.target.value)}
+                    onBlur={()=>updateLabel(i, editLabel||u.label)}
+                    onKeyDown={e=>{ if(e.key==="Enter") updateLabel(i,editLabel||u.label); if(e.key==="Escape") setEditing(false); }}
+                    style={{border:"none",outline:"none",background:"transparent",fontSize:12,fontWeight:600,color:"#2563eb",width:90,padding:"5px 8px"}}/>
+                : <button onClick={()=>setActive(i)}
+                    onDoubleClick={()=>{setEditing(i);setEditLabel(u.label);}}
+                    style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 10px",
+                      fontSize:12,fontWeight:i===active?700:500,color:i===active?"#2563eb":"#64748b",
+                      whiteSpace:"nowrap"}}>
+                    🎨 {u.label}
+                  </button>
+              }
+              <button onClick={()=>removeUrl(i)}
+                style={{border:"none",background:"transparent",cursor:"pointer",
+                  padding:"5px 6px",color:"#94a3b8",fontSize:12,lineHeight:1}}>×</button>
+            </div>
+          ))}
+        </div>
+        {/* URL 추가 입력 */}
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <input
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addUrl()}
+            placeholder="피그마잼 URL 붙여넣기..."
+            style={{padding:"6px 10px",borderRadius:8,border:"1px solid #e2e8f0",
+              fontSize:12,width:240,outline:"none",color:"#1e293b"}}
+          />
+          <button onClick={addUrl}
+            style={{padding:"6px 14px",borderRadius:8,border:"none",
+              background:"#2563eb",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+            + 추가
+          </button>
+        </div>
+      </div>
+
+      {/* iframe 영역 */}
+      {urls.length === 0 ? (
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+          gap:16,color:"#94a3b8",background:"#f8fafc",borderRadius:12,border:"2px dashed #e2e8f0",marginTop:12}}>
+          <div style={{fontSize:48}}>🎨</div>
+          <div style={{fontSize:16,fontWeight:700,color:"#475569"}}>피그마잼 연동</div>
+          <div style={{fontSize:13,textAlign:"center",lineHeight:1.7,color:"#94a3b8"}}>
+            피그마잼 URL을 위에 입력하면<br/>바로 미리보기 · 편집이 가능합니다
+          </div>
+          <div style={{fontSize:11,color:"#cbd5e1",background:"#f1f5f9",padding:"8px 16px",borderRadius:8}}>
+            figma.com/board/... 또는 figma.com/file/... 형식
+          </div>
+        </div>
+      ) : cur ? (
+        <div style={{flex:1,position:"relative",marginTop:8,borderRadius:12,overflow:"hidden",
+          border:"1px solid #e2e8f0",boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+          <iframe
+            key={cur.id}
+            src={cur.embed}
+            style={{width:"100%",height:"100%",border:"none",display:"block"}}
+            allow="clipboard-read; clipboard-write"
+            allowFullScreen
+          />
+          {/* 원본 열기 버튼 */}
+          <a href={cur.url} target="_blank" rel="noopener noreferrer"
+            style={{position:"absolute",top:10,right:10,padding:"5px 12px",borderRadius:8,
+              background:"rgba(255,255,255,.92)",border:"1px solid #e2e8f0",
+              fontSize:11,fontWeight:700,color:"#2563eb",textDecoration:"none",
+              boxShadow:"0 2px 8px rgba(0,0,0,.08)",backdropFilter:"blur(4px)"}}>
+            ↗ 피그마에서 열기
+          </a>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+// ── 비딩 태스크 목록 컴포넌트 ─────────────────────────────
+const TASK_STATUS_COLORS = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#f59e0b"};
+
+function BiddingTaskList({ tasks, onAdd, onAddSub, onOpen, onDelete, onUpdate, accounts }) {
+  const roots = tasks.filter(t => !t.parentId);
+  const kids  = pid => tasks.filter(t => t.parentId === pid);
+  const today = todayStr();
+
+  const STATUS_OPTS = ["대기","진행중","완료","보류"];
+  const STATUS_COLOR = {"대기":"#94a3b8","진행중":"#2563eb","완료":"#16a34a","보류":"#f59e0b"};
+  const STATUS_BG    = {"대기":"#f8fafc","진행중":"#eff6ff","완료":"#f0fdf4","보류":"#fffbeb"};
+
+  const TaskRow = ({ t, isChild }) => {
+    const sc  = STATUS_COLOR[t.status||"대기"];
+    const sbg = STATUS_BG[t.status||"대기"];
+    const overdue = t.due && t.due < today && t.status !== "완료";
+    const childCount = kids(t.id).length;
+
+    return (
+      <div style={{marginLeft: isChild ? 20 : 0, marginBottom: isChild ? 2 : 4}}>
+        <div style={{
+          display:"grid",
+          gridTemplateColumns: isChild
+            ? "14px 14px 1fr 100px 110px 80px 26px 26px"
+            : "14px 1fr 100px 110px 80px 52px 26px",
+          alignItems:"center", gap:6,
+          padding:"7px 10px",
+          borderRadius:8,
+          border:`1px solid ${isChild?"#f1f5f9":"#e2e8f0"}`,
+          borderLeft:`3px solid ${isChild?"#bfdbfe":sc}`,
+          background: t.status==="완료" ? "#f8fafc" : (isChild?"#fafcff":"#fff"),
+          opacity: t.status==="완료" ? .7 : 1,
+        }}>
+          {/* 인덴트 화살표 (하위만) */}
+          {isChild && <span style={{color:"#bfdbfe",fontSize:10,textAlign:"center"}}>└</span>}
+
+          {/* 상태 도트 */}
+          <div style={{width:12,height:12,borderRadius:"50%",flexShrink:0,
+            background:sbg,border:`2px solid ${sc}`,
+            display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+            onClick={()=>{
+              const next=STATUS_OPTS[(STATUS_OPTS.indexOf(t.status||"대기")+1)%STATUS_OPTS.length];
+              onUpdate({...t,status:next});
+            }}
+            title="클릭하여 상태 변경">
+            {t.status==="완료"&&<span style={{fontSize:7,color:"#16a34a",lineHeight:1}}>✓</span>}
+          </div>
+
+          {/* 태스크명 (클릭 → 상세 패널) */}
+          <div onClick={()=>onOpen(t)} style={{cursor:"pointer",minWidth:0}}>
+            <div style={{fontSize: isChild?12:13,
+              fontWeight: isChild?400:600,
+              color: t.status==="완료"?"#94a3b8":"#1e293b",
+              textDecoration: t.status==="완료"?"line-through":"none",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {t.title}
+            </div>
+            {childCount>0&&!isChild&&(
+              <span style={{fontSize:9,color:"#64748b"}}>하위 {childCount}개</span>
+            )}
+          </div>
+
+          {/* 담당자 */}
+          <div style={{display:"flex",gap:2,flexWrap:"wrap",minWidth:0}}>
+            {(t.assignees||[]).length>0
+              ? (t.assignees||[]).slice(0,2).map(n=>(
+                  <span key={n} style={{fontSize:10,background:"#eff6ff",color:"#2563eb",
+                    padding:"1px 5px",borderRadius:99,fontWeight:600,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:72}}>
+                    {n}
+                  </span>
+                ))
+              : <span style={{fontSize:10,color:"#cbd5e1",cursor:"pointer"}}
+                  onClick={e=>{e.stopPropagation();onOpen(t);}}>담당자</span>
+            }
+          </div>
+
+          {/* 상태 셀렉트 */}
+          <select value={t.status||"대기"}
+            onClick={e=>e.stopPropagation()}
+            onChange={e=>onUpdate({...t,status:e.target.value})}
+            style={{fontSize:10,padding:"2px 4px",borderRadius:6,
+              border:`1px solid ${sc}40`,
+              background:sbg,color:sc,fontWeight:700,cursor:"pointer",
+              outline:"none",width:"100%"}}>
+            {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
+          </select>
+
+          {/* 마감일 — 텍스트 표시 + 숨겨진 date input */}
+          <div style={{position:"relative",width:"100%"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:10,padding:"2px 6px",borderRadius:6,
+              border:`1px solid ${overdue?"#fca5a5":"#e2e8f0"}`,
+              color:overdue?"#ef4444":t.due?"#475569":"#cbd5e1",
+              fontWeight:overdue?700:400,
+              background:overdue?"#fff1f2":"#fff",
+              whiteSpace:"nowrap",overflow:"hidden",
+              cursor:"pointer",height:22,lineHeight:"18px",
+              userSelect:"none"}}>
+              {t.due
+                ? (()=>{
+                    const d=t.due.replace("T"," ");
+                    const date=d.slice(5,10).replace("-","/");
+                    const time=d.slice(11,16);
+                    return time ? `${date} ${time}` : date;
+                  })()
+                : "날짜·시간"}
+            </div>
+            <input type="datetime-local"
+              key={t.id+"-due-"+(t.due||"")}
+              defaultValue={t.due||""}
+              onChange={e=>{e.stopPropagation();if(e.target.value)onUpdate({...t,due:e.target.value});}}
+              onBlur={e=>{e.stopPropagation();if(e.target.value!==t.due)onUpdate({...t,due:e.target.value||null});}}
+              style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",
+                opacity:0,cursor:"pointer",border:"none",background:"none"}}/>
+          </div>
+
+          {/* 하위 추가 버튼 (상위만) */}
+          {!isChild&&(
+            <button type="button"
+              onClick={e=>{e.stopPropagation();onAddSub(t.id);}}
+              title="하위 태스크 추가"
+              style={{width:24,height:24,borderRadius:6,border:"1px dashed #bfdbfe",
+                background:"#f8faff",color:"#93c5fd",fontSize:13,fontWeight:700,
+                cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                flexShrink:0}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.color="#2563eb";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="#bfdbfe";e.currentTarget.style.color="#93c5fd";}}>
+              ↳
+            </button>
+          )}
+          {isChild&&<span/>}
+
+          {/* 삭제 버튼 */}
+          <button type="button"
+            onClick={e=>{e.stopPropagation();if(window.confirm("삭제하시겠습니까?"))onDelete(t.id);}}
+            style={{width:24,height:24,borderRadius:6,border:"1px solid #fca5a5",
+              background:"#fff1f2",color:"#ef4444",fontSize:14,fontWeight:700,
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+              flexShrink:0}}>
+            −
+          </button>
+        </div>
+
+        {/* 하위 태스크 목록 */}
+        {!isChild && kids(t.id).map(child=>(
+          <TaskRow key={child.id} t={child} isChild={true}/>
+        ))}
+        {/* 하위 추가 인라인 힌트 */}
+        {!isChild && childCount===0 && (
+          <div
+            onClick={e=>{e.stopPropagation();onAddSub(t.id);}}
+            style={{marginLeft:20,marginBottom:2,padding:"4px 10px",
+              fontSize:11,color:"#bfdbfe",cursor:"pointer",borderRadius:6,
+              border:"1px dashed transparent"}}
+            onMouseEnter={e=>{e.currentTarget.style.border="1px dashed #bfdbfe";e.currentTarget.style.color="#2563eb";}}
+            onMouseLeave={e=>{e.currentTarget.style.border="1px dashed transparent";e.currentTarget.style.color="#bfdbfe";}}>
+            + 하위 태스크 추가
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const totalDone = tasks.filter(t=>t.status==="완료").length;
+  const pct = tasks.length ? Math.round(totalDone/tasks.length*100) : 0;
+
+  return (
+    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,
+      padding:"16px 18px",marginTop:14}}>
+      {/* 헤더 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>📋 태스크</span>
+          {tasks.length>0&&(
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:80,height:5,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:pct+"%",background:"#16a34a",borderRadius:99,transition:"width .3s"}}/>
+              </div>
+              <span style={{fontSize:10,color:"#64748b"}}>{totalDone}/{tasks.length}</span>
+            </div>
+          )}
+        </div>
+        <Btn primary sm onClick={()=>onAdd(null)}>+ 상위 태스크</Btn>
+      </div>
+      {/* 컬럼 헤더 */}
+      {roots.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"14px 1fr 100px 110px 80px 52px 26px",
+          padding:"3px 10px",fontSize:10,fontWeight:700,color:"#94a3b8",gap:6,marginBottom:2}}>
+          <span/><span>태스크</span><span>담당자</span><span>상태</span><span>마감일</span><span style={{textAlign:"center"}}>하위</span><span/>
+        </div>
+      )}
+      {/* 태스크 행 */}
+      {roots.length===0
+        ? <div style={{textAlign:"center",padding:"24px 0",color:"#94a3b8",fontSize:12}}>
+            + 상위 태스크 버튼으로 추가하세요
+          </div>
+        : roots.map(t=><TaskRow key={t.id} t={t} isChild={false}/>)
+      }
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 고객 요청 탭 (태스크 요청 + 공지사항 + 팩트북)
+// ═══════════════════════════════════════════════════════════
+function ClientRequestTab({ project, patchProj, user, accounts, setNotifications }) {
+  const [subTab, setSubTab] = useState("task-request");
+
+  const SUB = [
+    { id:"task-request",  icon:"📋", label:"태스크 요청"  },
+    { id:"notice",        icon:"📢", label:"공지사항"     },
+    { id:"factbook",      icon:"🎨", label:"팩트북 / RFP" },
+  ];
+
+  const TAB_BTN = (t) => ({
+    padding:"7px 16px", border:"none", cursor:"pointer",
+    fontSize:12, fontWeight:subTab===t.id?700:500,
+    background:subTab===t.id?"#fff":"transparent",
+    color:subTab===t.id?"#1e293b":"#64748b",
+    borderBottom:subTab===t.id?"2px solid #2563eb":"2px solid transparent",
+    marginBottom:-1,
+  });
+
+  // ── 공지사항 (클라이언트 → 내부) ────────────────────────
+  const notices = project.clientNotices || [];
+  const [nModal, setNModal] = useState(false);
+  const [nf,     setNf]     = useState({});
+  const [nConf,  setNConf]  = useState(null);
+
+  const saveNotice = () => {
+    if (!nf.title?.trim()) return;
+    const entry = { ...nf, id: nf.id||"n"+Date.now(), createdAt: nf.createdAt||new Date().toISOString().slice(0,10) };
+    const list = nf.id ? notices.map(n=>n.id===entry.id?entry:n) : [entry, ...notices];
+    patchProj(p=>({...p, clientNotices: list}));
+    setNModal(false);
+  };
+  const deleteNotice = (id) => {
+    patchProj(p=>({...p, clientNotices: notices.filter(n=>n.id!==id)}));
+    setNConf(null);
+  };
+  const openAddNotice = () => { setNf({title:"",content:"",date:new Date().toISOString().slice(0,10),important:false}); setNModal(true); };
+  const openEditNotice = (n) => { setNf({...n}); setNModal(true); };
+
+  return (
+    <div>
+      {/* 서브 탭 바 */}
+      <div style={{display:"flex",borderBottom:"2px solid #e2e8f0",marginBottom:16,overflowX:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+        {SUB.map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)} style={{...TAB_BTN(t),whiteSpace:"nowrap",flexShrink:0}}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 태스크 요청 ── */}
+      {subTab==="task-request"&&(
+        <TaskRequestTab
+          project={project} patchProj={patchProj}
+          user={user} accounts={accounts}
+          setNotifications={setNotifications}
+        />
+      )}
+
+      {/* ── 공지사항 ── */}
+      {subTab==="notice"&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+            <Btn primary sm onClick={openAddNotice}>+ 공지 추가</Btn>
+          </div>
+
+          {notices.length===0&&(
+            <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>
+              클라이언트로부터 받은 공지사항을 등록하세요
+            </div>
+          )}
+
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {notices.map(n=>(
+              <div key={n.id} style={{background:"#fff",border:`1px solid ${n.important?"#fde68a":"#e2e8f0"}`,
+                borderLeft:`4px solid ${n.important?"#f59e0b":"#94a3b8"}`,
+                borderRadius:10,padding:"14px 16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      {n.important&&<span style={{fontSize:10,fontWeight:800,padding:"1px 6px",
+                        borderRadius:99,background:"#fef3c7",color:"#d97706"}}>⚠️ 중요</span>}
+                      <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{n.title}</span>
+                    </div>
+                    {n.content&&<div style={{fontSize:13,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{n.content}</div>}
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>{n.date}</div>
+                  </div>
+                  <div style={{display:"flex",gap:4,flexShrink:0}}>
+                    <button onClick={()=>openEditNotice(n)}
+                      style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>✏️</button>
+                    <button onClick={()=>setNConf(n)}
+                      style={{border:"none",background:"none",cursor:"pointer",fontSize:13}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 공지 추가/수정 모달 */}
+          {nModal&&(
+            <Modal title={nf.id?"공지 수정":"공지 추가"} onClose={()=>setNModal(false)}>
+              <Field label="제목 *">
+                <input style={inp} autoFocus value={nf.title||""}
+                  onChange={e=>setNf(v=>({...v,title:e.target.value}))} placeholder="공지 제목"/>
+              </Field>
+              <Field label="내용">
+                <textarea style={{...inp,minHeight:100,resize:"vertical"}}
+                  value={nf.content||""} onChange={e=>setNf(v=>({...v,content:e.target.value}))}
+                  placeholder="공지 내용"/>
+              </Field>
+              <div style={{display:"flex",gap:12,alignItems:"center",marginTop:4}}>
+                <Field label="날짜" style={{flex:1}}>
+                  <input style={inp} type="date" value={nf.date||""}
+                    onChange={e=>setNf(v=>({...v,date:e.target.value}))}/>
+                </Field>
+                <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:13,marginTop:16}}>
+                  <input type="checkbox" checked={!!nf.important}
+                    onChange={e=>setNf(v=>({...v,important:e.target.checked}))}
+                    style={{accentColor:"#f59e0b",width:16,height:16}}/>
+                  <span style={{fontWeight:600,color:"#d97706"}}>⚠️ 중요</span>
+                </label>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
+                <Btn onClick={()=>setNModal(false)}>취소</Btn>
+                <Btn primary onClick={saveNotice} disabled={!nf.title?.trim()}>저장</Btn>
+              </div>
+            </Modal>
+          )}
+          {nConf&&(
+            <Modal title="공지 삭제" onClose={()=>setNConf(null)}>
+              <div style={{fontSize:14,marginBottom:20}}><b>{nConf.title}</b>을 삭제하시겠습니까?</div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <Btn onClick={()=>setNConf(null)}>취소</Btn>
+                <Btn danger onClick={()=>deleteNotice(nConf.id)}>삭제</Btn>
+              </div>
+            </Modal>
+          )}
+        </div>
+      )}
+
+      {/* ── 팩트북 / RFP (구 FigJam) ── */}
+      {subTab==="factbook"&&(
+        <FigJamTab project={project} onChange={patchProj}/>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [user,         setUser]         = useState(null);
   const [projects,     setProjects]     = useState(SEED_PROJECTS);
@@ -3147,23 +10336,52 @@ function App() {
     catch(e) { return FORMATS_DEFAULT; }
   });
   const [accounts,     setAccounts]     = useState(SEED_ACCOUNTS);
+  const [officeData,   setOfficeData]   = useState({ rooms:[], bookings:[], notices:[], requests:[] });
   const [mainTab,      setMainTab]      = useState("tasks");
+  const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [addProjModal,  setAddProjModal]  = useState(false);
   const [editProjModal, setEditProjModal] = useState(false);
   const [pf,            setPf]            = useState({name:"",client:"",format:formats?.[0]||"TVC",due:"",startDate:"",director:"",pd:"",color:P_COLORS[0],quoteFmt:"A"});
 
-  useEffect(() => {
-    if (!isConfigured) return;
-    const u1 = subscribeProjects(fb => { if(fb.length>0){setProjects(fb);setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);} });
-    const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
-    const u3 = subscribeMembers(m => { if(m.length>0) setAccounts(m); });
-    return () => { u1(); u2(); u3(); };
-  }, []);
-  const [docTab,       setDocTab]       = useState("quote");   // quote | budget | settlement
-  const [viewMode,     setViewMode]     = useState("list");    // list | kanban
-  const [taskModal,    setTaskModal]    = useState(null);
+  const [docTab,       setDocTab]       = useState("tasks");
+  const [budgetSubTab, setBudgetSubTab] = useState("quote");
+  const [viewMode,     setViewMode]     = useState("phase");
+  const [biddingView,  setBiddingView]  = useState("tasks");  // tasks|flow|calendar
+  const [taskModal,    setTaskModal]    = useState(null);  // 수정 모달
+  const [taskPanel,    setTaskPanel]    = useState(null);  // 상세 패널
   const [tf,           setTf]           = useState({});
 
+  // 1) members 구독 (비인증 허용) + 인증 상태 복구
+  useEffect(() => {
+    if (!isConfigured) return;
+    const u3 = subscribeMembers(m => {
+      if(m.length>0) setAccounts(m);
+    });
+    const uAuth = onAuthChange(gUser => {
+      if (!gUser) return;
+      setAccounts(prev => {
+        const acc = prev.find(a => a.email && a.email.toLowerCase() === gUser.email.toLowerCase());
+        if (acc) setUser(u => u ? u : {...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
+        return prev;
+      });
+    });
+    return () => { u3(); uAuth(); };
+  }, []);
+
+  // 2) 로그인 후 데이터 구독 — !!user로 안정화 (true/false만 비교)
+  const isLoggedIn = !!user;
+  useEffect(() => {
+    if (!isConfigured || !isLoggedIn) return;
+    console.log("[CutFlow] 🔵 Firestore 구독 시작");
+    const u1 = subscribeProjects(fb => {
+      console.log("[CutFlow] 📦 프로젝트 수신:", fb.length, "개");
+      setProjects(fb);
+      setSelId(p => fb.find(x => x.id === p) ? p : fb[0]?.id || "");
+    });
+    const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
+    const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
+    return () => { console.log("[CutFlow] 🔴 Firestore 구독 해제"); u1(); u2(); u4(); };
+  }, [isLoggedIn]);
   // D-day 알림 자동 생성
   useEffect(() => {
     const today = new Date(); today.setHours(0,0,0,0);
@@ -3189,7 +10407,7 @@ function App() {
       });
       // 태스크 마감
       (proj.tasks||[]).forEach(task => {
-        if(!task.due || task.stage==="납품완료") return;
+        if(!task.due || task.stage==="ONAIR") return;
         const due = new Date(task.due); due.setHours(0,0,0,0);
         const diff = Math.round((due-today)/(1000*60*60*24));
         if(diff<=1 && diff>=-1) {
@@ -3213,10 +10431,12 @@ function App() {
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
 
-  // 재무 문서 접근 권한: canViewFinance 있거나, 프로젝트 허용 멤버에 포함되거나, 허용 멤버 미지정시 전체 허용
-  const canAccessFinance = user.canViewFinance ||
-    !proj?.allowedFinanceMembers?.length ||
-    (proj?.allowedFinanceMembers||[]).includes(String(user.id));
+  // 경영관리 탭: 대표/경영지원만 접근 가능
+  const canAccessFinance = ["대표", "경영지원"].includes(user.role);
+  // 프로젝트 견적서/예산서/결산서: 프로젝트별 허용 멤버 체크
+  const financeAllowed = (proj?.allowedFinanceMembers||[]);
+  const canAccessProjFinance = ["대표", "경영지원"].includes(user.role) ||
+    financeAllowed.includes(String(user.id));
 
   const patchProj = fn => setProjects(ps=>{
     const updated=ps.map(p=>p.id===selId?fn(p):p);
@@ -3234,9 +10454,20 @@ function App() {
   const createProject = () => {
     if (!pf.name.trim()||!pf.client.trim()) return;
     const id = "p"+Date.now();
+    const isBidding = !!pf.isBidding;
+    const projMembers = accounts.filter(a=>
+      [pf.pd, pf.director, pf.epd, pf.assistant].includes(a.name)
+    );
+    const initTasks = isBidding
+      ? []
+      : (pf.useTemplate!==false ? generateTasksFromTemplate(id, projMembers) : []);
     const np = {
-      id, ...pf, stage:"브리프", createdAt:todayStr(),
-      tasks:[],
+      id, ...pf,
+      isBidding,
+      biddingStatus: isBidding ? "진행중" : null,  // 진행중/수주/불발
+      stage: isBidding ? "BIDDING" : "PLANNING",
+      createdAt: todayStr(),
+      tasks: initTasks,
       quote:{vat:true,agencyFeeRate:10,items:pf.quoteFmt==="B"?makeTemplateB():makeTemplate()},
       budget:{vouchers:[]},
       settlementDate:null, settled:false,
@@ -3245,7 +10476,7 @@ function App() {
     setSelId(id);
     setAddProjModal(false);
     if(isConfigured) saveProject(np).catch(console.error);
-    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",color:P_COLORS[0],useTemplate:true,isBidding:false});
   };
 
   const openEditProj = () => {
@@ -3259,7 +10490,7 @@ function App() {
     if(!pf.name.trim()||!pf.client.trim()) return;
     patchProj(p=>({...p,...pf}));
     setEditProjModal(false);
-    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",director:"",pd:"",color:P_COLORS[0]});
+    setPf({name:"",client:"",format:formats?.[0]||"TVC",due:"",color:P_COLORS[0],useTemplate:true});
   };
 
   const deleteProjectById = (id) => {
@@ -3271,15 +10502,21 @@ function App() {
 
   const saveTask = (tf) => {
     if (!tf.title?.trim()) return;
-    const tasks = tf.id
-      ? proj.tasks.map(t=>t.id===tf.id?tf:t)
-      : [...proj.tasks, {...tf,id:"t"+Date.now()}];
-    updateTasks(tasks);
+    patchProj(p => {
+      const cur = p.tasks || [];
+      const tasks = tf.id
+        ? cur.map(t => t.id===tf.id ? tf : t)
+        : [...cur, {...tf, id:"t"+Date.now(), createdBy:user.name, createdAt:new Date().toISOString()}];
+      return {...p, tasks};
+    });
     setTaskModal(null);
   };
-  const deleteTask = (id) => { updateTasks(proj.tasks.filter(t=>t.id!==id)); setTaskModal(null); };
+  const deleteTask = (id) => {
+    patchProj(p => ({...p, tasks:(p.tasks||[]).filter(t=>t.id!==id)}));
+    setTaskModal(null);
+  };
 
-  const filteredTasks = proj.tasks.filter(t=>{
+  const filteredTasks = (proj.tasks||[]).filter(t=>{
     if (tf.q&&!t.title.toLowerCase().includes(tf.q.toLowerCase())) return false;
     if (tf.type&&t.type!==tf.type) return false;
     if (tf.assignee&&t.assignee!==tf.assignee) return false;
@@ -3292,99 +10529,169 @@ function App() {
 return (
     <AppContext.Provider value={{setProjects}}>
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
-      {/* 헤더 */}
-      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:56,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
-        <div style={{fontWeight:800,fontSize:18,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8}}>
-          {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:28,maxWidth:100,objectFit:"contain"}}/>:"🎬"}
+      {/* 헤더 - 슬림 */}
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 16px 0 8px",display:"flex",alignItems:"center",gap:12,height:48,position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
+        {/* 사이드바 토글 */}
+        <button onClick={()=>setSidebarOpen(v=>!v)}
+          style={{padding:"6px 8px",borderRadius:6,border:"none",background:"transparent",cursor:"pointer",fontSize:18,color:C.sub,lineHeight:1,flexShrink:0}}>
+          {sidebarOpen?"◀":"☰"}
+        </button>
+        <div style={{fontWeight:800,fontSize:17,color:C.blue,letterSpacing:-0.5,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {company.logoUrl?<img src={company.logoUrl} alt="logo" style={{height:26,maxWidth:90,objectFit:"contain"}}/>:"🎬"}
           {company.name||"CutFlow"}
         </div>
-        {/* 프로젝트 선택 */}
-        <div style={{display:"flex",gap:6,flex:1,overflowX:"auto"}}>
-          {projects.map(p=>(
-            <button key={p.id} onClick={()=>setSelId(p.id)} style={{padding:"5px 12px",borderRadius:8,border:`2px solid ${selId===p.id?p.color:C.border}`,background:selId===p.id?p.color+"18":C.white,cursor:"pointer",fontSize:12,fontWeight:selId===p.id?700:500,color:selId===p.id?p.color:C.sub,whiteSpace:"nowrap",transition:"all .15s"}}>
-              {p.name}
-            </button>
-          ))}
-          <button onClick={()=>setAddProjModal(true)} style={{padding:"5px 12px",borderRadius:8,border:`2px dashed ${C.border}`,background:"none",cursor:"pointer",fontSize:12,color:C.faint,whiteSpace:"nowrap"}}>
-            + 새 프로젝트
+        <div style={{flex:1}}/>
+        {/* 설정 버튼 */}
+        {user.canManageMembers&&(
+          <button onClick={()=>setMainTab("settings")}
+            style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${mainTab==="settings"?C.blue:C.border}`,
+              background:mainTab==="settings"?C.blueLight:C.white,cursor:"pointer",fontSize:12,fontWeight:mainTab==="settings"?700:500,
+              color:mainTab==="settings"?C.blue:C.sub,whiteSpace:"nowrap",flexShrink:0}}>
+            ⚙️ 설정
           </button>
-        </div>
-        <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정" style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",fontSize:13,color:C.sub,whiteSpace:"nowrap",flexShrink:0,marginLeft:4}}>
-          ✏️
-        </button>
-        {/* 메인탭 */}
-        <div style={{display:"flex",gap:2,background:C.slateLight,borderRadius:8,padding:3}}>
-          {[{id:"tasks",icon:"📋",label:"프로젝트"},{id:"finance",icon:"💰",label:"재무",locked:!canAccessFinance},{id:"daily-todo",icon:"✅",label:"데일리 TODO"},{id:"master-calendar",icon:"🗓",label:"종합캘린더"},{id:"crm",icon:"👥",label:"CRM"},{id:"settings",icon:"⚙️",label:"설정",locked:!user.canManageMembers}].map(t=>(
-            <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)} style={{padding:"5px 14px",borderRadius:6,border:"none",background:mainTab===t.id?C.white:"transparent",cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:mainTab===t.id?700:500,color:mainTab===t.id?C.text:t.locked?C.faint:C.sub,boxShadow:mainTab===t.id?"0 1px 4px rgba(0,0,0,.08)":"none",transition:"all .15s"}}>
-              {t.icon} {t.label}{t.locked?" 🔒":""}
-            </button>
-          ))}
-        </div>
+        )}
         {/* 알림 벨 */}
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setShowNotif(v=>!v)}
-            style={{position:"relative",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.border}`,
-              background:showNotif?"#eff6ff":"#fff",cursor:"pointer",fontSize:18,lineHeight:1}}>
-            🔔
-            {(()=>{
-              const myNotifs = notifications.filter(n=>
-                n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)
-              );
-              const hasUrgent = myNotifs.some(n=>n.urgent||n.type==="mention");
-              return myNotifs.length>0&&(
-                <span style={{position:"absolute",top:-4,right:-4,minWidth:17,height:17,
-                  borderRadius:99,background:hasUrgent?"#ef4444":"#f59e0b",
-                  color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",
-                  justifyContent:"center",padding:"0 3px",border:"2px solid #fff"}}>
-                  {myNotifs.length}
-                </span>
-              );
-            })()}
-          </button>
-          {showNotif&&(
-            <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,
-              background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,
-              boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:200,overflow:"hidden"}}>
-              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
-                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontWeight:700,fontSize:14}}>알림</span>
-                <span style={{fontSize:12,color:C.faint}}>{notifications.filter(n=>n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)).length}건</span>
-              </div>
-              {notifications.length===0
-                ? <div style={{padding:"24px",textAlign:"center",color:C.faint,fontSize:13}}>새 알림이 없습니다</div>
-                : <div style={{maxHeight:360,overflowY:"auto"}}>
-                    {notifications.filter(n=>n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)).map(n=>(
-                      <div key={n.id} onClick={()=>{setShowNotif(false);setMainTab("tasks");}}
-                        style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
-                          cursor:"pointer",
-                          background:n.type==="mention"?"#eff6ff":n.type==="assign"?"#f0fdf4":n.urgent?"#fff5f5":"#fff",
-                          transition:"background .1s"}}
-                        onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                        onMouseLeave={e=>e.currentTarget.style.background=n.type==="mention"?"#eff6ff":n.type==="assign"?"#f0fdf4":n.urgent?"#fff5f5":"#fff"}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                          <span style={{fontSize:13}}>
-                            {n.type==="mention"?"💬":n.type==="assign"?"👤":n.urgent?"🔴":"🟡"}
-                          </span>
-                          <span style={{fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:99,
-                            color:n.type==="mention"?"#2563eb":n.type==="assign"?"#16a34a":n.urgent?"#ef4444":"#f59e0b",
-                            background:n.type==="mention"?"#dbeafe":n.type==="assign"?"#dcfce7":n.urgent?"#fef2f2":"#fffbeb"}}>
-                            {n.label}
-                          </span>
-                          {n.from&&<span style={{fontSize:11,color:C.faint}}>{n.from} →</span>}
-                        </div>
-                        <div style={{fontSize:12,fontWeight:600,color:C.dark,marginBottom:2}}>{n.fbTitle}</div>
-                        {n.commentText&&<div style={{fontSize:11,color:C.sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{n.commentText}</div>}
-                        <div style={{fontSize:11,color:C.faint}}>{n.projName}</div>
-                      </div>
-                    ))}
+        {(()=>{
+          const myNotifs = notifications.filter(n=>
+            !n.read && (n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)||
+            n.type==="assign"||n.type==="done"||n.type==="confirm_req"||
+            n.type==="approved"||n.type==="rejected")
+          );
+          const allVisible = notifications.filter(n=>
+            n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)||
+            n.type==="assign"||n.type==="done"||n.type==="confirm_req"||
+            n.type==="approved"||n.type==="rejected"
+          );
+          const hasUrgent = myNotifs.some(n=>n.urgent||n.type==="mention");
+          const markRead = (id) => setNotifications(prev=>prev.map(n=>n.id===id?{...n,read:true}:n));
+          const markAllRead = () => setNotifications(prev=>prev.map(n=>({...n,read:true})));
+          const removeNotif = (e, id) => { e.stopPropagation(); setNotifications(prev=>prev.filter(n=>n.id!==id)); };
+
+          return (
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setShowNotif(v=>!v)}
+                style={{position:"relative",padding:"6px 10px",borderRadius:8,
+                  border:`1px solid ${C.border}`,
+                  background:showNotif?"#eff6ff":"#fff",cursor:"pointer",fontSize:18,lineHeight:1}}>
+                🔔
+                {myNotifs.length>0&&(
+                  <span style={{position:"absolute",top:-4,right:-4,minWidth:17,height:17,
+                    borderRadius:99,background:hasUrgent?"#ef4444":"#f59e0b",
+                    color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",
+                    justifyContent:"center",padding:"0 3px",border:"2px solid #fff"}}>
+                    {myNotifs.length}
+                  </span>
+                )}
+              </button>
+              {showNotif&&(
+                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:340,
+                  background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,
+                  boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:200,overflow:"hidden"}}>
+                  {/* 헤더 */}
+                  <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontWeight:700,fontSize:14}}>알림</span>
+                      {myNotifs.length>0&&(
+                        <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:99,
+                          background:"#fee2e2",color:"#ef4444"}}>미확인 {myNotifs.length}</span>
+                      )}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      {myNotifs.length>0&&(
+                        <button onClick={markAllRead}
+                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #e2e8f0",
+                            background:"#f8fafc",cursor:"pointer",color:"#64748b",fontWeight:600}}>
+                          모두 읽음
+                        </button>
+                      )}
+                      {allVisible.length>0&&(
+                        <button onClick={()=>setNotifications([])}
+                          style={{fontSize:11,padding:"3px 8px",borderRadius:6,border:"1px solid #fca5a5",
+                            background:"#fff1f2",cursor:"pointer",color:"#ef4444",fontWeight:600}}>
+                          전체 삭제
+                        </button>
+                      )}
+                    </div>
                   </div>
-              }
+                  {/* 목록 */}
+                  {allVisible.length===0
+                    ? <div style={{padding:"28px",textAlign:"center",color:C.faint,fontSize:13}}>
+                        새 알림이 없습니다
+                      </div>
+                    : <div style={{maxHeight:400,overflowY:"auto"}}>
+                        {allVisible.map(n=>{
+                          const isUnread = !n.read;
+                          const typeBg   = n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff";
+                          const typeColor= n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.type==="confirm_req"?"#d97706":n.type==="approved"?"#16a34a":n.type==="rejected"?"#ef4444":n.urgent?"#ef4444":"#f59e0b";
+                          const typeBadgeBg = n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.type==="confirm_req"?"#fef3c7":n.type==="approved"?"#dcfce7":n.type==="rejected"?"#fee2e2":n.urgent?"#fef2f2":"#fffbeb";
+                          const icon = n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.type==="confirm_req"?"📋":n.type==="approved"?"✅":n.type==="rejected"?"🔁":n.urgent?"🔴":"🟡";
+                          return (
+                            <div key={n.id}
+                              onClick={()=>{
+                                markRead(n.id);
+                                setShowNotif(false);
+                                setMainTab("tasks");
+                                if(n.taskId){
+                                  const t=proj?.tasks?.find(x=>x.id===n.taskId);
+                                  if(t) setTaskPanel({...t});
+                                }
+                              }}
+                              style={{padding:"11px 14px",borderBottom:`1px solid ${C.border}`,
+                                cursor:"pointer",position:"relative",
+                                background:isUnread?typeBg:"#fff",
+                                borderLeft:isUnread?`3px solid ${typeColor}`:"3px solid transparent",
+                                transition:"background .1s"}}
+                              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                              onMouseLeave={e=>e.currentTarget.style.background=isUnread?typeBg:"#fff"}>
+                              <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                                <span style={{fontSize:14,flexShrink:0}}>{icon}</span>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3,flexWrap:"wrap"}}>
+                                    <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",
+                                      borderRadius:99,color:typeColor,background:typeBadgeBg}}>
+                                      {n.label}
+                                    </span>
+                                    {n.from&&<span style={{fontSize:10,color:C.faint}}>
+                                      {n.from}{n.type==="assign"?" → "+(n.to||""):""}
+                                    </span>}
+                                    {isUnread&&<span style={{width:6,height:6,borderRadius:"50%",
+                                      background:"#ef4444",flexShrink:0,display:"inline-block"}}/>}
+                                  </div>
+                                  <div style={{fontSize:12,fontWeight:isUnread?700:500,
+                                    color:C.dark,marginBottom:2,
+                                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {n.fbTitle}
+                                  </div>
+                                  {n.commentText&&<div style={{fontSize:11,color:C.sub,
+                                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {n.commentText}
+                                  </div>}
+                                  <div style={{fontSize:10,color:C.faint,marginTop:1}}>{n.projName}</div>
+                                </div>
+                                {/* 개별 삭제 버튼 */}
+                                <button onClick={(e)=>removeNotif(e,n.id)}
+                                  style={{flexShrink:0,padding:"2px 5px",background:"none",
+                                    border:"none",cursor:"pointer",color:"#cbd5e1",fontSize:12,
+                                    borderRadius:4,lineHeight:1}}
+                                  onMouseEnter={e=>e.currentTarget.style.color="#94a3b8"}
+                                  onMouseLeave={e=>e.currentTarget.style.color="#cbd5e1"}>
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                  }
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* 유저 */}
-        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setUser(null)}>
+        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={async()=>{await signOutUser();setUser(null);}}>
           <Avatar name={user.name}/>
           <div>
             <div style={{fontSize:13,fontWeight:700,lineHeight:1.2}}>{user.name}</div>
@@ -3393,9 +10700,101 @@ return (
         </div>
       </div>
 
+      <div style={{display:"flex",height:"calc(100vh - 48px)"}}>
+        {/* ── 왼쪽 사이드바 ── */}
+        <div style={{width:sidebarOpen?260:0,minWidth:sidebarOpen?260:0,background:C.white,borderRight:sidebarOpen?`1px solid ${C.border}`:"none",display:"flex",flexDirection:"column",overflow:"hidden",transition:"all .2s ease",flexShrink:0}}>
+          {/* 네비게이션 메뉴 */}
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${C.border}`}}>
+            {[
+              {id:"tasks",icon:"📋",label:"프로젝트"},
+              {id:"daily-todo",icon:"✅",label:"데일리 TODO"},
+              {id:"master-calendar",icon:"🗓",label:"종합캘린더"},
+              {id:"office",icon:"🏢",label:"오피스"},
+              {id:"crm",icon:"👥",label:"CRM"},
+              {id:"finance",icon:"💰",label:"경영관리",locked:!canAccessFinance},
+            ].map(t=>{
+              const sel = mainTab===t.id;
+              return (
+                <button key={t.id} onClick={()=>!t.locked&&setMainTab(t.id)}
+                  style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",
+                    borderRadius:8,border:"none",background:sel?C.blueLight:"transparent",
+                    cursor:t.locked?"not-allowed":"pointer",fontSize:13,fontWeight:sel?700:500,
+                    color:sel?C.blue:t.locked?C.faint:C.sub,transition:"all .12s",textAlign:"left",
+                    marginBottom:2}}>
+                  <span style={{fontSize:15,width:20,textAlign:"center"}}>{t.icon}</span>
+                  <span>{t.label}</span>
+                  {t.locked&&<span style={{fontSize:10,marginLeft:"auto"}}>🔒</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 프로젝트 목록 (프로젝트 탭일 때만) */}
+          {mainTab==="tasks"&&(
+            <>
+              <div style={{padding:"10px 12px 8px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,background:C.bg}}>
+                <span style={{fontSize:11,fontWeight:700,color:C.faint,letterSpacing:.3}}>프로젝트 ({projects.length})</span>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={e=>{e.stopPropagation();openEditProj();}} title="현재 프로젝트 수정"
+                    style={{padding:"2px 6px",borderRadius:5,border:`1px solid ${C.border}`,
+                      background:C.white,cursor:"pointer",fontSize:10,color:C.sub}}>
+                    ✏️
+                  </button>
+                  <button onClick={()=>setAddProjModal(true)} title="새 프로젝트"
+                    style={{padding:"2px 6px",borderRadius:5,border:`1px dashed ${C.border}`,
+                      background:C.white,cursor:"pointer",fontSize:10,color:C.faint,fontWeight:700}}>
+                    +
+                  </button>
+                </div>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {projects.map(p=>{
+                  const sel = p.id === selId;
+                  const tasks = p.tasks || [];
+                  const done = tasks.filter(t=>t.status==="done").length;
+                  return (
+                    <div key={p.id} onClick={()=>{setSelId(p.id);setBiddingView("tasks");}}
+                      style={{padding:"9px 14px",cursor:"pointer",
+                        background:sel?C.blueLight:C.white,
+                        borderLeft:sel?`3px solid ${C.blue}`:"3px solid transparent",
+                        borderBottom:`1px solid ${C.border}`,
+                        transition:"all .12s"}}
+                      onMouseEnter={e=>{if(!sel)e.currentTarget.style.background=C.bg}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=sel?C.blueLight:C.white}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7}}>
+                        <span style={{width:8,height:8,borderRadius:"50%",background:p.color,flexShrink:0}}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                            <span style={{fontSize:12,fontWeight:sel?700:500,color:sel?C.blue:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                            {p.isBidding&&<span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:99,background:"#fef9c3",color:"#92400e",border:"1px solid #fde047",flexShrink:0}}>🏆</span>}
+                          </div>
+                          <div style={{fontSize:10,color:C.faint,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {p.client||"클라이언트 미정"}{tasks.length>0?` · ${done}/${tasks.length}`:""}{p.due?` · ${p.due}`:""}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{padding:"8px 12px"}}>
+                  <button onClick={()=>setAddProjModal(true)}
+                    style={{width:"100%",padding:"7px",borderRadius:8,border:`1.5px dashed ${C.border}`,
+                      background:"none",cursor:"pointer",fontSize:11,color:C.faint,fontWeight:600}}>
+                    + 새 프로젝트
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── 메인 콘텐츠 영역 ── */}
+        <div style={{flex:1,overflowY:"auto"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"24px 24px 48px"}}>
         {mainTab==="finance" ? (
           <FinanceDash projects={projects}/>
+        ) : mainTab==="office" ? (
+          <OfficeTab user={user} accounts={accounts} company={company} officeData={{...officeData, _projects:projects.map(p=>({id:p.id,name:p.name}))}} setOfficeData={d=>{ const next=typeof d==="function"?d(officeData):d; setOfficeData(next); if(isConfigured) saveOffice(next).catch(console.error); }}/>
         ) : mainTab==="crm" ? (
           <CRMPage projects={projects}/>
         ) : mainTab==="daily-todo" ? (
@@ -3415,44 +10814,274 @@ return (
           />
         ) : (
           <>
-            {/* 프로젝트 정보 바 */}
-            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 20px",marginBottom:20,display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",borderLeft:`4px solid ${proj.color}`}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:18}}>{proj.name}</div>
-                <div style={{fontSize:13,color:C.sub,marginTop:2}}>{proj.client}{proj.agency&&` · ${proj.agency}`} · {proj.format}</div>
+            {/* 프로젝트 정보 카드 */}
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:14,marginBottom:20,overflow:"hidden"}}>
+              {/* 컬러 액센트 바 */}
+              <div style={{height:4,background:proj.color,width:"100%"}}/>
+              {/* 상단: 프로젝트명 + 태그 + 스테이지 */}
+              <div style={{padding:"14px 20px 12px",display:"flex",alignItems:"flex-start",gap:12}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{fontWeight:800,fontSize:19,color:C.dark,lineHeight:1.3}}>{proj.name}</div>
+                    {proj.isBidding&&<span style={{fontSize:11,fontWeight:800,padding:"2px 8px",
+                      borderRadius:99,background:"#fef9c3",color:"#92400e",
+                      border:"1px solid #fde047",flexShrink:0}}>🏆 비딩</span>}
+                  </div>
+                  <div style={{marginTop:6,display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                    {proj.client&&<span style={{background:C.slateLight,borderRadius:6,padding:"3px 9px",fontSize:12,fontWeight:600,color:C.dark}}>{proj.client}</span>}
+                    {proj.agency&&<span style={{background:C.slateLight,borderRadius:6,padding:"3px 9px",fontSize:12,color:C.sub}}>{proj.agency}</span>}
+                    {proj.format&&!proj.isBidding&&<span style={{background:proj.color+"18",borderRadius:6,padding:"3px 9px",fontSize:12,color:proj.color,fontWeight:700}}>{proj.format}</span>}
+                    {proj.isBidding&&proj.ptDate&&<span style={{fontSize:11,color:"#92400e",background:"#fef9c3",padding:"2px 7px",borderRadius:6}}>📅 PT {proj.ptDate}</span>}
+                    {proj.isBidding&&(proj.biddingMembers||[]).length>0&&accounts.filter(a=>(proj.biddingMembers||[]).includes(a.id)).map(a=>(
+                      <span key={a.id} style={{fontSize:11,padding:"2px 7px",borderRadius:6,
+                        background:(TEAM_BY_ID[a.team]?.bg||"#eff6ff"),
+                        color:(TEAM_BY_ID[a.team]?.color||"#2563eb"),fontWeight:600}}>
+                        {a.name}{a.jobTitle&&` · ${a.jobTitle}`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {proj.isBidding ? (
+                  <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+                    <div style={{display:"flex",gap:6}}>
+                      {[
+                        {id:"진행중",label:"⏳ 진행중",bg:"#fffbeb",color:"#d97706"},
+                        {id:"수주",  label:"🎉 수주",  bg:"#f0fdf4",color:"#16a34a"},
+                        {id:"불발",  label:"💔 불발",  bg:"#fff1f2",color:"#ef4444"},
+                      ].map(s=>(
+                        <button key={s.id}
+                          onClick={()=>patchProj(p=>({...p,biddingStatus:s.id}))}
+                          style={{padding:"6px 12px",borderRadius:8,border:"none",cursor:"pointer",
+                            fontSize:12,fontWeight:(proj.biddingStatus||"진행중")===s.id?800:400,
+                            background:(proj.biddingStatus||"진행중")===s.id?s.bg:"#f8fafc",
+                            color:(proj.biddingStatus||"진행중")===s.id?s.color:"#94a3b8",
+                            outline:(proj.biddingStatus||"진행중")===s.id?`2px solid ${s.color}`:"none"}}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* 수주 시 일반 프로젝트 전환 — 비딩 프로젝트일 때만 */}
+                    {proj.biddingStatus==="수주"&&proj.isBidding&&(
+                      <button
+                        onClick={()=>{
+                          if(window.confirm("일반 프로젝트로 전환하시겠습니까?")) {
+                            patchProj(p=>{
+                              // 기존 비딩 태스크 → phaseId:"s01"(비딩 단계) 부여
+                              const biddingTasks = (p.tasks||[]).map(t=>
+                                t.phaseId ? t : {...t, phaseId:"s01", phase:"비딩"}
+                              );
+                              const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                                .filter(nt => nt.phaseId!=="s01" && !biddingTasks.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                              return {...p, isBidding:false, stage:"PLANNING",
+                                tasks:[...biddingTasks, ...templateTasks]};
+                            });
+                            setBiddingView("tasks");
+                          }
+                        }}
+                        style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:"none",
+                          background:"#2563eb",color:"#fff",cursor:"pointer",fontWeight:700}}>
+                        ➡ 일반 프로젝트로 전환
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <select value={proj.stage} onChange={e=>patchProj(p=>({...p,stage:e.target.value}))}
+                    style={{padding:"7px 12px",borderRadius:8,border:`1.5px solid ${STAGES[proj.stage]?.color||C.border}`,fontSize:13,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700,flexShrink:0}}>
+                    {stageKeys.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                )}
               </div>
-              <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12,color:C.sub,marginLeft:"auto"}}>
-                {proj.director&&<span>🎬 {proj.director}</span>}
-                {proj.epd&&<span>🎯 EPD {proj.epd}</span>}
-                {proj.assistant&&<span>🎥 조감독 {proj.assistant}</span>}
-                {proj.pd&&<span>📋 {proj.pd}</span>}
-                {proj.agency&&<span>🏢 {proj.agency}</span>}
-                {proj.contactName&&<span>👤 {proj.contactName}{proj.contactPhone&&<span style={{color:C.faint}}> · {proj.contactPhone}</span>}</span>}
-                {proj.startDate&&<span>🗓 시작 {proj.startDate}</span>}
-                {proj.due&&<span>📅 납품 {proj.due}</span>}
-                <select value={proj.stage} onChange={e=>patchProj(p=>({...p,stage:e.target.value}))}
-                  style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,cursor:"pointer",background:STAGES[proj.stage]?.bg,color:STAGES[proj.stage]?.color,fontWeight:700}}>
-                  {stageKeys.map(s=><option key={s}>{s}</option>)}
-                </select>
+              {/* 구분선 */}
+              <div style={{height:1,background:C.border}}/>
+              {/* 하단: 스탭 + 일정 정보 */}
+              <div style={{padding:"10px 20px 12px",display:"flex",gap:4,flexWrap:"wrap",alignItems:"stretch"}}>
+                {/* 스탭 정보 */}
+                <div style={{display:"flex",gap:0,flexWrap:"wrap",flex:1}}>
+                  {[
+                    proj.director   && {icon:"🎬", label:"감독",   value:proj.director},
+                    proj.epd        && {icon:"🎯", label:"EPD",    value:proj.epd},
+                    proj.assistant  && {icon:"🎥", label:"조감독", value:proj.assistant},
+                    proj.pd         && {icon:"📋", label:"PD",     value:proj.pd},
+                    proj.contactName && {icon:"👤", label:"담당자", value:proj.contactName, sub:proj.contactPhone},
+                  ].filter(Boolean).map((item,i,arr)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 16px 4px 0",marginRight:4,
+                      borderRight: i<arr.length-1 ? `1px solid ${C.border}` : "none"}}>
+                      <div style={{width:30,height:30,borderRadius:8,background:C.slateLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{item.icon}</div>
+                      <div>
+                        <div style={{fontSize:10,color:C.faint,lineHeight:1,marginBottom:2}}>{item.label}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.dark,lineHeight:1.2}}>{item.value}</div>
+                        {item.sub&&<div style={{fontSize:11,color:C.sub,marginTop:1}}>{item.sub}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* 일정 정보 */}
+                {(proj.startDate||proj.due)&&(
+                  <div style={{display:"flex",gap:8,alignItems:"center",borderLeft:`1px solid ${C.border}`,paddingLeft:16,flexShrink:0}}>
+                    {proj.startDate&&(
+                      <div style={{background:C.slateLight,borderRadius:10,padding:"6px 12px",textAlign:"center"}}>
+                        <div style={{fontSize:10,color:C.faint,marginBottom:2}}>시작일</div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.dark}}>{proj.startDate}</div>
+                      </div>
+                    )}
+                    {proj.startDate&&proj.due&&<div style={{color:C.faint,fontSize:16}}>→</div>}
+                    {proj.due&&(()=>{
+                      const isOver = proj.due < new Date().toISOString().slice(0,10);
+                      return (
+                        <div style={{background:isOver?"#fef2f2":C.blueLight,borderRadius:10,padding:"6px 12px",textAlign:"center",border:`1px solid ${isOver?"#fca5a5":C.blue+"44"}`}}>
+                          <div style={{fontSize:10,color:isOver?"#ef4444":C.blue,marginBottom:2,fontWeight:600}}>납품일</div>
+                          <div style={{fontSize:13,fontWeight:800,color:isOver?"#dc2626":C.blue}}>{proj.due}</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* 태스크 탭 */}
             <TabBar
-              tabs={[
-                {id:"tasks",icon:"📋",label:"프로젝트"},
-                {id:"feedback",icon:"💬",label:"피드백"},
+              tabs={proj.isBidding ? [
+                {id:"tasks",icon:"🏆",label:"비딩"},
+                {id:"client-request",icon:"📨",label:"고객 요청"},
+                {id:"calendar",icon:"📅",label:"캘린더"},
+                {id:"budget-mgmt",icon:"💰",label:"예산관리",locked:!canAccessProjFinance},
+              ] : [
+                {id:"tasks",icon:"📋",label:"업무"},
+                {id:"client-request",icon:"📨",label:"고객 요청"},
                 {id:"stafflist",icon:"👤",label:"스탭리스트"},
                 {id:"calendar",icon:"📅",label:"캘린더"},
-                {id:"quote",icon:"💵",label:"견적서",locked:!canAccessFinance},
-                {id:"budget",icon:"📒",label:"실행예산서",locked:!canAccessFinance},
-                {id:"settlement",icon:"📊",label:"결산서",locked:!canAccessFinance},
+                {id:"budget-mgmt",icon:"💰",label:"예산관리",locked:!canAccessProjFinance},
               ]}
-              active={docTab} onChange={setDocTab}
+              active={docTab} onChange={id=>{setDocTab(id);if(id==="budget-mgmt")setBudgetSubTab(prev=>prev||"quote");}}
             />
 
+            {/* 예산관리 서브탭 */}
+            {docTab==="budget-mgmt"&&canAccessProjFinance&&(
+              <div style={{display:"flex",gap:4,marginBottom:16,marginTop:-16}}>
+                {[
+                  {id:"quote",icon:"💵",label:"견적서"},
+                  {id:"budget",icon:"📒",label:"실행예산서"},
+                  {id:"settlement",icon:"📊",label:"결산서"},
+                ].map(t=>{
+                  const sel = budgetSubTab===t.id;
+                  return (
+                    <button key={t.id} onClick={()=>setBudgetSubTab(t.id)}
+                      style={{padding:"6px 14px",borderRadius:8,border:`1.5px solid ${sel?C.blue:C.border}`,
+                        background:sel?C.blueLight:C.white,cursor:"pointer",fontSize:12,
+                        fontWeight:sel?700:500,color:sel?C.blue:C.sub,whiteSpace:"nowrap",
+                        transition:"all .12s"}}>
+                      {t.icon} {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── 비딩 탭 ── */}
+            {docTab==="tasks"&&proj.isBidding&&(
+              <div style={{padding:"16px 0"}}>
+                {/* 비딩 정보 카드 */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12,marginBottom:16}}>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>📅 PT 날짜</div>
+                    <input style={inp} type="date" value={proj.ptDate||""} onChange={e=>patchProj(p=>({...p,ptDate:e.target.value}))}/>
+                  </div>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>📢 결과 발표일</div>
+                    <input style={inp} type="date" value={proj.resultDate||""} onChange={e=>patchProj(p=>({...p,resultDate:e.target.value}))}/>
+                  </div>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>🏢 경쟁사</div>
+                    <input style={inp} value={proj.competitors||""} placeholder="A사, B사 등" onChange={e=>patchProj(p=>({...p,competitors:e.target.value}))}/>
+                  </div>
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,marginBottom:4}}>💰 예상 규모</div>
+                    <input style={inp} value={proj.estimatedBudget||""} placeholder="예: 5,000만원" onChange={e=>patchProj(p=>({...p,estimatedBudget:e.target.value}))}/>
+                  </div>
+                </div>
+                {/* 수주 전환 안내 — 비딩 프로젝트일 때만 */}
+                {proj.biddingStatus==="수주"&&proj.isBidding&&(
+                  <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:12,
+                    padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:"#16a34a",marginBottom:2}}>🎉 수주 확정!</div>
+                      <div style={{fontSize:11,color:"#15803d"}}>
+                        비딩 데이터와 기존 태스크는 그대로 유지되며, 22단계 워크플로우가 추가됩니다.
+                      </div>
+                    </div>
+                    <button onClick={()=>{
+                      if(window.confirm("일반 프로젝트로 전환하시겠습니까?")) {
+                        patchProj(p=>{
+                          const biddingTasks = (p.tasks||[]).map(t=>
+                            t.phaseId ? t : {...t, phaseId:"s01", phase:"비딩"}
+                          );
+                          const templateTasks = generateTasksFromTemplate(p.id, accounts.filter(a=>a.name))
+                            .filter(nt => nt.phaseId!=="s01" && !biddingTasks.some(et=>et.phaseId===nt.phaseId&&et.title===nt.title));
+                          return {...p, isBidding:false, stage:"PLANNING", tasks:[...biddingTasks, ...templateTasks]};
+                        });
+                        setBiddingView("tasks");
+                      }
+                    }}
+                      style={{padding:"8px 16px",borderRadius:8,border:"none",
+                        background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+                      ➡ 일반 프로젝트 전환
+                    </button>
+                  </div>
+                )}
+
+                {/* ── 뷰모드 전환 버튼 (일반 프로젝트와 동일) ── */}
+                <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+                  <button onClick={()=>setBiddingView("tasks")}
+                    style={{padding:"7px 12px",borderRadius:7,fontSize:12,cursor:"pointer",
+                      border:`1px solid ${biddingView==="tasks"?C.blue:C.border}`,
+                      background:biddingView==="tasks"?C.blueLight:C.white,
+                      color:biddingView==="tasks"?C.blue:C.sub}}>
+                    📋 태스크 목록
+                  </button>
+                  <button onClick={()=>setBiddingView("flow")}
+                    style={{padding:"7px 12px",borderRadius:7,fontSize:12,cursor:"pointer",
+                      border:`1px solid ${biddingView==="flow"?C.blue:C.border}`,
+                      background:biddingView==="flow"?C.blueLight:C.white,
+                      color:biddingView==="flow"?C.blue:C.sub}}>
+                    🔀 협업흐름
+                  </button>
+                  <div style={{marginLeft:"auto"}}>
+                    <Btn primary sm onClick={()=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통"})}>
+                      + 태스크
+                    </Btn>
+                  </div>
+                </div>
+
+                {/* 태스크 목록 뷰 */}
+                {biddingView==="tasks"&&(
+                  <BiddingTaskList tasks={proj.tasks||[]}
+                    onAdd={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId||null})}
+                    onAddSub={parentId=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통","parentId":parentId})}
+                    onOpen={t=>setTaskPanel(t)}
+                    onDelete={id=>patchProj(p=>({...p,tasks:(p.tasks||[]).filter(x=>x.id!==id)}))}
+                    onUpdate={t=>patchProj(p=>({...p,tasks:(p.tasks||[]).map(x=>x.id===t.id?t:x)}))}
+                    accounts={accounts}/>
+                )}
+
+                {/* 협업흐름 뷰 */}
+                {biddingView==="flow"&&(
+                  <FlowView
+                    tasks={proj.tasks||[]}
+                    accounts={accounts}
+                    user={user}
+                    onEdit={t=>setTaskPanel({...t})}
+                    onAdd={()=>setTaskModal({"stage":"PLANNING","type":"내부","assignees":[],"priority":"보통"})}
+                    onUpdateTask={t=>patchProj(p=>({...p,tasks:(p.tasks||[]).map(x=>x.id===t.id?t:x)}))}
+                    onNotify={n=>setNotifications(p=>[n,...p])}/>
+                )}
+
+
+              </div>
+            )}
+
             {/* ── 태스크 ── */}
-            {docTab==="tasks"&&(
+            {docTab==="tasks"&&!proj.isBidding&&(
               <div>
                 {/* 필터 바 */}
                 <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
@@ -3466,17 +11095,62 @@ return (
                     {stageKeys.map(s=><option key={s}>{s}</option>)}
                   </select>
                   <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                    <button onClick={()=>setViewMode("phase")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="phase"?C.blue:C.border}`,background:viewMode==="phase"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="phase"?C.blue:C.sub}}>📋 단계별</button>
+                    <button onClick={()=>setViewMode("flow")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="flow"?C.blue:C.border}`,background:viewMode==="flow"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="flow"?C.blue:C.sub}}>🔀 협업흐름</button>
                     <button onClick={()=>setViewMode("list")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="list"?C.blue:C.border}`,background:viewMode==="list"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="list"?C.blue:C.sub}}>☰ 리스트</button>
                     <button onClick={()=>setViewMode("kanban")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="kanban"?C.blue:C.border}`,background:viewMode==="kanban"?C.blueLight:C.white,cursor:"pointer",fontSize:12,color:viewMode==="kanban"?C.blue:C.sub}}>⠿ 칸반</button>
-                    <Btn primary sm onClick={()=>{setTaskModal({stage:"브리프",type:TASK_TYPES[0],assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
+                    <button onClick={()=>setViewMode("type")} style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${viewMode==="type"?"#7c3aed":C.border}`,background:viewMode==="type"?"#f5f3ff":C.white,cursor:"pointer",fontSize:12,color:viewMode==="type"?"#7c3aed":C.sub}}>🏷 요청별</button>
+                    <Btn primary sm onClick={()=>{setTaskModal({stage:"PLANNING",type:"내부",assignee:SEED_ACCOUNTS[0].name,priority:"보통"});setTf(v=>({...v,_edit:null}));}}>+ 태스크</Btn>
                   </div>
                 </div>
 
-                {viewMode==="kanban"?(
+                {viewMode==="phase"?(
+                  <PhaseView
+  tasks={proj.tasks||[]}
+  feedbacks={proj.feedbacks||[]}
+  template={proj.biddingStatus ? PROJECT_TEMPLATE : PROJECT_TEMPLATE.filter(p=>p.id!=="s01")}
+  user={user}
+  accounts={accounts}
+  projectRoles={proj.phaseRoles||{}}
+  onEdit={t=>setTaskPanel({...t})}
+  onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}}
+  onAddTask={(phaseId, phaseName)=>{
+    setTaskModal({
+      phaseId, phase:phaseName,
+      stage:"PLANNING", type:"내부",
+      priority:"보통", status:"대기",
+      assignees:[], links:[], comments:[], meetings:[],
+      createdBy:user.name, createdAt:new Date().toISOString(),
+    });
+  }}
+  onAddSubTask={(parentTask)=>{
+    setTaskModal({
+      parentId: parentTask.id,
+      parentTitle: parentTask.title,
+      phaseId: parentTask.phaseId,
+      phase: parentTask.phase,
+      stage: parentTask.stage||"PLANNING",
+      type: parentTask.type||"내부",
+      priority:"보통", status:"대기",
+      assignees:[], links:[], comments:[], meetings:[],
+      createdBy:user.name, createdAt:new Date().toISOString(),
+    });
+  }}
+  onDeleteTask={(taskId)=>{
+    if(window.confirm("태스크를 삭제하시겠습니까?"))
+      updateTasks((proj.tasks||[]).filter(t=>t.id!==taskId));
+  }}
+  onUpdatePhaseRole={(phaseId, roleForm)=>{
+    patchProj(p=>({...p, phaseRoles:{...(p.phaseRoles||{}), [phaseId]:roleForm}}));
+  }}
+/>
+                ):viewMode==="flow"?(
+                  <FlowView tasks={filteredTasks} accounts={accounts} user={user} onEdit={t=>setTaskPanel({...t})} onAdd={()=>{setTaskModal({stage:"PLANNING",type:"내부",assignee:user.name,priority:"보통"});}} onUpdateTask={t=>{updateTasks((proj.tasks||[]).map(x=>x.id===t.id?t:x));}} onNotify={n=>setNotifications(p=>[n,...p])}/>
+                ):viewMode==="kanban"?(
                   <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12}}>
-                    {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskModal({...t})}/>)}
+                    {stageKeys.map(s=><KanbanCol key={s} stage={s} tasks={filteredTasks.filter(t=>t.stage===s)} onEdit={t=>setTaskPanel({...t})}/>)}
                   </div>
-                ):(
+                ):viewMode==="list"?(
                   <div style={{border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
                     <div style={{display:"grid",gridTemplateColumns:"2fr 100px 90px 90px 80px 32px",background:C.slateLight,padding:"9px 14px",fontSize:11,fontWeight:700,color:C.sub,gap:8}}>
                       <span>태스크</span><span>스테이지</span><span>마감일</span><span>담당자</span><span>우선순위</span><span/>
@@ -3484,25 +11158,46 @@ return (
                     {filteredTasks.length===0&&<div style={{padding:"30px",textAlign:"center",color:C.faint,fontSize:14}}>태스크가 없습니다</div>}
                     {filteredTasks.map((t,i)=>(
                       <div key={t.id} style={{display:"grid",gridTemplateColumns:"2fr 100px 90px 90px 80px 32px",padding:"11px 14px",borderTop:`1px solid ${C.border}`,gap:8,alignItems:"center",background:i%2===0?C.white:"#fafbfc",cursor:"pointer"}}
-                        onClick={()=>setTaskModal({...t})}>
+                        onClick={()=>setTaskPanel({...t})}>
                         <div>
                           <div style={{fontSize:13,fontWeight:600,color:isOverdue(t)?C.red:C.text}}>{t.title}{isOverdue(t)?" ⚠":""}</div>
-                          <div style={{fontSize:11,color:C.faint,marginTop:2}}>{t.type}</div>
+                          <div style={{display:"flex",gap:4,marginTop:3,alignItems:"center",flexWrap:"wrap"}}>
+                            <span style={{fontSize:11,color:C.faint}}>{t.type}</span>
+                            {(t.comments||[]).length>0&&(
+                              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                                background:"#f0fdf4",color:"#16a34a",border:"1px solid #86efac",fontWeight:700}}>
+                                💬 {t.comments.length}
+                              </span>
+                            )}
+                            {(t.meetings||[]).length>0&&(
+                              <span style={{fontSize:9,padding:"1px 6px",borderRadius:99,
+                                background:"#f5f3ff",color:"#7c3aed",border:"1px solid #ddd6fe",fontWeight:700}}>
+                                📅 {t.meetings.length}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:STAGES[t.stage]?.bg,color:STAGES[t.stage]?.color,fontWeight:600,whiteSpace:"nowrap"}}>{t.stage}</span>
                         <span style={{fontSize:12,color:isOverdue(t)?C.red:C.faint}}>{t.due||"-"}</span>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={t.assignee} size={22}/><span style={{fontSize:12}}>{t.assignee}</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                          {(t.assignees&&t.assignees.length>0)
+                            ? t.assignees.slice(0,2).map(n=><span key={n} style={{display:"flex",alignItems:"center",gap:2,fontSize:11}}><Avatar name={n} size={18}/>{n}</span>)
+                            : t.assignee ? <span style={{display:"flex",alignItems:"center",gap:2,fontSize:12}}><Avatar name={t.assignee} size={22}/>{t.assignee}</span> : <span style={{fontSize:12,color:"#94a3b8"}}>미배정</span>
+                          }
+                        </div>
                         <span style={{fontSize:11,color:t.priority==="긴급"?C.red:t.priority==="높음"?C.amber:C.faint,fontWeight:600}}>{t.priority||"-"}</span>
                         <button onClick={e=>{e.stopPropagation();deleteTask(t.id);}} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:16}}>×</button>
                       </div>
                     ))}
                   </div>
-                )}
+                ):viewMode==="type"?(
+                  <TypeView tasks={filteredTasks} onEdit={t=>setTaskPanel({...t})} onDelete={deleteTask}/>
+                ):null}
               </div>
             )}
 
-            {/* ── 피드백 ── */}
-            {docTab==="feedback"&&<FeedbackTab project={proj} patchProj={patchProj} user={user} accounts={accounts}/>}
+            {/* ── 고객 요청 ── */}
+            {docTab==="client-request"&&<ClientRequestTab project={proj} patchProj={patchProj} user={user} accounts={accounts} setNotifications={setNotifications}/>}
 
             {/* ── 캘린더 ── */}
             {docTab==="calendar"&&<MonthCalendar project={proj} onChange={patchProj} user={user}/>}
@@ -3511,46 +11206,191 @@ return (
             {docTab==="stafflist"&&<StaffList project={proj} onChange={patchProj} accounts={accounts}/>}
 
             {/* ── 견적서 ── */}
-            {docTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
 
             {/* ── 실행예산서 ── */}
-            {docTab==="budget"&&<BudgetEditor project={proj} onSave={updateBudget}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)}/>}
 
             {/* ── 결산서 ── */}
-            {docTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)}/>}
+
+
           </>
         )}
       </div>
+      </div>{/* close flex:1 overflowY */}
+      </div>{/* close display:flex sidebar wrapper */}
 
       {/* 태스크 모달 */}
+      {/* 태스크 상세 패널 */}
+      {taskPanel && (
+        <TaskDetailPanel
+          task={taskPanel}
+          accounts={accounts}
+          user={user}
+          projName={proj?.name||""}
+          onClose={()=>setTaskPanel(null)}
+          onUpdate={(updated)=>{
+            setTaskPanel(updated);
+            updateTasks((proj.tasks||[]).map(t=>t.id===updated.id?updated:t));
+          }}
+          onDelete={(id)=>{
+            updateTasks((proj.tasks||[]).filter(t=>t.id!==id));
+            setTaskPanel(null);
+          }}
+          onNotify={(notif)=>setNotifications(prev=>[notif,...prev])}
+          projTasks={proj?.tasks||[]}
+          officeData={officeData}
+          onBookRoom={(action, payload) => {
+            const saveOD = (next) => {
+              setOfficeData(next);
+              if(isConfigured) saveOffice(next).catch(console.error);
+            };
+            if (action==="add") {
+              saveOD({...officeData, bookings:[...(officeData.bookings||[]), payload]});
+            } else if (action==="delete") {
+              saveOD({...officeData, bookings:(officeData.bookings||[]).filter(b=>b.id!==payload)});
+            }
+          }}
+        />
+      )}
+
       {taskModal && (
         <Modal title={taskModal.id?"태스크 수정":"새 태스크"} onClose={()=>setTaskModal(null)}>
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="태스크명 *"><input style={inp} autoFocus value={taskModal.title||""} onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))} placeholder="ex. 촬영 D-day 준비"/></Field>
-            <Field label="유형" half>
-              <select style={inp} value={taskModal.type||TASK_TYPES[0]} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
-                {TASK_TYPES.map(t=><option key={t}>{t}</option>)}
+
+            {/* 상위 태스크 안내 (하위 추가 시) */}
+            {taskModal.parentId && (
+              <div style={{width:"100%",padding:"8px 12px",borderRadius:8,
+                background:"#eff6ff",border:"1px solid #bfdbfe",
+                fontSize:12,color:"#2563eb",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:16}}>↳</span>
+                <span><strong>{taskModal.parentTitle}</strong>의 하위 태스크</span>
+                <button type="button"
+                  onClick={()=>setTaskModal(v=>({...v,parentId:null,parentTitle:null}))}
+                  style={{marginLeft:"auto",border:"none",background:"none",
+                    cursor:"pointer",color:"#64748b",fontSize:12}}>✕ 해제</button>
+              </div>
+            )}
+
+            {/* ① 단계 연결 — 최상위 */}
+            <Field label="단계 연결">
+              <select style={inp} value={taskModal.phaseId||""} onChange={e=>{
+                const ph = PROJECT_TEMPLATE.find(p=>p.id===e.target.value);
+                setTaskModal(v=>({...v, phaseId:e.target.value, phase:ph?ph.phase:"", _showSugg:false}));
+              }}>
+                <option value="">- 단계 미연결 -</option>
+                {PROJECT_TEMPLATE.map(p=>(
+                  <option key={p.id} value={p.id}>{p.order}. {p.phase}</option>
+                ))}
               </select>
             </Field>
-            <Field label="담당자" half>
-              <select style={inp} value={taskModal.assignee||SEED_ACCOUNTS[0].name} onChange={e=>setTaskModal(v=>({...v,assignee:e.target.value}))}>
-                {accounts.map(a=><option key={a.id}>{a.name}</option>)}
-              </select>
+
+            {/* ② 태스크명 + 추천 항목 버튼 */}
+            <Field label="태스크명 *">
+              <div style={{display:"flex",gap:6}}>
+                <input style={{...inp,flex:1}} autoFocus value={taskModal.title||""}
+                  onChange={e=>setTaskModal(v=>({...v,title:e.target.value}))}
+                  placeholder="ex. 촬영 D-day 준비"/>
+                {!taskModal.id && taskModal.phaseId && (PHASE_SUGGESTIONS[taskModal.phaseId]||[]).length>0 && (
+                  <div style={{position:"relative"}}>
+                    <button type="button"
+                      onClick={()=>setTaskModal(v=>({...v,_showSugg:!v._showSugg}))}
+                      style={{padding:"9px 12px",borderRadius:8,border:"1px solid #e2e8f0",
+                        background:taskModal._showSugg?"#eff6ff":"#f8fafc",
+                        color:taskModal._showSugg?"#2563eb":"#64748b",
+                        cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>
+                      📋 추천 항목
+                    </button>
+                    {taskModal._showSugg && (
+                      <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,
+                        background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,
+                        boxShadow:"0 8px 24px rgba(0,0,0,.12)",zIndex:100,
+                        minWidth:220,padding:6,display:"flex",flexDirection:"column",gap:2}}>
+                        <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",
+                          padding:"4px 8px",letterSpacing:.8}}>
+                          {taskModal.phase} — 추천 태스크
+                        </div>
+                        {(PHASE_SUGGESTIONS[taskModal.phaseId]||[]).map(name=>(
+                          <button key={name} type="button"
+                            onClick={()=>setTaskModal(v=>({...v,title:name,_showSugg:false}))}
+                            style={{textAlign:"left",padding:"7px 10px",borderRadius:7,
+                              border:"none",background:"transparent",cursor:"pointer",
+                              fontSize:12,color:"#1e293b"}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </Field>
-            <Field label="스테이지" half>
-              <select style={inp} value={taskModal.stage||"브리프"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
-                {stageKeys.map(s=><option key={s}>{s}</option>)}
+
+            {/* ③ 담당자 */}
+            <Field label="담당자">
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {accounts.map(a=>{
+                  const sel=(taskModal.assignees||[]).includes(a.name);
+                  return (
+                    <button key={a.id} type="button"
+                      onClick={()=>setTaskModal(v=>{
+                        const cur=v.assignees||[];
+                        return {...v,assignees:sel?cur.filter(n=>n!==a.name):[...cur,a.name]};
+                      })}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",
+                        borderRadius:99,cursor:"pointer",fontSize:12,border:"none",
+                        background:sel?"#eff6ff":"#f1f5f9",color:sel?"#2563eb":"#475569",
+                        fontWeight:sel?700:400,outline:sel?"2px solid #2563eb":"none"}}>
+                      <Avatar name={a.name} size={16}/>
+                      {a.name}{sel&&<span style={{fontSize:10}}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {(taskModal.assignees||[]).length===0&&(
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>담당자를 선택하세요</div>
+              )}
+            </Field>
+
+            {/* ④ 상태 / 우선순위 */}
+            <Field label="상태" half>
+              <select style={inp} value={taskModal.status||"대기"} onChange={e=>setTaskModal(v=>({...v,status:e.target.value}))}>
+                {["대기","진행중","완료","보류"].map(s=><option key={s}>{s}</option>)}
               </select>
             </Field>
             <Field label="우선순위" half>
               <select style={inp} value={taskModal.priority||"보통"} onChange={e=>setTaskModal(v=>({...v,priority:e.target.value}))}>
-                {["긴급","높음","보통"].map(p=><option key={p}>{p}</option>)}
+                {["긴급","높음","보통","낮음"].map(p=><option key={p}>{p}</option>)}
               </select>
             </Field>
-            <Field label="마감일" half><input style={inp} type="date" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/></Field>
-            <Field label="설명"><textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/></Field>
+
+            {/* ⑤ 스테이지 / 요청 */}
+            <Field label="스테이지" half>
+              <select style={inp} value={taskModal.stage||"PLANNING"} onChange={e=>setTaskModal(v=>({...v,stage:e.target.value}))}>
+                {stageKeys.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="요청" half>
+              <select style={inp} value={taskModal.type||"내부"} onChange={e=>setTaskModal(v=>({...v,type:e.target.value}))}>
+                {["내부","고객사","협력사"].map(t=><option key={t}>{t}</option>)}
+              </select>
+            </Field>
+
+            {/* ⑥ 마감일 */}
+            <Field label="마감일" half>
+              <input style={{...inp}} type="datetime-local" value={taskModal.due||""} onChange={e=>setTaskModal(v=>({...v,due:e.target.value}))}/>
+            </Field>
+
+            {/* ⑦ 설명 */}
+            <Field label="설명">
+              <textarea style={{...inp,resize:"vertical",minHeight:60}} value={taskModal.desc||""} onChange={e=>setTaskModal(v=>({...v,desc:e.target.value}))} placeholder="세부 내용..."/>
+            </Field>
+
           </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
             {taskModal.id&&<Btn danger sm onClick={()=>deleteTask(taskModal.id)}>삭제</Btn>}
             <div style={{flex:1}}/>
             <Btn onClick={()=>setTaskModal(null)}>취소</Btn>
@@ -3606,8 +11446,8 @@ return (
           </Field>
           {user.canManageMembers && (
           <div style={{background:C.slateLight,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 재무 문서 접근 허용 멤버</div>
-            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>미선택 시 '재무 열람' 권한자 전체 접근 가능</div>
+            <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:4}}>💰 경영관리 문서 접근 허용 멤버</div>
+            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>체크된 멤버만 이 프로젝트의 견적서·예산서·결산서 열람/편집 가능 (대표·경영지원은 항상 접근 가능)</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {accounts.map(a=>{
                 const allowed = pf.allowedFinanceMembers||[];
@@ -3623,6 +11463,63 @@ return (
             {(pf.allowedFinanceMembers||[]).length>0 && <button onClick={()=>setPf(v=>({...v,allowedFinanceMembers:[]}))} style={{marginTop:6,fontSize:11,color:C.faint,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>전체 허용으로 초기화</button>}
           </div>
           )}
+          {/* 워크플로우 템플릿 */}
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#16a34a",marginBottom:8}}>🗂 워크플로우 템플릿</div>
+            {(proj.tasks||[]).filter(t=>t.phaseId).length > 0 ? (
+              <div style={{fontSize:12,color:"#15803d",marginBottom:8}}>
+                현재 템플릿 태스크 {(proj.tasks||[]).filter(t=>t.phaseId).length}개 연결됨
+              </div>
+            ) : (
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>
+                현재 템플릿이 적용되지 않은 프로젝트입니다
+              </div>
+            )}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                if(window.confirm("22단계 표준 템플릿을 적용합니다.\n기존 템플릿 태스크는 유지되고 누락된 단계만 추가됩니다.")) {
+                  const existing = (proj.tasks||[]).filter(t=>t.phaseId);
+                  const existingPhaseSteps = new Set(existing.map(t=>t.id));
+                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>a.name));
+                  const toAdd = newTasks.filter(t => !existing.some(e=>e.phaseId===t.phaseId && e.title===t.title));
+                  updateTasks([...(proj.tasks||[]), ...toAdd]);
+                }
+              }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #86efac",background:"#dcfce7",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                + 템플릿 적용 (누락 단계 추가)
+              </button>
+              <button onClick={()=>{
+                if(window.confirm("템플릿 태스크를 모두 초기화하고 새로 생성합니다.\n진행 상태가 초기화됩니다. 계속하시겠습니까?")) {
+                  const nonTemplate = (proj.tasks||[]).filter(t=>!t.phaseId);
+                  const newTasks = generateTasksFromTemplate(proj.id, accounts.filter(a=>a.name));
+                  updateTasks([...nonTemplate, ...newTasks]);
+                }
+              }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #fca5a5",background:"#fee2e2",color:"#ef4444",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                ↺ 템플릿 초기화
+              </button>
+            </div>
+          </div>
+
+          {/* 비딩 되돌리기 — 비딩에서 전환된 일반 프로젝트만 표시 */}
+          {!proj.isBidding && proj.biddingStatus && (
+            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,
+              padding:"12px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:2}}>🏆 비딩 전환 프로젝트</div>
+                <div style={{fontSize:11,color:"#a16207"}}>비딩 탭으로 되돌립니다. 현재 태스크·데이터는 유지됩니다.</div>
+              </div>
+              <button
+                onClick={()=>{
+                  if(window.confirm("비딩 프로젝트로 되돌리시겠습니까?\n현재 태스크와 데이터는 모두 유지됩니다.")) {
+                    patchProj(p=>({...p, isBidding:true}));
+                    setEditProjModal(false);
+                  }
+                }}
+                style={{padding:"7px 14px",borderRadius:8,border:"none",flexShrink:0,
+                  background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                ↩ 비딩으로 되돌리기
+              </button>
+            </div>
+          )}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <Btn danger sm onClick={()=>{if(window.confirm("프로젝트를 삭제하시겠습니까?\n모든 데이터가 사라집니다.")){deleteProjectById(selId);setEditProjModal(false);}}}>🗑️ 삭제</Btn>
             <div style={{display:"flex",gap:8}}>
@@ -3635,45 +11532,148 @@ return (
 
         {addProjModal && (
         <Modal title="새 프로젝트" onClose={()=>setAddProjModal(false)}>
-          <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))} placeholder="ex. 나이키 여름 캠페인"/></Field>
+          {/* 비딩 토글 — 최상단 */}
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+            borderRadius:10,marginBottom:12,cursor:"pointer",userSelect:"none",
+            background:pf.isBidding?"#fef9c3":"#f8fafc",
+            border:`1.5px solid ${pf.isBidding?"#fde047":"#e2e8f0"}`,
+            transition:"all .15s"}}>
+            <input type="checkbox" checked={!!pf.isBidding}
+              onChange={e=>setPf(v=>({...v,isBidding:e.target.checked,useTemplate:!e.target.checked}))}
+              style={{width:17,height:17,accentColor:"#ca8a04",cursor:"pointer"}}/>
+            <div>
+              <div style={{fontWeight:700,fontSize:13,color:pf.isBidding?"#92400e":"#475569"}}>
+                🏆 비딩 프로젝트
+              </div>
+              <div style={{fontSize:11,color:pf.isBidding?"#a16207":"#94a3b8"}}>
+                {pf.isBidding
+                  ? "제안/PT 관리만 진행 — 수주 시 일반 프로젝트로 전환 가능"
+                  : "체크하면 단계 없이 비딩 전용 모드로 생성됩니다"}
+              </div>
+            </div>
+          </label>
+
+          <Field label="프로젝트명 *"><input style={inp} autoFocus value={pf.name} onChange={e=>setPf(v=>({...v,name:e.target.value}))} placeholder={pf.isBidding?"ex. 나이키 여름 캠페인 비딩":"ex. 나이키 여름 캠페인"}/></Field>
           <div style={{display:"flex",gap:12}}>
             <Field label="클라이언트 *" half><input style={inp} value={pf.client} onChange={e=>setPf(v=>({...v,client:e.target.value}))} placeholder="브랜드명"/></Field>
             <Field label="대행사" half><input style={inp} value={pf.agency||""} onChange={e=>setPf(v=>({...v,agency:e.target.value}))} placeholder="대행사명"/></Field>
           </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{formats.map(f=><option key={f}>{f}</option>)}</select></Field>
-            <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
-            <Field label="납품일" half><input style={inp} type="date" value={pf.due||""} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
-          </div>
+
+          {/* 비딩 전용 필드 */}
+          {pf.isBidding ? (
+            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,letterSpacing:.5}}>비딩 정보</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
+                <Field label="PT 날짜" half>
+                  <input style={inp} type="date" value={pf.ptDate||""} onChange={e=>setPf(v=>({...v,ptDate:e.target.value}))}/>
+                </Field>
+                <Field label="결과 발표일" half>
+                  <input style={inp} type="date" value={pf.resultDate||""} onChange={e=>setPf(v=>({...v,resultDate:e.target.value}))}/>
+                </Field>
+                <Field label="경쟁사 (참고용)" half>
+                  <input style={inp} value={pf.competitors||""} onChange={e=>setPf(v=>({...v,competitors:e.target.value}))} placeholder="A사, B사 등"/>
+                </Field>
+                <Field label="예상 규모" half>
+                  <input style={inp} value={pf.estimatedBudget||""} onChange={e=>setPf(v=>({...v,estimatedBudget:e.target.value}))} placeholder="예: 5,000만원"/>
+                </Field>
+              </div>
+              {/* ── 참여인원 토글 ── */}
+              <div style={{borderTop:"1px solid #fde68a",paddingTop:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>
+                  👥 참여인원
+                  {(pf.biddingMembers||[]).length>0&&(
+                    <span style={{fontWeight:400,marginLeft:6,color:"#a16207"}}>
+                      {(pf.biddingMembers||[]).length}명 선택
+                    </span>
+                  )}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {accounts.filter(a=>!a.resigned).map(a=>{
+                    const sel=(pf.biddingMembers||[]).includes(a.id);
+                    const teamColor=TEAM_BY_ID[a.team]?.color||"#2563eb";
+                    const teamBg=TEAM_BY_ID[a.team]?.bg||"#eff6ff";
+                    return (
+                      <button key={a.id} type="button"
+                        onClick={()=>setPf(v=>{
+                          const cur=v.biddingMembers||[];
+                          return {...v,biddingMembers:sel?cur.filter(id=>id!==a.id):[...cur,a.id]};
+                        })}
+                        style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",
+                          borderRadius:99,border:"none",cursor:"pointer",fontSize:12,
+                          fontWeight:sel?700:400,transition:"all .12s",
+                          background:sel?teamBg:"#fff8dc",
+                          color:sel?teamColor:"#78716c",
+                          outline:sel?`2px solid ${teamColor}`:"1px solid #fde68a"}}>
+                        <Avatar name={a.name} size={16}/>
+                        <span>{a.name}</span>
+                        {a.jobTitle&&<span style={{fontSize:10,opacity:.75}}>· {a.jobTitle}</span>}
+                        {sel&&<span style={{fontSize:10,marginLeft:2}}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(pf.biddingMembers||[]).length>0&&(
+                  <div style={{marginTop:8,fontSize:11,color:"#92400e",
+                    padding:"5px 10px",background:"#fff8dc",borderRadius:7,
+                    border:"1px solid #fde68a"}}>
+                    {accounts.filter(a=>(pf.biddingMembers||[]).includes(a.id))
+                      .map(a=>a.name+(a.jobTitle?" ("+a.jobTitle+")":"")).join(" · ")}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+              <Field label="포맷" half><select style={inp} value={pf.format} onChange={e=>setPf(v=>({...v,format:e.target.value}))}>{formats.map(f=><option key={f}>{f}</option>)}</select></Field>
+              <Field label="시작일" half><input style={inp} type="date" value={pf.startDate||""} onChange={e=>setPf(v=>({...v,startDate:e.target.value}))}/></Field>
+              <Field label="납품일" half><input style={inp} type="date" value={pf.due||""} onChange={e=>setPf(v=>({...v,due:e.target.value}))}/></Field>
+            </div>
+          )}
           <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
             <Field label="담당자명" half><input style={inp} value={pf.contactName||""} onChange={e=>setPf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동 AE"/></Field>
             <Field label="담당자 연락처" half><input style={inp} value={pf.contactPhone||""} onChange={e=>setPf(v=>({...v,contactPhone:e.target.value}))} placeholder="010-0000-0000"/></Field>
             <Field label="담당자 이메일" half><input style={inp} value={pf.contactEmail||""} onChange={e=>setPf(v=>({...v,contactEmail:e.target.value}))} placeholder="name@agency.com"/></Field>
-          </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-            <Field label="감독" half><input style={inp} value={pf.director||""} onChange={e=>setPf(v=>({...v,director:e.target.value}))} placeholder="이름"/></Field>
-            <Field label="EPD" half><input style={inp} value={pf.epd||""} onChange={e=>setPf(v=>({...v,epd:e.target.value}))} placeholder="이름"/></Field>
-            <Field label="조감독" half><input style={inp} value={pf.assistant||""} onChange={e=>setPf(v=>({...v,assistant:e.target.value}))} placeholder="이름"/></Field>
-            <Field label="PD" half><input style={inp} value={pf.pd||""} onChange={e=>setPf(v=>({...v,pd:e.target.value}))} placeholder="이름"/></Field>
           </div>
           <Field label="프로젝트 색상">
             <div style={{display:"flex",gap:8,marginTop:2}}>
               {P_COLORS.map(c=><div key={c} onClick={()=>setPf(v=>({...v,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",outline:pf.color===c?`3px solid ${c}`:"none",outlineOffset:2}}/>)}
             </div>
           </Field>
-          <Field label="견적서 포맷">
-            <div style={{display:"flex",gap:8}}>
-              {[{val:"A",label:"📄 표준형",desc:"대분류/중분류 계층"},{val:"B",label:"📋 상세형",desc:"부문별 소계 + 관리비/이윤"}].map(opt=>(
-                <label key={opt.val} style={{flex:1,display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer",padding:"10px 12px",borderRadius:10,border:`2px solid ${(pf.quoteFmt||"A")===opt.val?C.blue:C.border}`,background:(pf.quoteFmt||"A")===opt.val?C.blueLight:C.white}}>
-                  <input type="radio" name="quoteFmtNew" value={opt.val} checked={(pf.quoteFmt||"A")===opt.val} onChange={()=>setPf(v=>({...v,quoteFmt:opt.val}))} style={{marginTop:2,accentColor:C.blue}}/>
-                  <div><div style={{fontWeight:700,fontSize:13}}>{opt.label}</div><div style={{fontSize:11,color:C.faint,marginTop:2}}>{opt.desc}</div></div>
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#16a34a",marginBottom:10}}>🗂 워크플로우 템플릿</div>
+            {!pf.isBidding && (
+              <>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"8px 10px",borderRadius:8,background:"#f0fdf4",border:"1px solid #86efac"}}>
+                  <input type="checkbox" checked={pf.useTemplate!==false}
+                    onChange={e=>setPf(v=>({...v,useTemplate:e.target.checked}))}
+                    style={{accentColor:"#16a34a",width:16,height:16}}/>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:12,color:"#16a34a"}}>22단계 표준 템플릿 적용</div>
+                    {pf.useTemplate!==false && (
+                      <div style={{fontSize:11,color:"#15803d",marginTop:1}}>
+                        비딩 → 기획 → 트리트먼트 → PPM → 촬영준비 → 촬영 → 편집 → 색보정 → 시사 × 3 → 납품 → 최종보고
+                      </div>
+                    )}
+                  </div>
                 </label>
-              ))}
-            </div>
-          </Field>
-          <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",fontSize:12,color:C.blue,marginBottom:4}}>
-            💡 선택한 포맷에 맞는 견적 항목이 자동으로 추가됩니다.
+              </>
+            )}
           </div>
+          {!pf.isBidding && (<>
+            <Field label="견적서 포맷">
+              <div style={{display:"flex",gap:8}}>
+                {[{val:"A",label:"📄 표준형",desc:"대분류/중분류 계층"},{val:"B",label:"📋 상세형",desc:"부문별 소계 + 관리비/이윤"}].map(opt=>(
+                  <label key={opt.val} style={{flex:1,display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer",padding:"10px 12px",borderRadius:10,border:`2px solid ${(pf.quoteFmt||"A")===opt.val?C.blue:C.border}`,background:(pf.quoteFmt||"A")===opt.val?C.blueLight:C.white}}>
+                    <input type="radio" name="quoteFmtNew" value={opt.val} checked={(pf.quoteFmt||"A")===opt.val} onChange={()=>setPf(v=>({...v,quoteFmt:opt.val}))} style={{marginTop:2,accentColor:C.blue}}/>
+                    <div><div style={{fontWeight:700,fontSize:13}}>{opt.label}</div><div style={{fontSize:11,color:C.faint,marginTop:2}}>{opt.desc}</div></div>
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <div style={{background:C.blueLight,borderRadius:8,padding:"10px 14px",fontSize:12,color:C.blue,marginBottom:4}}>
+              💡 선택한 포맷에 맞는 견적 항목이 자동으로 추가됩니다.
+            </div>
+          </>)}
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:12}}>
             <Btn onClick={()=>setAddProjModal(false)}>취소</Btn>
             <Btn primary onClick={createProject}>생성</Btn>
