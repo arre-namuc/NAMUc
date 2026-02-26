@@ -295,3 +295,49 @@ export async function saveOffice(data) {
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
+
+// ── CRM 외주업체 (Firestore + Storage) ─────────────────
+
+/** 외주업체 목록 실시간 구독 */
+export function subscribeVendors(callback) {
+  if (!isConfigured) { callback(null); return () => {}; }
+  return onSnapshot(
+    query(collection(db, "vendors"), orderBy("name")),
+    (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (err) => { console.error("Vendors 구독 오류:", err); callback(null); }
+  );
+}
+
+/** 외주업체 저장 (신규/수정) */
+export async function saveVendorToFirestore(vendor) {
+  if (!isConfigured) return vendor;
+  const id = vendor.id || "v" + Date.now();
+  const data = { ...cleanUndefined(vendor), id, updatedAt: serverTimestamp() };
+  await setDoc(doc(db, "vendors", id), data, { merge: true });
+  return data;
+}
+
+/** 외주업체 삭제 */
+export async function deleteVendorFromFirestore(vendorId) {
+  if (!isConfigured) return;
+  await deleteDoc(doc(db, "vendors", vendorId));
+}
+
+/** 업체 서류 업로드 (사업자등록증, 통장사본, 신분증) */
+export async function uploadVendorDoc(vendorId, docType, file) {
+  if (!isConfigured) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        name: file.name, url: reader.result, type: file.type, size: file.size,
+      });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  const path = `vendors/${vendorId}/${docType}_${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+  return { name: file.name, url, type: file.type, size: file.size, path };
+}
