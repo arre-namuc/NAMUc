@@ -4224,6 +4224,17 @@ function BudgetEditor({ project, onSave }) {
                 <span style={{color:C.sub}}>예금주: {vendor.bankHolder||"-"}</span>
               </div>):(<div style={{fontSize:12,color:C.faint}}>등록된 계좌 정보 없음. CRM에서 업체 정보를 수정해주세요.</div>)}
             </div>
+            {/* 첨부 서류 미리보기 */}
+            {(vendor.docs?.bizReg||vendor.docs?.bankCopy||vendor.docs?.idCard)&&(
+              <div style={{background:"#fafafa",borderRadius:10,padding:16,marginBottom:16}}>
+                <div style={{fontSize:12,fontWeight:700,color:C.dark,marginBottom:10}}>📎 첨부 서류</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {vendor.docs?.bizReg&&<button onClick={()=>setLightboxImg(vendor.docs.bizReg.b64url)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #2563eb30`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 🔍</button>}
+                  {vendor.docs?.bankCopy&&<button onClick={()=>setLightboxImg(vendor.docs.bankCopy.b64url)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #f59e0b30`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 🔍</button>}
+                  {vendor.docs?.idCard&&<button onClick={()=>setLightboxImg(vendor.docs.idCard.b64url)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #10b98130`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 🔍</button>}
+                </div>
+              </div>
+            )}
             <div style={{background:v.paymentStatus==="입금완료"?"#f0fdf4":v.paymentStatus==="입금요청"?"#fffbeb":"#fff5f5",borderRadius:10,padding:16,marginBottom:16}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                 <div style={{fontSize:12,fontWeight:700}}>💰 입금 현황</div>
@@ -9253,16 +9264,44 @@ function CRMPage({ projects }) {
   });
   const [vModal,  setVModal]  = useState(null); // null | {} | {id}
   const [vf,      setVf]      = useState({});
+  const [docPreview, setDocPreview] = useState(null); // {name,b64url,type}
+  const [crmDocAnalyzing, setCrmDocAnalyzing] = useState(null);
+  const toDataURL = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.onerror=j;rd.readAsDataURL(f);});
+  const toB64Only = f => new Promise((r,j)=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.onerror=j;rd.readAsDataURL(f);});
+  const analyzeCrmDoc = async (docType,file) => {
+    const b64url = await toDataURL(file);
+    const docObj = {name:file.name,type:file.type,b64url,size:file.size};
+    setVf(v=>({...v,docs:{...(v.docs||{}), [docType]:docObj}}));
+    setCrmDocAnalyzing(docType);
+    try {
+      const b64 = await toB64Only(file);
+      const isImg = file.type.startsWith("image/");
+      let prompt = "";
+      if(docType==="bizReg") prompt="이 사업자등록증에서 추출. JSON만.\n{\"name\":\"상호명\",\"bizNo\":\"사업자번호\",\"representative\":\"대표자명\"}";
+      else if(docType==="bankCopy") prompt="이 통장사본에서 추출. JSON만.\n{\"bankName\":\"은행명\",\"bankAccount\":\"계좌번호\",\"bankHolder\":\"예금주\"}";
+      const src = isImg ? {type:"image",source:{type:"base64",media_type:file.type,data:b64}} : {type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}};
+      const res = await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:[src,{type:"text",text:prompt}]}]})});
+      if(res.ok){
+        const data=await res.json();const text=(data.content||[]).map(c=>c.text||"").join("").trim().replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
+        const m=text.match(/\{[\s\S]*\}/);
+        if(m){try{const p=JSON.parse(m[0]);
+          if(docType==="bizReg") setVf(v=>({...v,name:p.name||v.name,bizNo:p.bizNo||v.bizNo,contactName:p.representative||v.contactName}));
+          else if(docType==="bankCopy") setVf(v=>({...v,bankName:p.bankName||v.bankName,bankAccount:p.bankAccount||v.bankAccount,bankHolder:p.bankHolder||v.bankHolder}));
+        }catch(e){}}
+      }
+    } catch(e){console.error(e);}
+    setCrmDocAnalyzing(null);
+  };
 
   const saveVendors = (next) => {
     setVendors(next);
     try { localStorage.setItem("crm_vendors", JSON.stringify(next)); } catch{}
   };
   const openAddVendor = () => {
-    setVf({name:"",type:"",status:"활성",phone:"",email:"",contactName:"",note:"",rate:"",rateUnit:"건"});
+    setVf({name:"",type:"",status:"활성",phone:"",email:"",contactName:"",note:"",rate:"",rateUnit:"건",bizNo:"",bankName:"",bankAccount:"",bankHolder:"",vendorType:"company",docs:{}});
     setVModal({});
   };
-  const openEditVendor = v => { setVf({...v}); setVModal({id:v.id}); };
+  const openEditVendor = v => { setVf({...v,docs:v.docs||{}}); setVModal({id:v.id}); };
   const saveVendor = () => {
     if(!vf.name?.trim()) return;
     const entry = {...vf, id:vModal.id||"v"+Date.now()};
@@ -9421,6 +9460,22 @@ function CRMPage({ projects }) {
                   {v.rate&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>
                     💰 {Number(v.rate).toLocaleString()}원 / {v.rateUnit||"건"}
                   </div>}
+                  {/* 사업자 정보 */}
+                  {v.bizNo&&<div style={{fontSize:11,color:"#475569",marginBottom:4}}>
+                    🏢 사업자번호: <span style={{fontWeight:600}}>{v.bizNo}</span>
+                  </div>}
+                  {/* 계좌 정보 */}
+                  {(v.bankName||v.bankAccount)&&<div style={{fontSize:11,color:"#2563eb",marginBottom:4,background:"#eff6ff",padding:"4px 8px",borderRadius:6}}>
+                    🏦 {v.bankName||""} {v.bankAccount||""}{v.bankHolder?` (${v.bankHolder})`:""}
+                  </div>}
+                  {/* 첨부 서류 */}
+                  {(v.docs?.bizReg||v.docs?.bankCopy||v.docs?.idCard)&&(
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+                      {v.docs?.bizReg&&<button onClick={()=>setDocPreview(v.docs.bizReg)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #2563eb40`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 🔍</button>}
+                      {v.docs?.bankCopy&&<button onClick={()=>setDocPreview(v.docs.bankCopy)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #f59e0b40`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 🔍</button>}
+                      {v.docs?.idCard&&<button onClick={()=>setDocPreview(v.docs.idCard)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #10b98140`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 🔍</button>}
+                    </div>
+                  )}
                   {/* 메모 */}
                   {v.note&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,padding:"6px 8px",
                     background:"#f8fafc",borderRadius:6,whiteSpace:"pre-wrap"}}>{v.note}</div>}
@@ -9431,76 +9486,173 @@ function CRMPage({ projects }) {
 
           {/* 외주 등록/수정 모달 */}
           {vModal&&(
-            <Modal title={vModal.id?"외주 수정":"외주 등록"} onClose={()=>setVModal(null)}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <Field label="업체명 / 이름 *" style={{gridColumn:"1/-1"}}>
-                  <input style={inp} autoFocus value={vf.name||""} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="업체명 또는 프리랜서 이름"/>
-                </Field>
-                <Field label="유형">
-                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {OUTSOURCE_TYPES.map(t=>{
-                      const sel=vf.type===t;
-                      return (
-                        <button key={t} type="button" onClick={()=>setVf(v=>({...v,type:sel?"":t}))}
-                          style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",
-                            fontSize:11,fontWeight:sel?700:400,
-                            background:sel?"#2563eb":"#f1f5f9",
-                            color:sel?"#fff":"#64748b"}}>
-                          {t}
-                        </button>
-                      );
-                    })}
+            <Modal title={vModal.id?"외주 수정":"외주 등록"} onClose={()=>setVModal(null)} wide>
+              <div style={{display:"flex",gap:16}}>
+                {/* 좌측: 서류 첨부 */}
+                <div style={{width:220,flexShrink:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:8}}>📎 서류 첨부 (AI 자동분석)</div>
+                  {/* 업체/프리랜서 토글 */}
+                  <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:10}}>
+                    {[{id:"company",label:"🏢 업체"},{id:"freelancer",label:"👤 프리랜서"}].map(t=>(
+                      <button key={t.id} onClick={()=>setVf(v=>({...v,vendorType:t.id}))}
+                        style={{flex:1,padding:"6px",fontSize:11,fontWeight:600,border:"none",cursor:"pointer",
+                          background:(vf.vendorType||"company")===t.id?C.blue:"transparent",
+                          color:(vf.vendorType||"company")===t.id?"#fff":C.sub}}>{t.label}</button>
+                    ))}
                   </div>
-                </Field>
-                <Field label="상태">
-                  <div style={{display:"flex",gap:6}}>
-                    {OUTSOURCE_STATUS.map(s=>{
-                      const sel=vf.status===s.id;
-                      return (
-                        <button key={s.id} type="button" onClick={()=>setVf(v=>({...v,status:s.id}))}
-                          style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
-                            fontSize:11,fontWeight:sel?700:400,
-                            background:sel?s.bg:"#f8fafc",color:sel?s.color:"#94a3b8",
-                            outline:sel?`2px solid ${s.color}`:"none"}}>
-                          {s.label}
-                        </button>
-                      );
-                    })}
+                  {/* 사업자등록증 */}
+                  <div style={{marginBottom:8}}>
+                    <div style={{fontSize:11,fontWeight:600,color:C.sub,marginBottom:4}}>🏢 {(vf.vendorType||"company")==="company"?"사업자등록증":"위촉장"}</div>
+                    {vf.docs?.bizReg ? (
+                      <div style={{border:`1px solid ${crmDocAnalyzing==="bizReg"?C.blue:C.border}`,borderRadius:8,padding:8,background:crmDocAnalyzing==="bizReg"?C.blueLight:C.white}}>
+                        <div style={{display:"flex",alignItems:"center",gap:4,fontSize:11}}>
+                          {crmDocAnalyzing==="bizReg"?"⏳ AI분석중":"✅"} <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vf.docs.bizReg.name}</span>
+                          <button onClick={()=>setVf(v=>({...v,docs:{...v.docs,bizReg:null}}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
+                        </div>
+                        {vf.docs.bizReg.b64url&&(
+                          <div style={{marginTop:6,cursor:"pointer"}} onClick={()=>setDocPreview(vf.docs.bizReg)}>
+                            {vf.docs.bizReg.type?.startsWith("image/")
+                              ? <img src={vf.docs.bizReg.b64url} alt="" style={{width:"100%",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                              : <div style={{background:C.slateLight,borderRadius:6,padding:"12px",textAlign:"center",fontSize:11,color:C.blue}}>📄 PDF 미리보기 클릭</div>
+                            }
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:8,padding:"12px 6px",textAlign:"center",cursor:"pointer",fontSize:11,color:C.faint}}>
+                        <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeCrmDoc("bizReg",f);}}/> 📄 파일 선택
+                      </label>
+                    )}
                   </div>
-                </Field>
-                <Field label="담당자명">
-                  <input style={inp} value={vf.contactName||""} onChange={e=>setVf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동"/>
-                </Field>
-                <Field label="연락처">
-                  <input style={inp} value={vf.phone||""} onChange={e=>setVf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
-                </Field>
-                <Field label="이메일">
-                  <input style={inp} value={vf.email||""} onChange={e=>setVf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
-                </Field>
-                <Field label="기본 단가">
-                  <input style={inp} type="number" value={vf.rate||""} onChange={e=>setVf(v=>({...v,rate:e.target.value}))} placeholder="0"/>
-                </Field>
-                <Field label="단가 기준">
-                  <div style={{display:"flex",gap:6}}>
-                    {["건","일","시간","월"].map(u=>{
-                      const sel=vf.rateUnit===u;
-                      return (
-                        <button key={u} type="button" onClick={()=>setVf(v=>({...v,rateUnit:u}))}
-                          style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
-                            fontSize:11,fontWeight:sel?700:400,
-                            background:sel?"#2563eb":"#f1f5f9",color:sel?"#fff":"#64748b"}}>
-                          {u}
-                        </button>
-                      );
-                    })}
+                  {/* 통장사본 */}
+                  <div style={{marginBottom:8}}>
+                    <div style={{fontSize:11,fontWeight:600,color:C.sub,marginBottom:4}}>💳 통장사본</div>
+                    {vf.docs?.bankCopy ? (
+                      <div style={{border:`1px solid ${crmDocAnalyzing==="bankCopy"?C.blue:C.border}`,borderRadius:8,padding:8,background:crmDocAnalyzing==="bankCopy"?C.blueLight:C.white}}>
+                        <div style={{display:"flex",alignItems:"center",gap:4,fontSize:11}}>
+                          {crmDocAnalyzing==="bankCopy"?"⏳ AI분석중":"✅"} <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vf.docs.bankCopy.name}</span>
+                          <button onClick={()=>setVf(v=>({...v,docs:{...v.docs,bankCopy:null}}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
+                        </div>
+                        {vf.docs.bankCopy.b64url&&(
+                          <div style={{marginTop:6,cursor:"pointer"}} onClick={()=>setDocPreview(vf.docs.bankCopy)}>
+                            {vf.docs.bankCopy.type?.startsWith("image/")
+                              ? <img src={vf.docs.bankCopy.b64url} alt="" style={{width:"100%",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                              : <div style={{background:C.slateLight,borderRadius:6,padding:"12px",textAlign:"center",fontSize:11,color:C.blue}}>📄 PDF 미리보기 클릭</div>
+                            }
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:8,padding:"12px 6px",textAlign:"center",cursor:"pointer",fontSize:11,color:C.faint}}>
+                        <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeCrmDoc("bankCopy",f);}}/> 💳 파일 선택
+                      </label>
+                    )}
                   </div>
-                </Field>
-                <Field label="메모" style={{gridColumn:"1/-1"}}>
-                  <textarea style={{...inp,minHeight:64,resize:"vertical"}} value={vf.note||""}
-                    onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 강점, 주의사항 등"/>
-                </Field>
+                  {/* 신분증 (프리랜서) */}
+                  {(vf.vendorType||"company")==="freelancer"&&(
+                    <div>
+                      <div style={{fontSize:11,fontWeight:600,color:C.sub,marginBottom:4}}>🪪 신분증</div>
+                      {vf.docs?.idCard ? (
+                        <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4,fontSize:11}}>
+                            ✅ <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vf.docs.idCard.name}</span>
+                            <button onClick={()=>setVf(v=>({...v,docs:{...v.docs,idCard:null}}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:8,padding:"12px 6px",textAlign:"center",cursor:"pointer",fontSize:11,color:C.faint}}>
+                          <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){
+                            toDataURL(f).then(b64url=>setVf(v=>({...v,docs:{...v.docs,idCard:{name:f.name,type:f.type,b64url,size:f.size}}})));
+                          }}}/> 🪪 파일 선택
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* 우측: 폼 필드 */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <Field label="업체명 / 이름 *" style={{gridColumn:"1/-1"}}>
+                      <input style={{...inp,background:crmDocAnalyzing==="bizReg"?C.blueLight:C.white}} autoFocus value={vf.name||""} onChange={e=>setVf(v=>({...v,name:e.target.value}))} placeholder="업체명 또는 프리랜서 이름"/>
+                    </Field>
+                    <Field label="사업자번호">
+                      <input style={{...inp,background:crmDocAnalyzing==="bizReg"?C.blueLight:C.white}} value={vf.bizNo||""} onChange={e=>setVf(v=>({...v,bizNo:e.target.value}))} placeholder="000-00-00000"/>
+                    </Field>
+                    <Field label={(vf.vendorType||"company")==="company"?"대표자명":"담당자명"}>
+                      <input style={{...inp,background:crmDocAnalyzing==="bizReg"?C.blueLight:C.white}} value={vf.contactName||""} onChange={e=>setVf(v=>({...v,contactName:e.target.value}))} placeholder="홍길동"/>
+                    </Field>
+                    <Field label="유형">
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {OUTSOURCE_TYPES.map(t=>{
+                          const sel=vf.type===t;
+                          return (
+                            <button key={t} type="button" onClick={()=>setVf(v=>({...v,type:sel?"":t}))}
+                              style={{padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",
+                                fontSize:11,fontWeight:sel?700:400,
+                                background:sel?"#2563eb":"#f1f5f9",
+                                color:sel?"#fff":"#64748b"}}>
+                              {t}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                    <Field label="상태">
+                      <div style={{display:"flex",gap:6}}>
+                        {OUTSOURCE_STATUS.map(s=>{
+                          const sel=vf.status===s.id;
+                          return (
+                            <button key={s.id} type="button" onClick={()=>setVf(v=>({...v,status:s.id}))}
+                              style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
+                                fontSize:11,fontWeight:sel?700:400,
+                                background:sel?s.bg:"#f8fafc",color:sel?s.color:"#94a3b8",
+                                outline:sel?`2px solid ${s.color}`:"none"}}>
+                              {s.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                    <Field label="연락처">
+                      <input style={inp} value={vf.phone||""} onChange={e=>setVf(v=>({...v,phone:e.target.value}))} placeholder="010-0000-0000"/>
+                    </Field>
+                    <Field label="이메일">
+                      <input style={inp} value={vf.email||""} onChange={e=>setVf(v=>({...v,email:e.target.value}))} placeholder="name@company.com"/>
+                    </Field>
+                    <div style={{gridColumn:"1/-1",background:"#eff6ff",borderRadius:10,padding:"10px 12px"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#2563eb",marginBottom:6}}>🏦 계좌 정보</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr",gap:8}}>
+                        <Field label="은행명"><input style={{...inp,background:crmDocAnalyzing==="bankCopy"?C.blueLight:C.white}} value={vf.bankName||""} onChange={e=>setVf(v=>({...v,bankName:e.target.value}))} placeholder="은행"/></Field>
+                        <Field label="계좌번호"><input style={{...inp,background:crmDocAnalyzing==="bankCopy"?C.blueLight:C.white}} value={vf.bankAccount||""} onChange={e=>setVf(v=>({...v,bankAccount:e.target.value}))} placeholder="계좌번호"/></Field>
+                        <Field label="예금주"><input style={{...inp,background:crmDocAnalyzing==="bankCopy"?C.blueLight:C.white}} value={vf.bankHolder||""} onChange={e=>setVf(v=>({...v,bankHolder:e.target.value}))} placeholder="예금주"/></Field>
+                      </div>
+                    </div>
+                    <Field label="기본 단가">
+                      <input style={inp} type="number" value={vf.rate||""} onChange={e=>setVf(v=>({...v,rate:e.target.value}))} placeholder="0"/>
+                    </Field>
+                    <Field label="단가 기준">
+                      <div style={{display:"flex",gap:6}}>
+                        {["건","일","시간","월"].map(u=>{
+                          const sel=vf.rateUnit===u;
+                          return (
+                            <button key={u} type="button" onClick={()=>setVf(v=>({...v,rateUnit:u}))}
+                              style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",
+                                fontSize:11,fontWeight:sel?700:400,
+                                background:sel?"#2563eb":"#f1f5f9",color:sel?"#fff":"#64748b"}}>
+                              {u}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                    <Field label="메모" style={{gridColumn:"1/-1"}}>
+                      <textarea style={{...inp,minHeight:50,resize:"vertical"}} value={vf.note||""}
+                        onChange={e=>setVf(v=>({...v,note:e.target.value}))} placeholder="특이사항, 강점, 주의사항 등"/>
+                    </Field>
+                  </div>
+                </div>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
                 {vModal.id&&<Btn danger sm onClick={()=>{deleteVendor(vModal.id);setVModal(null);}}>삭제</Btn>}
                 <div style={{flex:1}}/>
                 <Btn onClick={()=>setVModal(null)}>취소</Btn>
@@ -9510,10 +9662,26 @@ function CRMPage({ projects }) {
           )}
         </>
       )}
+      {/* ═══ 서류 미리보기 라이트박스 ═══ */}
+      {docPreview && (
+        <div onClick={()=>setDocPreview(null)} style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,maxWidth:"90vw",maxHeight:"90vh",overflow:"auto",boxShadow:"0 24px 48px rgba(0,0,0,0.3)",cursor:"default",position:"relative"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <span style={{fontWeight:700,fontSize:14}}>📄 {docPreview.name}</span>
+              <button onClick={()=>setDocPreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:C.faint}}>✕</button>
+            </div>
+            {docPreview.b64url && docPreview.type?.startsWith("image/")
+              ? <img src={docPreview.b64url} alt="" style={{maxWidth:"80vw",maxHeight:"75vh",objectFit:"contain",borderRadius:8}}/>
+              : docPreview.b64url && docPreview.type==="application/pdf"
+                ? <iframe src={docPreview.b64url} style={{width:"80vw",height:"75vh",border:"none",borderRadius:8}} title="PDF"/>
+                : <div style={{padding:40,textAlign:"center",color:C.faint}}>미리보기를 지원하지 않는 파일 형식입니다.</div>
+            }
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
 
 // ═══════════════════════════════════════════════════════════
 // 회사 설정 페이지
