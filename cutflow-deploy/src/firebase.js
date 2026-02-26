@@ -75,6 +75,8 @@ export function subscribeProjects(callback) {
   return onSnapshot(collection(db, "projects"), (snap) => {
     const projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(projects);
+  }, (error) => {
+    console.error("Projects 구독 오류:", error);
   });
 }
 
@@ -161,6 +163,8 @@ export function subscribeCompany(callback) {
   if (!isConfigured) return () => {};
   return onSnapshot(doc(db, "settings", "company"), (snap) => {
     if (snap.exists()) callback(snap.data());
+  }, (error) => {
+    console.error("Company 구독 오류:", error);
   });
 }
 
@@ -181,6 +185,8 @@ export function subscribeMembers(callback) {
   return onSnapshot(collection(db, "members"), (snap) => {
     const members = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     callback(members.sort((a,b) => (a.order||0) - (b.order||0)));
+  }, (error) => {
+    console.error("Members 구독 오류:", error);
   });
 }
 
@@ -262,6 +268,8 @@ export function subscribeOffice(callback) {
   return onSnapshot(doc(db, "settings", "office"), (snap) => {
     if (snap.exists()) callback(snap.data());
     else callback({});
+  }, (error) => {
+    console.error("Office 구독 오류:", error);
   });
 }
 
