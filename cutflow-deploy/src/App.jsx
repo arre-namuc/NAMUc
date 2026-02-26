@@ -4429,9 +4429,9 @@ function BudgetEditor({ project, onSave, user }) {
               <div style={{background:"#fafafa",borderRadius:10,padding:16,marginBottom:16}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.dark,marginBottom:10}}>📎 첨부 서류</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {vendor.docs?.bizReg&&<button onClick={()=>{const d=vendor.docs.bizReg;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"사업자등록증"}):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #2563eb30`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 {(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"🔍":"✅"}</button>}
-                  {vendor.docs?.bankCopy&&<button onClick={()=>{const d=vendor.docs.bankCopy;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"통장사본"}):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #f59e0b30`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 {(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"🔍":"✅"}</button>}
-                  {vendor.docs?.idCard&&<button onClick={()=>{const d=vendor.docs.idCard;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"신분증"}):alert("첨부 확인: "+d.name)}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid #10b98130`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 {(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"🔍":"✅"}</button>}
+                  {vendor.docs?.bizReg&&<button onClick={()=>{const d=vendor.docs.bizReg;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"사업자등록증"}):alert("서류 URL이 유실되었습니다. CRM에서 다시 첨부해주세요.")}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid ${(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"#2563eb30":"#ef444430"}`,background:(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"#eff6ff":"#fef2f2",color:(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"#2563eb":"#ef4444",cursor:"pointer"}}>📄 사업자등록증 {(vendor.docs.bizReg.url||vendor.docs.bizReg.b64url)?"🔍":"⚠️"}</button>}
+                  {vendor.docs?.bankCopy&&<button onClick={()=>{const d=vendor.docs.bankCopy;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"통장사본"}):alert("서류 URL이 유실되었습니다. CRM에서 다시 첨부해주세요.")}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid ${(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"#f59e0b30":"#ef444430"}`,background:(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"#fffbeb":"#fef2f2",color:(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"#d97706":"#ef4444",cursor:"pointer"}}>💳 통장사본 {(vendor.docs.bankCopy.url||vendor.docs.bankCopy.b64url)?"🔍":"⚠️"}</button>}
+                  {vendor.docs?.idCard&&<button onClick={()=>{const d=vendor.docs.idCard;const src=d.url||d.b64url;src?setLightboxImg({src,type:d.type||"image/",name:d.name||"신분증"}):alert("서류 URL이 유실되었습니다. CRM에서 다시 첨부해주세요.")}} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"6px 12px",borderRadius:8,border:`1px solid ${(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"#10b98130":"#ef444430"}`,background:(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"#ecfdf5":"#fef2f2",color:(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"#059669":"#ef4444",cursor:"pointer"}}>🪪 신분증 {(vendor.docs.idCard.url||vendor.docs.idCard.b64url)?"🔍":"⚠️"}</button>}
                 </div>
               </div>
             )}
@@ -9486,6 +9486,15 @@ function CRMPage({ projects }) {
         if(file){
           const result = await uploadVendorDoc(id, docType, file);
           docs[docType] = result; // {name, url, type, size, path}
+        } else if(docs[docType]?.b64url && !docs[docType]?.url && isConfigured){
+          // 기존 b64url만 있는 서류 → Storage에 업로드
+          try {
+            const r = await fetch(docs[docType].b64url);
+            const bl = await r.blob();
+            const f = new File([bl], docs[docType].name||`${docType}.file`, {type:docs[docType].type||"image/jpeg"});
+            const result = await uploadVendorDoc(id, docType, f);
+            docs[docType] = result;
+          } catch(e){ console.error(`${docType} 업로드 실패:`,e); }
         }
       }
       const entry = {...vf, id, docs};
@@ -9685,9 +9694,9 @@ function CRMPage({ projects }) {
                   {/* 첨부 서류 */}
                   {(v.docs?.bizReg||v.docs?.bankCopy||v.docs?.idCard)&&(
                     <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
-                      {v.docs?.bizReg&&<button onClick={()=>{const d=v.docs.bizReg;const src=d.url||d.b64url;src?setDocPreview({...d,b64url:src}):alert("첨부 확인: "+d.name);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #2563eb40`,background:"#eff6ff",color:"#2563eb",cursor:"pointer"}}>📄 사업자등록증 {(v.docs.bizReg.url||v.docs.bizReg.b64url)?"🔍":"✅"}</button>}
-                      {v.docs?.bankCopy&&<button onClick={()=>{const d=v.docs.bankCopy;const src=d.url||d.b64url;src?setDocPreview({...d,b64url:src}):alert("첨부 확인: "+d.name);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #f59e0b40`,background:"#fffbeb",color:"#d97706",cursor:"pointer"}}>💳 통장사본 {(v.docs.bankCopy.url||v.docs.bankCopy.b64url)?"🔍":"✅"}</button>}
-                      {v.docs?.idCard&&<button onClick={()=>{const d=v.docs.idCard;const src=d.url||d.b64url;src?setDocPreview({...d,b64url:src}):alert("첨부 확인: "+d.name);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid #10b98140`,background:"#ecfdf5",color:"#059669",cursor:"pointer"}}>🪪 신분증 {(v.docs.idCard.url||v.docs.idCard.b64url)?"🔍":"✅"}</button>}
+                      {v.docs?.bizReg&&<button onClick={()=>{const d=v.docs.bizReg;const src=d.url||d.b64url;if(src){setDocPreview({...d,b64url:src});}else{openEditVendor(v);alert("서류 URL이 유실되었습니다. 사업자등록증을 다시 첨부해주세요.");}}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid ${(v.docs.bizReg.url||v.docs.bizReg.b64url)?"#2563eb40":"#ef444440"}`,background:(v.docs.bizReg.url||v.docs.bizReg.b64url)?"#eff6ff":"#fef2f2",color:(v.docs.bizReg.url||v.docs.bizReg.b64url)?"#2563eb":"#ef4444",cursor:"pointer"}}>📄 사업자등록증 {(v.docs.bizReg.url||v.docs.bizReg.b64url)?"🔍":"⚠️재첨부"}</button>}
+                      {v.docs?.bankCopy&&<button onClick={()=>{const d=v.docs.bankCopy;const src=d.url||d.b64url;if(src){setDocPreview({...d,b64url:src});}else{openEditVendor(v);alert("서류 URL이 유실되었습니다. 통장사본을 다시 첨부해주세요.");}}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid ${(v.docs.bankCopy.url||v.docs.bankCopy.b64url)?"#f59e0b40":"#ef444440"}`,background:(v.docs.bankCopy.url||v.docs.bankCopy.b64url)?"#fffbeb":"#fef2f2",color:(v.docs.bankCopy.url||v.docs.bankCopy.b64url)?"#d97706":"#ef4444",cursor:"pointer"}}>💳 통장사본 {(v.docs.bankCopy.url||v.docs.bankCopy.b64url)?"🔍":"⚠️재첨부"}</button>}
+                      {v.docs?.idCard&&<button onClick={()=>{const d=v.docs.idCard;const src=d.url||d.b64url;if(src){setDocPreview({...d,b64url:src});}else{openEditVendor(v);alert("서류 URL이 유실되었습니다. 신분증을 다시 첨부해주세요.");}}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,border:`1px solid ${(v.docs.idCard.url||v.docs.idCard.b64url)?"#10b98140":"#ef444440"}`,background:(v.docs.idCard.url||v.docs.idCard.b64url)?"#ecfdf5":"#fef2f2",color:(v.docs.idCard.url||v.docs.idCard.b64url)?"#059669":"#ef4444",cursor:"pointer"}}>🪪 신분증 {(v.docs.idCard.url||v.docs.idCard.b64url)?"🔍":"⚠️재첨부"}</button>}
                     </div>
                   )}
                   {/* 메모 */}
@@ -9731,7 +9740,10 @@ function CRMPage({ projects }) {
                             }
                           </div>
                         ):(
-                          <div style={{marginTop:4,fontSize:10,color:C.faint}}>📎 첨부됨</div>
+                          <label style={{display:"block",marginTop:4,padding:"8px",background:"#fef2f2",borderRadius:6,textAlign:"center",fontSize:10,color:"#ef4444",cursor:"pointer",border:"1px dashed #ef444440"}}>
+                            <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeCrmDoc("bizReg",f);}}/>
+                            ⚠️ 파일 유실 — 클릭하여 다시 첨부
+                          </label>
                         )}
                       </div>
                     ) : (
@@ -9757,7 +9769,10 @@ function CRMPage({ projects }) {
                             }
                           </div>
                         ):(
-                          <div style={{marginTop:4,fontSize:10,color:C.faint}}>📎 첨부됨</div>
+                          <label style={{display:"block",marginTop:4,padding:"8px",background:"#fef2f2",borderRadius:6,textAlign:"center",fontSize:10,color:"#ef4444",cursor:"pointer",border:"1px dashed #ef444440"}}>
+                            <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)analyzeCrmDoc("bankCopy",f);}}/>
+                            ⚠️ 파일 유실 — 클릭하여 다시 첨부
+                          </label>
                         )}
                       </div>
                     ) : (
@@ -9776,10 +9791,20 @@ function CRMPage({ projects }) {
                             ✅ <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{vf.docs.idCard.name}</span>
                             <button onClick={()=>setVf(v=>({...v,docs:{...v.docs,idCard:null}}))} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:12}}>×</button>
                           </div>
+                          {!(vf.docs.idCard.b64url||vf.docs.idCard.url)&&(
+                            <label style={{display:"block",marginTop:4,padding:"8px",background:"#fef2f2",borderRadius:6,textAlign:"center",fontSize:10,color:"#ef4444",cursor:"pointer",border:"1px dashed #ef444440"}}>
+                              <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){
+                                pendingFiles.current.idCard=f;
+                                toDataURL(f).then(b64url=>setVf(v=>({...v,docs:{...v.docs,idCard:{name:f.name,type:f.type,b64url,size:f.size}}})));
+                              }}}/>
+                              ⚠️ 파일 유실 — 클릭하여 다시 첨부
+                            </label>
+                          )}
                         </div>
                       ) : (
                         <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:8,padding:"12px 6px",textAlign:"center",cursor:"pointer",fontSize:11,color:C.faint}}>
                           <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f){
+                            pendingFiles.current.idCard=f;
                             toDataURL(f).then(b64url=>setVf(v=>({...v,docs:{...v.docs,idCard:{name:f.name,type:f.type,b64url,size:f.size}}})));
                           }}}/> 🪪 파일 선택
                         </label>
