@@ -4411,6 +4411,7 @@ function BudgetEditor({ project, onSave }) {
         </Modal>
       )}
     </div>
+    </div>
   );
 }
 
