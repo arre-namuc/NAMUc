@@ -80,12 +80,26 @@ export function subscribeProjects(callback) {
   });
 }
 
+/** undefined 값 제거 (Firestore 호환) */
+function cleanUndefined(obj) {
+  if (obj === null || obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(cleanUndefined);
+  if (typeof obj === "object" && obj.constructor === Object) {
+    const cleaned = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined) cleaned[k] = cleanUndefined(v);
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 /** 프로젝트 저장 (생성/수정 통합) */
 export async function saveProject(project) {
   if (!isConfigured) return;
   const { id, ...data } = project;
   await setDoc(doc(db, "projects", id), {
-    ...data,
+    ...cleanUndefined(data),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
@@ -172,7 +186,7 @@ export function subscribeCompany(callback) {
 export async function saveCompany(data) {
   if (!isConfigured) return;
   await setDoc(doc(db, "settings", "company"), {
-    ...data,
+    ...cleanUndefined(data),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
@@ -195,7 +209,7 @@ export async function saveMember(member) {
   if (!isConfigured) return;
   const { id, ...data } = member;
   await setDoc(doc(db, "members", String(id)), {
-    ...data,
+    ...cleanUndefined(data),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
@@ -277,7 +291,7 @@ export function subscribeOffice(callback) {
 export async function saveOffice(data) {
   if (!isConfigured) return;
   await setDoc(doc(db, "settings", "office"), {
-    ...data,
+    ...cleanUndefined(data),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
