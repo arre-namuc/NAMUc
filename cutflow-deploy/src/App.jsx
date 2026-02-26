@@ -40,7 +40,7 @@ const DEFAULT_COMPANY = {
 // 계정 / 역할
 // ═══════════════════════════════════════════════════════════
 const SEED_ACCOUNTS = [
-  { id:"m0", name:"최창일", role:"대표", pw:"namucreative02*100%", canViewFinance:true, canManageMembers:true, order:0 },
+  { id:"m0", name:"최창일", role:"대표", pw:"namucreative02*100%", canViewFinance:true, canManageMembers:true, order:0, email:"arre@namucreative.com" },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -10937,7 +10937,21 @@ function App() {
   useEffect(() => {
     if (!isConfigured) return;
     const u3 = subscribeMembers(m => {
-      if(m.length>0) setAccounts(m);
+      if(m.length>0) {
+        // SEED 이메일 병합 — Firestore 멤버에 이메일이 없으면 SEED에서 가져옴
+        const merged = m.map(member => {
+          if(member.email) return member;
+          const seed = SEED_ACCOUNTS.find(s => s.id === member.id);
+          if(seed?.email) {
+            const updated = {...member, email: seed.email};
+            // Firestore에도 이메일 영구 저장
+            if(isConfigured) saveMember(updated).catch(console.error);
+            return updated;
+          }
+          return member;
+        });
+        setAccounts(merged);
+      }
     });
     const uAuth = onAuthChange(gUser => {
       if (!gUser) return;
