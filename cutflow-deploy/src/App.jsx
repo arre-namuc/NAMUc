@@ -4002,12 +4002,12 @@ function BudgetEditor({ project, onSave }) {
         <div style={{fontSize:11,color:C.faint}}>💡 매입 클릭 → 만원 단위 · 📎 증빙 → 결산 반영 · 업체명 클릭 → 업체정보/입금현황</div>
         {undoStack.length>0&&<button onClick={doUndo} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.sub}}>↩️ 되돌리기 ({undoStack[undoStack.length-1].label})</button>}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",gap:0}}>
+      <div style={{display:"grid",gridTemplateColumns:"160px 1fr 12px 160px minmax(140px,1fr)",gap:0}}>
         <div style={{padding:"8px 12px",background:C.slateLight,borderRadius:"8px 0 0 0",border:`1px solid ${C.border}`,borderRight:"none"}}/>
         <div style={{padding:"8px 12px",background:"#eff6ff",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.blue,textAlign:"center"}}>📈 매출 (견적)</div>
         <div style={{background:C.slateLight,border:`1px solid ${C.border}`,borderLeft:"none",borderRight:"none"}}/>
         <div style={{padding:"8px 12px",background:"#fffbeb",border:`1px solid ${C.border}`,borderRight:"none",fontSize:12,fontWeight:700,color:C.amber,textAlign:"center"}}>📉 매입 (실행)</div>
-        <div style={{background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:"0 8px 0 0",fontSize:10,fontWeight:600,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>증빙</div>
+        <div style={{padding:"8px 12px",background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:"0 8px 0 0",fontSize:10,fontWeight:600,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>증빙 / 미리보기</div>
       </div>
       {(q.items||[]).length===0?(
         <div style={{textAlign:"center",padding:48,color:C.faint,border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px"}}><div style={{fontSize:32,marginBottom:8}}>📋</div><div style={{fontWeight:600}}>견적서 항목이 없습니다</div></div>
@@ -4017,13 +4017,13 @@ function BudgetEditor({ project, onSave }) {
             if(cat.disabled)return null;
             const catSales=(q.items[ci]?catAmt(q.items[ci]):0), catPurchase=(cat.groups||[]).reduce((s,g)=>(g.items||[]).reduce((s2,it)=>s2+(it.purchasePrice||0),s),0);
             return(<div key={cat.category}>
-              <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"160px 1fr 12px 160px minmax(140px,1fr)",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
                 <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,borderRight:`1px solid ${C.border}`}}>{cat.category}</div>
                 <div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catSales)}</div>
                 <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/><div style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(catPurchase)}</div><div/>
               </div>
               {(cat.groups||[]).map((grp,gi)=>(<div key={grp.group}>
-                <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
+                <div style={{display:"grid",gridTemplateColumns:"160px 1fr 12px 160px minmax(140px,1fr)",background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}>
                   <div style={{padding:"7px 12px 7px 20px",fontWeight:600,fontSize:12,color:C.slate,borderRight:`1px solid ${C.border}`}}>{grp.group}</div>
                   <div style={{padding:"7px 12px",fontSize:12,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM((q.items[ci]?.groups[gi]?.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0))}</div>
                   <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/><div style={{padding:"7px 12px",fontSize:12,color:C.amber,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM((grp.items||[]).reduce((s,it)=>s+(it.purchasePrice||0),0))}</div><div/>
@@ -4032,38 +4032,35 @@ function BudgetEditor({ project, onSave }) {
                   const qIt=q.items[ci]?.groups[gi]?.items[idx], salesAmt=qIt?(qIt.qty||0)*(qIt.unitPrice||0):0;
                   const priceKey=`${ci}-${gi}-${it.id}`, isEditing=editingPrice===priceKey, vCount=(it.vouchers||[]).length;
                   return(<div key={it.id}>
-                    <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
-                      <div style={{padding:"6px 12px 6px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:4,overflow:"hidden"}}>
-                        <span style={{whiteSpace:"nowrap",flexShrink:0}}>{it.name}</span>
-                        {vCount>0&&<div style={{display:"flex",gap:3,alignItems:"center",overflow:"auto",flexShrink:1,minWidth:0,scrollbarWidth:"none",msOverflowStyle:"none"}}>
-                          {(it.vouchers||[]).map(v=>(<span key={v.id} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:C.sub,background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap",flexShrink:0}}>
-                            <PayBadge status={v.paymentStatus}/>
-                            <span style={{fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:C.border}} onClick={()=>setVendorInfoPanel({ci,gi,itemId:it.id,voucher:v})}>{v.vendor}</span>
-                            <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
-                            {(v.files||[]).length>0&&<button onClick={()=>setPreviewVoucher(v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.blue,padding:0}}>📄</button>}
-                            <button onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.sub,padding:0}}>✏️</button>
-                            <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:10,lineHeight:1}}>×</button>
-                          </span>))}
-                        </div>}
-                      </div>
+                    <div style={{display:"grid",gridTemplateColumns:"160px 1fr 12px 160px minmax(140px,1fr)",borderBottom:`1px solid ${C.border}`,background:idx%2===0?C.white:"#fafbfc"}}>
+                      <div style={{padding:"7px 12px 7px 32px",fontSize:12,borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center"}}>{it.name}</div>
                       <div style={{padding:"8px 12px",borderRight:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8}}>
                         <span style={{fontSize:11,color:C.faint}}>{qIt?.qty||0}× {fmtN(qIt?.unitPrice||0)}</span>
                         <span style={{fontSize:13,fontWeight:600,color:C.blue,minWidth:70,textAlign:"right"}}>{fmtN(salesAmt)}</span>
                       </div>
                       <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
-                      <div style={{padding:"6px 8px",display:"flex",alignItems:"center",gap:6,borderRight:`1px solid ${C.border}`}}>
+                      <div style={{padding:"6px 6px",display:"flex",alignItems:"center",gap:4,borderRight:`1px solid ${C.border}`}}>
                         <input value={isEditing?toMan(it.purchasePrice):fmtN(it.purchasePrice)}
                           onChange={e=>{pushUndo("금액");patch(ci,gi,it.id,{purchasePrice:fromMan(e.target.value)});}}
                           onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
                           onFocus={e=>{e.target.style.borderColor=C.amber;setEditingPrice(priceKey);setTimeout(()=>e.target.select(),0);}}
                           onBlur={e=>{e.target.style.borderColor=C.border;setEditingPrice(null);}}
-                          placeholder="만원" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:isEditing?13:12,textAlign:"right",outline:"none",color:isEditing?C.text:C.sub,background:C.white,minWidth:0}}/>
-                        <input value={it.purchaseNote||""} onChange={e=>patch(ci,gi,it.id,{purchaseNote:e.target.value})} placeholder="메모" style={{width:60,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 6px",fontSize:10,outline:"none",color:C.sub,minWidth:0}}/>
+                          placeholder="만원" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 6px",fontSize:isEditing?13:12,textAlign:"right",outline:"none",color:isEditing?C.text:C.sub,background:C.white,minWidth:0}}/>
+                        <input value={it.purchaseNote||""} onChange={e=>patch(ci,gi,it.id,{purchaseNote:e.target.value})} placeholder="메모" style={{width:48,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 4px",fontSize:10,outline:"none",color:C.sub,minWidth:0}}/>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <button onClick={()=>openVoucherAdd(ci,gi,it.id)} title="증빙" style={{background:"none",border:"none",cursor:"pointer",fontSize:14,position:"relative"}}>
-                          📎{vCount>0&&<span style={{position:"absolute",top:-4,right:-6,background:C.amber,color:"#fff",fontSize:9,fontWeight:700,borderRadius:99,padding:"0 4px",lineHeight:"16px"}}>{vCount}</span>}
+                      {/* 증빙 칸: 📎 + 인라인 칩 */}
+                      <div style={{padding:"4px 6px",display:"flex",alignItems:"center",gap:3,overflow:"auto",scrollbarWidth:"none",msOverflowStyle:"none"}}>
+                        <button onClick={()=>openVoucherAdd(ci,gi,it.id)} title="증빙 추가" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,flexShrink:0,position:"relative"}}>
+                          📎{vCount>0&&<span style={{position:"absolute",top:-4,right:-6,background:C.amber,color:"#fff",fontSize:8,fontWeight:700,borderRadius:99,padding:"0 3px",lineHeight:"14px"}}>{vCount}</span>}
                         </button>
+                        {(it.vouchers||[]).map(v=>(<span key={v.id} style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:9,color:C.sub,background:"#fffbeb",border:`1px solid ${C.border}`,borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap",flexShrink:0}}>
+                          <PayBadge status={v.paymentStatus}/>
+                          <span style={{fontWeight:600,cursor:"pointer",textDecoration:"underline",textDecorationColor:C.border}} onClick={()=>setVendorInfoPanel({ci,gi,itemId:it.id,voucher:v})}>{v.vendor}</span>
+                          <span style={{color:C.amber,fontWeight:600}}>{fmtN(v.amount||0)}</span>
+                          {(v.files||[]).length>0&&<button onClick={()=>setPreviewVoucher(v)} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.blue,padding:0}} title="미리보기">🔍</button>}
+                          <button onClick={()=>{setVoucherModal({ci,gi,itemId:it.id,editV:v});setVf({...v,amount:String(v.amount||"")});}} style={{background:"none",border:"none",cursor:"pointer",fontSize:10,color:C.sub,padding:0}}>✏️</button>
+                          <button onClick={()=>removeVoucher(ci,gi,it.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.faint,fontSize:10,lineHeight:1}}>×</button>
+                        </span>))}
                       </div>
                     </div>
                   </div>);
@@ -4071,7 +4068,7 @@ function BudgetEditor({ project, onSave }) {
               </div>))}
             </div>);
           })}
-          <div style={{display:"grid",gridTemplateColumns:"180px 1fr 16px 1fr 36px",background:C.slateLight,borderTop:`2px solid ${C.border}`,fontWeight:700}}>
+          <div style={{display:"grid",gridTemplateColumns:"160px 1fr 12px 160px minmax(140px,1fr)",background:C.slateLight,borderTop:`2px solid ${C.border}`,fontWeight:700}}>
             <div style={{padding:"10px 12px",fontSize:13,borderRight:`1px solid ${C.border}`}}>합계</div>
             <div style={{padding:"10px 12px",fontSize:14,color:C.blue,textAlign:"right",borderRight:`1px solid ${C.border}`}}>{fmtM(salesTotal)}</div>
             <div style={{borderRight:`1px solid ${C.border}`,background:"#f1f5f9"}}/>
