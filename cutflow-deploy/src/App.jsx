@@ -9961,50 +9961,36 @@ function App() {
   const [taskPanel,    setTaskPanel]    = useState(null);  // 상세 패널
   const [tf,           setTf]           = useState({});
 
+  // 1) members 구독 (비인증 허용) + 인증 상태 복구
   useEffect(() => {
     if (!isConfigured) return;
-    const unsubs = [];
-
-    // members는 비인증 읽기 허용 → 먼저 구독
     const u3 = subscribeMembers(m => {
       if(m.length>0) setAccounts(m);
     });
-    unsubs.push(u3);
-
-    // 인증 상태 변경 시 구독 시작/정리
-    let authUnsubs = [];
     const uAuth = onAuthChange(gUser => {
-      // 기존 인증 구독 정리
-      authUnsubs.forEach(fn => fn?.());
-      authUnsubs = [];
-
       if (!gUser) return;
-
-      // 로그인 상태 복구
       setAccounts(prev => {
         const acc = prev.find(a => a.email && a.email.toLowerCase() === gUser.email.toLowerCase());
         if (acc) setUser(u => u ? u : {...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
         return prev;
       });
-
-      // 인증 후 데이터 구독 시작
-      const u1 = subscribeProjects(fb => {
-        if(fb.length>0){
-          setProjects(fb);
-          setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);
-        }
-      });
-      const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
-      const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
-      authUnsubs.push(u1, u2, u4);
     });
-    unsubs.push(uAuth);
-
-    return () => {
-      unsubs.forEach(fn => fn?.());
-      authUnsubs.forEach(fn => fn?.());
-    };
+    return () => { u3(); uAuth(); };
   }, []);
+
+  // 2) 로그인 후 데이터 구독 (user가 설정되면 시작, 로그아웃 시 정리)
+  useEffect(() => {
+    if (!isConfigured || !user) return;
+    const u1 = subscribeProjects(fb => {
+      if(fb.length>0){
+        setProjects(fb);
+        setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);
+      }
+    });
+    const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
+    const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
+    return () => { u1(); u2(); u4(); };
+  }, [user]);
   // D-day 알림 자동 생성
   useEffect(() => {
     const today = new Date(); today.setHours(0,0,0,0);
