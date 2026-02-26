@@ -9963,25 +9963,47 @@ function App() {
 
   useEffect(() => {
     if (!isConfigured) return;
-    const u1 = subscribeProjects(fb => { if(fb.length>0){setProjects(fb);setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);} });
-    const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
-    const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
+    const unsubs = [];
 
-    // members 구독 + 구글 로그인 상태 복구
+    // members는 비인증 읽기 허용 → 먼저 구독
     const u3 = subscribeMembers(m => {
-      if(m.length>0) {
-        setAccounts(m);
-        // 새로고침 시 로그인 상태 복구
-        const u5 = onAuthChange(gUser => {
-          if (!gUser) return;
-          const acc = m.find(a => a.email && a.email.toLowerCase() === gUser.email.toLowerCase());
-          if (acc) setUser(prev => prev ? prev : {...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
-        });
-        return u5;
-      }
+      if(m.length>0) setAccounts(m);
     });
+    unsubs.push(u3);
 
-    return () => { u1(); u2(); u3?.(); u4(); };
+    // 인증 상태 변경 시 구독 시작/정리
+    let authUnsubs = [];
+    const uAuth = onAuthChange(gUser => {
+      // 기존 인증 구독 정리
+      authUnsubs.forEach(fn => fn?.());
+      authUnsubs = [];
+
+      if (!gUser) return;
+
+      // 로그인 상태 복구
+      setAccounts(prev => {
+        const acc = prev.find(a => a.email && a.email.toLowerCase() === gUser.email.toLowerCase());
+        if (acc) setUser(u => u ? u : {...acc, googleUid: gUser.uid, photoURL: gUser.photoURL});
+        return prev;
+      });
+
+      // 인증 후 데이터 구독 시작
+      const u1 = subscribeProjects(fb => {
+        if(fb.length>0){
+          setProjects(fb);
+          setSelId(p=>fb.find(x=>x.id===p)?p:fb[0].id);
+        }
+      });
+      const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
+      const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
+      authUnsubs.push(u1, u2, u4);
+    });
+    unsubs.push(uAuth);
+
+    return () => {
+      unsubs.forEach(fn => fn?.());
+      authUnsubs.forEach(fn => fn?.());
+    };
   }, []);
   // D-day 알림 자동 생성
   useEffect(() => {
