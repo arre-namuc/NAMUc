@@ -1133,7 +1133,6 @@ function LoginScreen({ onLogin, accounts }) {
     setErr(""); setLoading(true);
     try {
       const gUser = await signInWithGoogle();
-      // 이메일로 accounts에서 매칭
       const acc = accounts.find(a =>
         a.email && a.email.toLowerCase() === gUser.email.toLowerCase()
       );
@@ -3822,7 +3821,7 @@ function QuoteEditor({ quote, onChange, exportProject, company }) {
 // ═══════════════════════════════════════════════════════════
 // 실행예산서 에디터 (견적서 스타일 수기입력)
 // ═══════════════════════════════════════════════════════════
-function BudgetEditor({ project, onSave, user }) {
+function BudgetEditor({ project, onSave, user, onNotify }) {
   const q   = project.quote;
   const bud = project.budget2 || { items: [] };
   const [editingPrice, setEditingPrice] = useState(null);
@@ -3906,12 +3905,30 @@ function BudgetEditor({ project, onSave, user }) {
     if(!confirm(`${budgetVersion}차 실행예산서를 결재 올리시겠습니까?\n결재 진행 중에는 편집이 불가합니다.\n\n결재순서: 경영지원실장 → 대표`)) return;
     try { await uploadAllPendingFiles(); } catch(e) { console.error("일괄 업로드 실패:", e); }
     onSave({...project, budgetStatus:"경영지원실장결재"});
-    alert(`📨 경영지원실장에게 ${budgetVersion}차 실행예산서 결재요청을 전송했습니다.`);
+    onNotify?.({
+      id:"appr-"+Date.now(), type:"approval", urgent:true,
+      toRole:"경영지원",
+      label:"결재요청",
+      from: user?.name||"",
+      fbTitle:`[${project.name}] ${budgetVersion}차 실행예산서 결재요청`,
+      commentText:`경영지원실장 결재를 요청합니다.`,
+      projectId: project.id, tab:"budget",
+      time: new Date().toISOString(),
+    });
   };
   const approveByManager = () => {
     if(!confirm(`경영지원실장 결재를 승인하시겠습니까?\n승인 후 대표 결재로 넘어갑니다.`)) return;
     onSave({...project, budgetStatus:"대표결재"});
-    alert(`📨 대표에게 ${budgetVersion}차 실행예산서 결재요청을 전송했습니다.`);
+    onNotify?.({
+      id:"appr-"+Date.now(), type:"approval", urgent:true,
+      toRole:"대표",
+      label:"결재요청",
+      from: user?.name||"",
+      fbTitle:`[${project.name}] ${budgetVersion}차 실행예산서 대표 결재요청`,
+      commentText:`경영지원실장 승인 완료. 대표 결재를 요청합니다.`,
+      projectId: project.id, tab:"budget",
+      time: new Date().toISOString(),
+    });
   };
   const completeApproval = () => {
     if(!confirm(`${budgetVersion}차 실행예산서 대표 결재를 완료하시겠습니까?`)) return;
@@ -3928,6 +3945,15 @@ function BudgetEditor({ project, onSave, user }) {
     };
     const updatedVersions = [...budgetVersions.filter(v=>v.version!==budgetVersion), snapshot];
     onSave({...project, budgetStatus:"결재완료", budgetVersions:updatedVersions});
+    onNotify?.({
+      id:"appr-"+Date.now(), type:"approved",
+      label:"결재완료",
+      from: user?.name||"",
+      fbTitle:`[${project.name}] ${budgetVersion}차 실행예산서 결재완료`,
+      commentText:`대표 결재가 완료되었습니다.`,
+      projectId: project.id, tab:"budget",
+      time: new Date().toISOString(),
+    });
   };
   const startNewVersion = () => {
     if(!confirm(`${budgetVersion+1}차 수정을 시작하시겠습니까?`)) return;
@@ -10907,8 +10933,8 @@ function ClientRequestTab({ project, patchProj, user, accounts, setNotifications
 
 function App() {
   const [user,         setUser]         = useState(null);
-  const [projects,     setProjects]     = useState(SEED_PROJECTS);
-  const [selId,        setSelId]        = useState("p1");
+  const [projects,     setProjects]     = useState(isConfigured ? [] : SEED_PROJECTS);
+  const [selId,        setSelId]        = useState("");
   const [company,      setCompany]      = useState(DEFAULT_COMPANY);
   const [dailyTodos,   setDailyTodos]   = useState({});
   const [notifications, setNotifications] = useState([]);
@@ -10932,23 +10958,21 @@ function App() {
   const [taskModal,    setTaskModal]    = useState(null);  // 수정 모달
   const [taskPanel,    setTaskPanel]    = useState(null);  // 상세 패널
   const [tf,           setTf]           = useState({});
+  const [approvalPopup, setApprovalPopup] = useState(null); // 결재요청 팝업
+
+  // Firestore 데이터 로드 완료 플래그 — 이게 true가 되기 전엔 Firestore 저장 차단
+  const firestoreReady = useRef(false);
 
   // 1) members 구독 (비인증 허용) + 인증 상태 복구
   useEffect(() => {
     if (!isConfigured) return;
     const u3 = subscribeMembers(m => {
       if(m.length>0) {
-        // SEED 이메일 병합 — Firestore 멤버에 이메일이 없으면 SEED에서 가져옴
+        // SEED 이메일 병합 — Firestore 멤버에 이메일이 없으면 SEED에서 가져옴 (읽기 전용)
         const merged = m.map(member => {
           if(member.email) return member;
           const seed = SEED_ACCOUNTS.find(s => s.id === member.id);
-          if(seed?.email) {
-            const updated = {...member, email: seed.email};
-            // Firestore에도 이메일 영구 저장
-            if(isConfigured) saveMember(updated).catch(console.error);
-            return updated;
-          }
-          return member;
+          return seed?.email ? {...member, email: seed.email} : member;
         });
         setAccounts(merged);
       }
@@ -10971,12 +10995,13 @@ function App() {
     console.log("[CutFlow] 🔵 Firestore 구독 시작");
     const u1 = subscribeProjects(fb => {
       console.log("[CutFlow] 📦 프로젝트 수신:", fb.length, "개");
+      firestoreReady.current = true; // Firestore 데이터 로드 완료
       setProjects(fb);
       setSelId(p => fb.find(x => x.id === p) ? p : fb[0]?.id || "");
     });
     const u2 = subscribeCompany(d => setCompany(p=>({...DEFAULT_COMPANY,...d})));
     const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
-    return () => { console.log("[CutFlow] 🔴 Firestore 구독 해제"); u1(); u2(); u4(); };
+    return () => { console.log("[CutFlow] 🔴 Firestore 구독 해제"); firestoreReady.current = false; u1(); u2(); u4(); };
   }, [isLoggedIn]);
   // D-day 알림 자동 생성
   useEffect(() => {
@@ -11023,7 +11048,61 @@ function App() {
     setNotifications(notifs);
   }, [projects]);
 
+  // ── 결재 상태 변경 감지 → 팝업 알림 ──
+  const prevBudgetStatuses = useRef({});
+  useEffect(() => {
+    if(!user || !firestoreReady.current) return;
+    const prev = prevBudgetStatuses.current;
+    projects.forEach(p => {
+      const oldStatus = prev[p.id];
+      const newStatus = p.budgetStatus;
+      if(oldStatus && oldStatus !== newStatus) {
+        // 경영지원실장에게: 결재요청이 들어왔을 때
+        if(newStatus === "경영지원실장결재" && user.role === "경영지원") {
+          setApprovalPopup({
+            icon: "📝", title: "결재 요청",
+            message: `[${p.name}]\n${p.budgetVersion||1}차 실행예산서 결재요청이 접수되었습니다.`,
+            projectId: p.id, action: "경영지원실장 승인",
+          });
+        }
+        // 대표에게: 경영지원실장 승인 후 대표 결재 요청
+        if(newStatus === "대표결재" && user.role === "대표") {
+          setApprovalPopup({
+            icon: "📝", title: "대표 결재 요청",
+            message: `[${p.name}]\n${p.budgetVersion||1}차 실행예산서\n경영지원실장 승인 완료. 대표 결재를 요청합니다.`,
+            projectId: p.id, action: "대표 결재",
+          });
+        }
+        // 전체: 결재 완료
+        if(newStatus === "결재완료" && oldStatus === "대표결재") {
+          setApprovalPopup({
+            icon: "✅", title: "결재 완료",
+            message: `[${p.name}]\n${p.budgetVersion||1}차 실행예산서 결재가 완료되었습니다.`,
+            projectId: p.id,
+          });
+        }
+      }
+    });
+    // 현재 상태 저장
+    const cur = {};
+    projects.forEach(p => { cur[p.id] = p.budgetStatus; });
+    prevBudgetStatuses.current = cur;
+  }, [projects, user]);
+
   if (!user) return <LoginScreen onLogin={setUser} accounts={accounts}/>;
+
+  // Firestore 연결 시 데이터 로드 전까지 로딩 표시 — SEED 데이터 유출 방지
+  if (isConfigured && !firestoreReady.current && projects.length === 0) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.bg,fontFamily:"'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif"}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:12}}>🎬</div>
+          <div style={{fontSize:16,fontWeight:700,color:C.dark,marginBottom:8}}>CutFlow</div>
+          <div style={{fontSize:13,color:C.faint}}>프로젝트 데이터를 불러오는 중...</div>
+        </div>
+      </div>
+    );
+  }
 
   const proj     = projects.find(p=>p.id===selId)||projects[0];
 
@@ -11037,7 +11116,7 @@ function App() {
   const patchProj = fn => setProjects(ps=>{
     const updated=ps.map(p=>p.id===selId?fn(p):p);
     const changed=updated.find(p=>p.id===selId);
-    if(changed&&isConfigured) saveProject(changed).catch(console.error);
+    if(changed&&isConfigured&&firestoreReady.current) saveProject(changed).catch(console.error);
     return updated;
   });
 
@@ -11151,12 +11230,16 @@ return (
           const myNotifs = notifications.filter(n=>
             !n.read && (n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)||
             n.type==="assign"||n.type==="done"||n.type==="confirm_req"||
-            n.type==="approved"||n.type==="rejected")
+            n.type==="approved"||n.type==="rejected"||
+            (n.type==="approval"&&n.toRole===user.role)||
+            (n.type==="approval"&&!n.toRole))
           );
           const allVisible = notifications.filter(n=>
             n.type==="due"||n.type==="task"||(n.to&&n.to===user.name)||
             n.type==="assign"||n.type==="done"||n.type==="confirm_req"||
-            n.type==="approved"||n.type==="rejected"
+            n.type==="approved"||n.type==="rejected"||
+            (n.type==="approval"&&n.toRole===user.role)||
+            (n.type==="approval"&&!n.toRole)
           );
           const hasUrgent = myNotifs.some(n=>n.urgent||n.type==="mention");
           const markRead = (id) => setNotifications(prev=>prev.map(n=>n.id===id?{...n,read:true}:n));
@@ -11218,19 +11301,24 @@ return (
                     : <div style={{maxHeight:400,overflowY:"auto"}}>
                         {allVisible.map(n=>{
                           const isUnread = !n.read;
-                          const typeBg   = n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.urgent?"#fff5f5":"#fff";
-                          const typeColor= n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.type==="confirm_req"?"#d97706":n.type==="approved"?"#16a34a":n.type==="rejected"?"#ef4444":n.urgent?"#ef4444":"#f59e0b";
-                          const typeBadgeBg = n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.type==="confirm_req"?"#fef3c7":n.type==="approved"?"#dcfce7":n.type==="rejected"?"#fee2e2":n.urgent?"#fef2f2":"#fffbeb";
-                          const icon = n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.type==="confirm_req"?"📋":n.type==="approved"?"✅":n.type==="rejected"?"🔁":n.urgent?"🔴":"🟡";
+                          const typeBg   = n.type==="assign"?"#eff6ff":n.type==="done"?"#f0fdf4":n.type==="confirm_req"?"#fffbeb":n.type==="approved"?"#f0fdf4":n.type==="rejected"?"#fff1f2":n.type==="approval"?"#fffbeb":n.urgent?"#fff5f5":"#fff";
+                          const typeColor= n.type==="assign"?"#2563eb":n.type==="done"?"#16a34a":n.type==="confirm_req"?"#d97706":n.type==="approved"?"#16a34a":n.type==="rejected"?"#ef4444":n.type==="approval"?"#d97706":n.urgent?"#ef4444":"#f59e0b";
+                          const typeBadgeBg = n.type==="assign"?"#eff6ff":n.type==="done"?"#dcfce7":n.type==="confirm_req"?"#fef3c7":n.type==="approved"?"#dcfce7":n.type==="rejected"?"#fee2e2":n.type==="approval"?"#fef3c7":n.urgent?"#fef2f2":"#fffbeb";
+                          const icon = n.type==="mention"?"💬":n.type==="assign"?"📨":n.type==="done"?"✅":n.type==="confirm_req"?"📋":n.type==="approved"?"✅":n.type==="rejected"?"🔁":n.type==="approval"?"📝":n.urgent?"🔴":"🟡";
                           return (
                             <div key={n.id}
                               onClick={()=>{
                                 markRead(n.id);
                                 setShowNotif(false);
-                                setMainTab("tasks");
-                                if(n.taskId){
-                                  const t=proj?.tasks?.find(x=>x.id===n.taskId);
-                                  if(t) setTaskPanel({...t});
+                                if(n.type==="approval"||n.type==="approved"){
+                                  if(n.projectId){setSelId(n.projectId);setDocTab("budget-mgmt");setBudgetSubTab("budget");}
+                                  setMainTab("tasks");
+                                } else {
+                                  setMainTab("tasks");
+                                  if(n.taskId){
+                                    const t=proj?.tasks?.find(x=>x.id===n.taskId);
+                                    if(t) setTaskPanel({...t});
+                                  }
                                 }
                               }}
                               style={{padding:"11px 14px",borderBottom:`1px solid ${C.border}`,
@@ -11805,7 +11893,7 @@ return (
             {docTab==="budget-mgmt"&&budgetSubTab==="quote"&&<QuoteEditor quote={proj.quote} onChange={updateQuote} exportProject={proj} company={company}/>}
 
             {/* ── 실행예산서 ── */}
-            {docTab==="budget-mgmt"&&budgetSubTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)} user={user}/>}
+            {docTab==="budget-mgmt"&&budgetSubTab==="budget"&&<BudgetEditor project={proj} onSave={p=>patchProj(()=>p)} user={user} onNotify={n=>setNotifications(p=>[n,...p])}/>}
 
             {/* ── 결산서 ── */}
             {docTab==="budget-mgmt"&&budgetSubTab==="settlement"&&<SettlementView project={proj} onConfirm={confirmSettlement} onSave={p=>patchProj(()=>p)} user={user}/>}
@@ -12277,6 +12365,36 @@ return (
         </Modal>
       )}
     </div>
+
+    {/* ═══ 결재 요청 팝업 ═══ */}
+    {approvalPopup && (
+      <div style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.5)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{background:"#fff",borderRadius:20,padding:"32px 28px",maxWidth:380,width:"90%",boxShadow:"0 24px 60px rgba(0,0,0,.2)",textAlign:"center",animation:"fadeIn .2s"}}>
+          <div style={{fontSize:48,marginBottom:12}}>{approvalPopup.icon}</div>
+          <div style={{fontSize:18,fontWeight:800,color:C.dark,marginBottom:8}}>{approvalPopup.title}</div>
+          <div style={{fontSize:14,color:C.sub,lineHeight:1.7,whiteSpace:"pre-line",marginBottom:24}}>{approvalPopup.message}</div>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <button onClick={()=>setApprovalPopup(null)}
+              style={{padding:"10px 24px",borderRadius:10,border:`1.5px solid ${C.border}`,background:C.white,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              닫기
+            </button>
+            {approvalPopup.projectId && (
+              <button onClick={()=>{
+                setSelId(approvalPopup.projectId);
+                setDocTab("budget-mgmt");
+                setBudgetSubTab("budget");
+                setMainTab("tasks");
+                setApprovalPopup(null);
+              }}
+                style={{padding:"10px 24px",borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                📄 실행예산서 보기
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
     </AppContext.Provider>
   );
 }
