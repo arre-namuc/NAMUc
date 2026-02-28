@@ -3904,12 +3904,14 @@ function BudgetEditor({ project, onSave, user, onNotify }) {
   const requestApproval = async () => {
     if(!confirm(`${budgetVersion}차 실행예산서를 결재 올리시겠습니까?\n결재 진행 중에는 편집이 불가합니다.\n\n결재순서: 경영지원실장 → 대표`)) return;
     try { await uploadAllPendingFiles(); } catch(e) { console.error("일괄 업로드 실패:", e); }
-    onSave({...project, budgetStatus:"경영지원실장결재"});
+    onSave({...project, budgetStatus:"경영지원실장결재", pendingApproval:{
+      toRole:"경영지원", type:"결재요청", from: user?.name||"",
+      message:`[${project.name}]\n${budgetVersion}차 실행예산서 결재요청이 접수되었습니다.\n\n요청자: ${user?.name||""}`,
+      time: new Date().toISOString(),
+    }});
     onNotify?.({
       id:"appr-"+Date.now(), type:"approval", urgent:true,
-      toRole:"경영지원",
-      label:"결재요청",
-      from: user?.name||"",
+      toRole:"경영지원", label:"결재요청", from: user?.name||"",
       fbTitle:`[${project.name}] ${budgetVersion}차 실행예산서 결재요청`,
       commentText:`경영지원실장 결재를 요청합니다.`,
       projectId: project.id, tab:"budget",
@@ -3918,12 +3920,14 @@ function BudgetEditor({ project, onSave, user, onNotify }) {
   };
   const approveByManager = () => {
     if(!confirm(`경영지원실장 결재를 승인하시겠습니까?\n승인 후 대표 결재로 넘어갑니다.`)) return;
-    onSave({...project, budgetStatus:"대표결재"});
+    onSave({...project, budgetStatus:"대표결재", pendingApproval:{
+      toRole:"대표", type:"결재요청", from: user?.name||"",
+      message:`[${project.name}]\n${budgetVersion}차 실행예산서\n경영지원실장 승인 완료. 대표 결재를 요청합니다.\n\n승인자: ${user?.name||""}`,
+      time: new Date().toISOString(),
+    }});
     onNotify?.({
       id:"appr-"+Date.now(), type:"approval", urgent:true,
-      toRole:"대표",
-      label:"결재요청",
-      from: user?.name||"",
+      toRole:"대표", label:"결재요청", from: user?.name||"",
       fbTitle:`[${project.name}] ${budgetVersion}차 실행예산서 대표 결재요청`,
       commentText:`경영지원실장 승인 완료. 대표 결재를 요청합니다.`,
       projectId: project.id, tab:"budget",
@@ -3932,7 +3936,6 @@ function BudgetEditor({ project, onSave, user, onNotify }) {
   };
   const completeApproval = () => {
     if(!confirm(`${budgetVersion}차 실행예산서 대표 결재를 완료하시겠습니까?`)) return;
-    // 스냅샷에서 b64url 완전 제거 → Firestore 문서 크기 절약
     const cleanData = stripB64(JSON.parse(JSON.stringify(bud)));
     const snapshot = {
       version: budgetVersion,
@@ -3944,11 +3947,13 @@ function BudgetEditor({ project, onSave, user, onNotify }) {
       voucherCount: syncedItems.reduce((s,cat)=>(cat.groups||[]).reduce((s2,g)=>s2+(g.items||[]).reduce((s3,it)=>s3+(it.vouchers||[]).length,0),s),0),
     };
     const updatedVersions = [...budgetVersions.filter(v=>v.version!==budgetVersion), snapshot];
-    onSave({...project, budgetStatus:"결재완료", budgetVersions:updatedVersions});
+    onSave({...project, budgetStatus:"결재완료", budgetVersions:updatedVersions, pendingApproval:{
+      type:"결재완료", from: user?.name||"",
+      message:`[${project.name}]\n${budgetVersion}차 실행예산서 결재가 완료되었습니다.\n\n결재자: ${user?.name||""}`,
+      time: new Date().toISOString(),
+    }});
     onNotify?.({
-      id:"appr-"+Date.now(), type:"approved",
-      label:"결재완료",
-      from: user?.name||"",
+      id:"appr-"+Date.now(), type:"approved", label:"결재완료", from: user?.name||"",
       fbTitle:`[${project.name}] ${budgetVersion}차 실행예산서 결재완료`,
       commentText:`대표 결재가 완료되었습니다.`,
       projectId: project.id, tab:"budget",
@@ -11003,10 +11008,10 @@ function App() {
     const u4 = subscribeOffice(d => { if(Object.keys(d).length>0) setOfficeData(d); });
     return () => { console.log("[CutFlow] 🔴 Firestore 구독 해제"); firestoreReady.current = false; u1(); u2(); u4(); };
   }, [isLoggedIn]);
-  // D-day 알림 자동 생성
+  // D-day 알림 자동 생성 — 수동 알림은 보존
   useEffect(() => {
     const today = new Date(); today.setHours(0,0,0,0);
-    const notifs = [];
+    const autoNotifs = [];
     projects.forEach(proj => {
       (proj.feedbacks||[]).forEach(fb => {
         if(!fb.dueDate || fb.taskStatus==="done") return;
@@ -11014,7 +11019,7 @@ function App() {
         const diff = Math.round((due-today)/(1000*60*60*24));
         if(diff<=1 && diff>=-1) {
           const label = diff<0?`D+${Math.abs(diff)} 초과`:diff===0?"오늘 마감":`내일 마감 (D-${diff})`;
-          notifs.push({
+          autoNotifs.push({
             id: `fb-${fb.id}-due`,
             type: "due",
             urgent: diff<=0,
@@ -11023,6 +11028,7 @@ function App() {
             fbTitle: fb.title||"(제목없음)",
             projId: proj.id,
             fbId: fb.id,
+            _auto: true,
           });
         }
       });
@@ -11033,7 +11039,7 @@ function App() {
         const diff = Math.round((due-today)/(1000*60*60*24));
         if(diff<=1 && diff>=-1) {
           const label = diff<0?`D+${Math.abs(diff)} 초과`:diff===0?"오늘 마감":`내일 마감`;
-          notifs.push({
+          autoNotifs.push({
             id: `task-${task.id}-due`,
             type: "task",
             urgent: diff<=0,
@@ -11041,52 +11047,38 @@ function App() {
             projName: proj.name,
             fbTitle: task.title,
             projId: proj.id,
+            _auto: true,
           });
         }
       });
     });
-    setNotifications(notifs);
+    // 수동 알림 보존, 자동 알림만 교체
+    setNotifications(prev => {
+      const manual = prev.filter(n => !n._auto);
+      return [...manual, ...autoNotifs];
+    });
   }, [projects]);
 
-  // ── 결재 상태 변경 감지 → 팝업 알림 ──
-  const prevBudgetStatuses = useRef({});
+  // ── 결재 알림 팝업 (Firestore 기반 — 세션/사용자 간 동기화) ──
   useEffect(() => {
-    if(!user || !firestoreReady.current) return;
-    const prev = prevBudgetStatuses.current;
-    projects.forEach(p => {
-      const oldStatus = prev[p.id];
-      const newStatus = p.budgetStatus;
-      if(oldStatus && oldStatus !== newStatus) {
-        // 경영지원실장에게: 결재요청이 들어왔을 때
-        if(newStatus === "경영지원실장결재" && user.role === "경영지원") {
-          setApprovalPopup({
-            icon: "📝", title: "결재 요청",
-            message: `[${p.name}]\n${p.budgetVersion||1}차 실행예산서 결재요청이 접수되었습니다.`,
-            projectId: p.id, action: "경영지원실장 승인",
-          });
-        }
-        // 대표에게: 경영지원실장 승인 후 대표 결재 요청
-        if(newStatus === "대표결재" && user.role === "대표") {
-          setApprovalPopup({
-            icon: "📝", title: "대표 결재 요청",
-            message: `[${p.name}]\n${p.budgetVersion||1}차 실행예산서\n경영지원실장 승인 완료. 대표 결재를 요청합니다.`,
-            projectId: p.id, action: "대표 결재",
-          });
-        }
-        // 전체: 결재 완료
-        if(newStatus === "결재완료" && oldStatus === "대표결재") {
-          setApprovalPopup({
-            icon: "✅", title: "결재 완료",
-            message: `[${p.name}]\n${p.budgetVersion||1}차 실행예산서 결재가 완료되었습니다.`,
-            projectId: p.id,
-          });
-        }
+    if(!user || !firestoreReady.current || projects.length === 0) return;
+    for(const p of projects) {
+      const pa = p.pendingApproval;
+      if(!pa || pa.dismissed) continue;
+      // 내가 대상 역할인지 확인
+      const isTarget = pa.toRole === user.role;
+      // 결재완료 알림은 전체에게
+      const isComplete = pa.type === "결재완료" && pa.from !== user.name;
+      if(isTarget || isComplete) {
+        setApprovalPopup({
+          icon: pa.type==="결재완료"?"✅":"📝",
+          title: pa.type==="결재완료"?"결재 완료":"결재 요청",
+          message: pa.message,
+          projectId: p.id,
+        });
+        break; // 하나만 표시
       }
-    });
-    // 현재 상태 저장
-    const cur = {};
-    projects.forEach(p => { cur[p.id] = p.budgetStatus; });
-    prevBudgetStatuses.current = cur;
+    }
   }, [projects, user]);
 
   if (!user) return <LoginScreen onLogin={setUser} accounts={accounts}/>;
@@ -11116,6 +11108,14 @@ function App() {
   const patchProj = fn => setProjects(ps=>{
     const updated=ps.map(p=>p.id===selId?fn(p):p);
     const changed=updated.find(p=>p.id===selId);
+    if(changed&&isConfigured&&firestoreReady.current) saveProject(changed).catch(console.error);
+    return updated;
+  });
+
+  // ID 지정 패치 (알림 팝업 dismiss 등)
+  const patchProjById = (id, fn) => setProjects(ps=>{
+    const updated=ps.map(p=>p.id===id?fn(p):p);
+    const changed=updated.find(p=>p.id===id);
     if(changed&&isConfigured&&firestoreReady.current) saveProject(changed).catch(console.error);
     return updated;
   });
@@ -12374,12 +12374,17 @@ return (
           <div style={{fontSize:18,fontWeight:800,color:C.dark,marginBottom:8}}>{approvalPopup.title}</div>
           <div style={{fontSize:14,color:C.sub,lineHeight:1.7,whiteSpace:"pre-line",marginBottom:24}}>{approvalPopup.message}</div>
           <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-            <button onClick={()=>setApprovalPopup(null)}
+            <button onClick={()=>{
+              // Firestore에서 pendingApproval 제거
+              if(approvalPopup.projectId) patchProjById(approvalPopup.projectId, p=>({...p,pendingApproval:{...p.pendingApproval,dismissed:true}}));
+              setApprovalPopup(null);
+            }}
               style={{padding:"10px 24px",borderRadius:10,border:`1.5px solid ${C.border}`,background:C.white,color:C.sub,fontSize:14,fontWeight:600,cursor:"pointer"}}>
               닫기
             </button>
             {approvalPopup.projectId && (
               <button onClick={()=>{
+                if(approvalPopup.projectId) patchProjById(approvalPopup.projectId, p=>({...p,pendingApproval:{...p.pendingApproval,dismissed:true}}));
                 setSelId(approvalPopup.projectId);
                 setDocTab("budget-mgmt");
                 setBudgetSubTab("budget");
